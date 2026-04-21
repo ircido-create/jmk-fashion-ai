@@ -187,9 +187,19 @@ export default function Inventory() {
       />
 
       <GlassCard>
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produto..." className="glass-input pl-10" />
+        <div className="flex flex-col sm:flex-row gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produto, categoria ou fornecedor..." className="glass-input pl-10" />
+          </div>
+          <select
+            value={supplierFilter}
+            onChange={(e) => setSupplierFilter(e.target.value)}
+            className="glass-input h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-56"
+          >
+            <option value="all">Todos os fornecedores</option>
+            {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
 
         <div className="grid gap-3">
