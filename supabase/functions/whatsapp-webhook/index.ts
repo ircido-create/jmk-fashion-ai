@@ -335,8 +335,85 @@ function detectLastAskedField(history: any[]): string | null {
 }
 
 async function buildContext(phone: string, userMsg: string, history: any[]) {
-  const { matched, all } = await searchProducts(userMsg);
+  const supplierMentioned = await detectSupplier(userMsg);
+  const { matched, all } = await searchProducts(userMsg, supplierMentioned);
 
+  const { data: rawCustomer } = await supabase
+    .from("customers")
+    .select("id, name, address, email")
+    .eq("phone", phone)
+    .maybeSingle();
+
+  const lastAsked = detectLastAskedField(history);
+  const customer = await autoUpdateCustomer(phone, rawCustomer, userMsg, lastAsked);
+
+  let debts: any[] = [];
+  if (customer) {
+    const { data } = await supabase
+      .from("accounts_receivable")
+      .select("description, amount, due_date, status")
+      .eq("customer_id", customer.id)
+      .neq("status", "pago");
+    debts = (data ?? []).map((d: any) => ({ ...d, due_date: formatDateBR(d.due_date) }));
+  }
+
+  const missing = missingFields(customer);
+
+  return { matched, all, customer, debts, missing, supplierMentioned };
+}
+
+function formatProducts(list: any[]) {
+  if (list.length === 0) return "(nenhum)";
+  return list
+    .map((p: any) => {
+      const vars = (p.product_variants ?? [])
+        .map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"} (estoque: ${v.quantity})`)
+        .join("; ");
+      return `• ${p.name} (SKU ${p.sku ?? "-"}) — R$ ${p.price} — ${p.category ?? ""} — Fornecedor: ${p.supplier ?? "-"} — Variações: ${vars || "única"}`;
+    })
+    .join("\n");
+}
+
+async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean) {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY ausente");
+
+  const matchInfo =
+    ctx.matched.length > 0
+      ? `Produtos que correspondem à pergunta do cliente:\n${formatProducts(ctx.matched)}`
+      : `⚠️ Nenhum produto do catálogo corresponde à pergunta atual do cliente. Se ele pediu um modelo específico (ex: "vestido amanda"), diga que NÃO temos esse modelo e ofereça alternativas reais da lista geral abaixo.`;
+
+  const supplierBlock = ctx.supplierMentioned
+    ? `→ O cliente mencionou o FORNECEDOR "${ctx.supplierMentioned}". Mostre APENAS produtos deste fornecedor (a lista abaixo já está filtrada). Se ele pedir algo de outro fornecedor depois, troque o filtro.`
+    : `→ Nenhum fornecedor específico mencionado. Use o catálogo geral.`;
+
+  const contextText = `
+=== ESTADO DA CONVERSA ===
+PRIMEIRA_MENSAGEM=${isFirstMessage ? "true" : "false"}
+${isFirstMessage
+  ? "→ Esta é a PRIMEIRA mensagem desta conversa. Cumprimente e se apresente UMA vez."
+  : "→ Conversa JÁ EM ANDAMENTO. NÃO se apresente, NÃO diga seu nome, NÃO diga 'aqui é da JMK'. Vá direto ao ponto."}
+
+=== FILTRO POR FORNECEDOR ===
+${supplierBlock}
+
+=== CATÁLOGO ${ctx.supplierMentioned ? `(filtrado por fornecedor "${ctx.supplierMentioned}")` : "COMPLETO"} — use SOMENTE estes produtos ===
+${formatProducts(ctx.all)}
+
+=== BUSCA NA PERGUNTA ATUAL ===
+${matchInfo}
+
+=== CLIENTE ===
+${ctx.customer
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"}`
+  : "Cliente NÃO cadastrado."}
+CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço → email. NÃO fale de produtos enquanto faltar dados."}
+
+=== DÍVIDAS PENDENTES (FONTE DA VERDADE — ignore datas/valores do histórico) ===
+${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
+  `• ${d.description ?? "Compra"} — R$ ${d.amount} — vence ${d.due_date} — status ${d.status}`
+).join("\n")}
+`.trim();
   const { data: rawCustomer } = await supabase
     .from("customers")
     .select("id, name, address, email")
