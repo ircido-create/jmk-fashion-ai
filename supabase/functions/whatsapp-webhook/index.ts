@@ -381,7 +381,7 @@ Deno.serve(async (req) => {
     // Primeira mensagem = só existe a inbound que acabamos de inserir agora
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
-    const ctx = await buildContext(fromPhone, text);
+    const ctx = await buildContext(fromPhone, text, history ?? []);
     const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx, isFirstMessage);
 
     await sendWhatsApp(fromPhone, reply, cfg);
