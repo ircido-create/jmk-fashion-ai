@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, FileDown } from "lucide-react";
+import { usePagination } from "@/hooks/usePagination";
+import { exportPayablePdf } from "@/lib/financePdf";
 import { toast } from "sonner";
 import { z } from "zod";
 import { format, parseISO } from "date-fns";
@@ -94,6 +96,7 @@ export default function Payable() {
 
   const filtered = filter === "todos" ? list : list.filter((r) => r.status === filter);
   const total = filtered.reduce((s, r) => s + Number(r.amount), 0);
+  const { paged, Controls } = usePagination(filtered, 20);
 
   return (
     <div>
@@ -101,26 +104,36 @@ export default function Payable() {
         title="Contas a Pagar"
         description={`Total filtrado: R$ ${total.toFixed(2)}`}
         actions={
-          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null); }}>
-            <DialogTrigger asChild>
-              <Button className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
-                <Plus className="h-4 w-4 mr-1" /> Nova
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="glass-card border-white/40">
-              <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} conta a pagar</DialogTitle></DialogHeader>
-              <form onSubmit={save} className="space-y-3">
-                <div><Label>Fornecedor</Label><Input name="supplier" defaultValue={editing?.supplier} required className="glass-input" /></div>
-                <div><Label>Descrição</Label><Input name="description" defaultValue={editing?.description ?? ""} className="glass-input" /></div>
-                <div><Label>Categoria</Label><Input name="category" defaultValue={editing?.category ?? ""} placeholder="Aluguel, Energia..." className="glass-input" /></div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Valor (R$)</Label><Input name="amount" type="number" step="0.01" defaultValue={editing?.amount} required className="glass-input" /></div>
-                  <div><Label>Vencimento</Label><Input name="due_date" type="date" defaultValue={editing?.due_date} required className="glass-input" /></div>
-                </div>
-                <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => exportPayablePdf(filtered, filter)}
+              disabled={filtered.length === 0}
+            >
+              <FileDown className="h-4 w-4 mr-1" /> PDF
+            </Button>
+            <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null); }}>
+              <DialogTrigger asChild>
+                <Button className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
+                  <Plus className="h-4 w-4 mr-1" /> Nova
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="glass-card border-white/40">
+                <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} conta a pagar</DialogTitle></DialogHeader>
+                <form onSubmit={save} className="space-y-3">
+                  <div><Label>Fornecedor</Label><Input name="supplier" defaultValue={editing?.supplier} required className="glass-input" /></div>
+                  <div><Label>Descrição</Label><Input name="description" defaultValue={editing?.description ?? ""} className="glass-input" /></div>
+                  <div><Label>Categoria</Label><Input name="category" defaultValue={editing?.category ?? ""} placeholder="Aluguel, Energia..." className="glass-input" /></div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Valor (R$)</Label><Input name="amount" type="number" step="0.01" defaultValue={editing?.amount} required className="glass-input" /></div>
+                    <div><Label>Vencimento</Label><Input name="due_date" type="date" defaultValue={editing?.due_date} required className="glass-input" /></div>
+                  </div>
+                  <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </>
         }
       />
 
@@ -136,7 +149,7 @@ export default function Payable() {
         </div>
 
         <div className="space-y-2">
-          {filtered.map((r) => (
+          {paged.map((r) => (
             <div key={r.id} className="p-3 rounded-xl bg-white/40 backdrop-blur flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -164,6 +177,7 @@ export default function Payable() {
           ))}
           {filtered.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nada por aqui</div>}
         </div>
+        <Controls />
       </GlassCard>
     </div>
   );
