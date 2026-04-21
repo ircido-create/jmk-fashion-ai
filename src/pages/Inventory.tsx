@@ -41,6 +41,38 @@ export default function Inventory() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [imgSearchOpen, setImgSearchOpen] = useState(false);
+  const [imgSearchTarget, setImgSearchTarget] = useState<{
+    productName: string;
+    supplier?: string | null;
+    variantId?: string;
+    productId?: string;
+    applyToAllVariants?: boolean;
+    onLocal?: (url: string) => void;
+  } | null>(null);
+
+  const openImgSearchForVariant = (i: number) => {
+    const name = (document.querySelector('input[name="name"]') as HTMLInputElement | null)?.value || editing?.name || "";
+    const sup = (document.querySelector('input[name="supplier"]') as HTMLInputElement | null)?.value || editing?.supplier || "";
+    if (!name) { toast.error("Preencha o nome do produto primeiro"); return; }
+    setImgSearchTarget({
+      productName: name,
+      supplier: sup,
+      variantId: variants[i]?.id,
+      onLocal: (url) => updVariant(i, { image_url: url }),
+    });
+    setImgSearchOpen(true);
+  };
+
+  const openImgSearchForProduct = (p: Product) => {
+    setImgSearchTarget({
+      productName: p.name,
+      supplier: p.supplier,
+      productId: p.id,
+      applyToAllVariants: true,
+    });
+    setImgSearchOpen(true);
+  };
 
   const handleImport = async () => {
     if (!importFile) { toast.error("Selecione um PDF"); return; }
