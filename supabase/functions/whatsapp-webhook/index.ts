@@ -439,7 +439,26 @@ Deno.serve(async (req) => {
     if (!message) return new Response("ok", { status: 200, headers: corsHeaders });
 
     const fromPhone: string = message.from;
-    const text: string = message.text?.body ?? "";
+    let text: string = message.text?.body ?? "";
+
+    // Suporte a áudio: baixa do WhatsApp e transcreve via Lovable AI
+    if (!text && (message.type === "audio" || message.type === "voice")) {
+      const mediaId = message.audio?.id ?? message.voice?.id;
+      if (mediaId) {
+        const media = await downloadWhatsAppMedia(mediaId, cfg);
+        if (media) {
+          const transcript = await transcribeAudio(media.base64, media.mimeType);
+          if (transcript) {
+            text = transcript;
+            console.log("Áudio transcrito:", text);
+          } else {
+            await sendWhatsApp(fromPhone, "Desculpe, não consegui entender seu áudio 😅 Pode escrever ou gravar de novo, por favor? 💕", cfg);
+            return new Response("ok", { status: 200, headers: corsHeaders });
+          }
+        }
+      }
+    }
+
     if (!text) return new Response("ok", { status: 200, headers: corsHeaders });
 
     const conv = await getOrCreateConversation(fromPhone);
