@@ -6,15 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2, Image as ImageIcon, Upload, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2, Image as ImageIcon, Upload, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
+import SupplierImageSearch from "@/components/SupplierImageSearch";
 
 interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
   id: string; name: string; description: string | null; category: string | null;
   sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
+  image_url?: string | null;
   product_variants?: Variant[];
 }
 
@@ -39,6 +41,38 @@ export default function Inventory() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [imgSearchOpen, setImgSearchOpen] = useState(false);
+  const [imgSearchTarget, setImgSearchTarget] = useState<{
+    productName: string;
+    supplier?: string | null;
+    variantId?: string;
+    productId?: string;
+    applyToAllVariants?: boolean;
+    onLocal?: (url: string) => void;
+  } | null>(null);
+
+  const openImgSearchForVariant = (i: number) => {
+    const name = (document.querySelector('input[name="name"]') as HTMLInputElement | null)?.value || editing?.name || "";
+    const sup = (document.querySelector('input[name="supplier"]') as HTMLInputElement | null)?.value || editing?.supplier || "";
+    if (!name) { toast.error("Preencha o nome do produto primeiro"); return; }
+    setImgSearchTarget({
+      productName: name,
+      supplier: sup,
+      variantId: variants[i]?.id,
+      onLocal: (url) => updVariant(i, { image_url: url }),
+    });
+    setImgSearchOpen(true);
+  };
+
+  const openImgSearchForProduct = (p: Product) => {
+    setImgSearchTarget({
+      productName: p.name,
+      supplier: p.supplier,
+      productId: p.id,
+      applyToAllVariants: true,
+    });
+    setImgSearchOpen(true);
+  };
 
   const handleImport = async () => {
     if (!importFile) { toast.error("Selecione um PDF"); return; }
@@ -251,7 +285,14 @@ export default function Inventory() {
         <div className="grid gap-3">
           {filtered.map((p) => (
             <div key={p.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                {p.image_url ? (
+                  <img src={p.image_url} alt={p.name} className="h-16 w-16 rounded-xl object-cover border border-white/40 shrink-0" />
+                ) : (
+                  <div className="h-16 w-16 rounded-xl border border-dashed border-muted-foreground/40 bg-white/20 flex items-center justify-center shrink-0">
+                    <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{p.name}</span>
@@ -279,6 +320,9 @@ export default function Inventory() {
                   )}
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" onClick={() => openImgSearchForProduct(p)} title="Buscar imagem do fornecedor" className="text-xs">
+                    <Sparkles className="h-3.5 w-3.5 mr-1" /> Foto
+                  </Button>
                   <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" onClick={() => remove(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
@@ -357,6 +401,14 @@ export default function Inventory() {
                           }}
                         />
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => openImgSearchForVariant(i)}
+                        className="text-xs inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition"
+                        title="Buscar imagem no site do fornecedor"
+                      >
+                        <Sparkles className="h-3 w-3" /> Buscar do fornecedor
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -398,6 +450,22 @@ export default function Inventory() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {imgSearchTarget && (
+        <SupplierImageSearch
+          open={imgSearchOpen}
+          onOpenChange={(o) => { setImgSearchOpen(o); if (!o) setImgSearchTarget(null); }}
+          productName={imgSearchTarget.productName}
+          supplier={imgSearchTarget.supplier}
+          variantId={imgSearchTarget.variantId}
+          productId={imgSearchTarget.productId}
+          applyToAllVariants={imgSearchTarget.applyToAllVariants}
+          onSaved={(url) => {
+            imgSearchTarget.onLocal?.(url);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -251,6 +251,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          image_url: string | null
           low_stock_threshold: number
           name: string
           price: number
@@ -265,6 +266,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          image_url?: string | null
           low_stock_threshold?: number
           name: string
           price?: number
@@ -279,6 +281,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          image_url?: string | null
           low_stock_threshold?: number
           name?: string
           price?: number
@@ -423,6 +426,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      supplier_sites: {
+        Row: {
+          created_at: string
+          domain: string
+          id: string
+          supplier_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          domain: string
+          id?: string
+          supplier_name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string
+          id?: string
+          supplier_name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
