@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { MessageCircle, Send, Plus, Search, User } from "lucide-react";
+import { MessageCircle, Send, Plus, Search, User, UserPlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -43,6 +43,13 @@ export default function Conversations() {
   const [newPhone, setNewPhone] = useState("");
   const [newName, setNewName] = useState("");
   const [newMessage, setNewMessage] = useState("");
+  // Cadastro de cliente a partir da conversa ativa
+  const [regOpen, setRegOpen] = useState(false);
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regAddress, setRegAddress] = useState("");
+  const [regNotes, setRegNotes] = useState("");
+  const [regSaving, setRegSaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = async () => {
@@ -157,6 +164,70 @@ export default function Conversations() {
     setNewOpen(false);
     setNewPhone(""); setNewName(""); setNewMessage("");
     await loadConversations();
+  };
+
+  const openRegister = () => {
+    if (!active) return;
+    setRegName(active.customer?.name ?? "");
+    setRegEmail("");
+    setRegAddress("");
+    setRegNotes("");
+    setRegOpen(true);
+  };
+
+  const registerCustomer = async () => {
+    if (!active) return;
+    if (!regName.trim()) {
+      toast({ title: "Informe o nome do cliente", variant: "destructive" });
+      return;
+    }
+    setRegSaving(true);
+    const phone = active.customer_phone;
+
+    // Verifica se já existe cliente com este telefone
+    const { data: existing } = await supabase
+      .from("customers").select("id").eq("phone", phone).maybeSingle();
+
+    let customerId = existing?.id;
+    if (existing) {
+      const { error } = await supabase.from("customers").update({
+        name: regName,
+        email: regEmail || null,
+        address: regAddress || null,
+        notes: regNotes || null,
+      }).eq("id", existing.id);
+      if (error) {
+        setRegSaving(false);
+        toast({ title: "Falha ao atualizar cliente", description: error.message, variant: "destructive" });
+        return;
+      }
+    } else {
+      const { data: created, error } = await supabase.from("customers").insert({
+        name: regName,
+        phone,
+        email: regEmail || null,
+        address: regAddress || null,
+        notes: regNotes || null,
+      }).select("id").single();
+      if (error) {
+        setRegSaving(false);
+        toast({ title: "Falha ao cadastrar cliente", description: error.message, variant: "destructive" });
+        return;
+      }
+      customerId = created.id;
+    }
+
+    // Vincula a conversa ao cliente
+    await supabase.from("whatsapp_conversations")
+      .update({ customer_id: customerId })
+      .eq("id", active.id);
+
+    setRegSaving(false);
+    setRegOpen(false);
+    toast({ title: "Cliente salvo 💕" });
+    await loadConversations();
+    // Atualiza a conversa ativa em memória
+    setActive({ ...active, customer_id: customerId!, customer: { name: regName } });
   };
 
   const filtered = conversations.filter((c) => {
@@ -277,11 +348,59 @@ export default function Conversations() {
                 <div className="h-10 w-10 rounded-full bg-gradient-primary flex items-center justify-center">
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <div>
-                  <div className="font-medium">{active.customer?.name ?? "Cliente"}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{active.customer?.name ?? "Cliente"}</div>
                   <div className="text-xs text-muted-foreground">{active.customer_phone}</div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openRegister}
+                  className="shrink-0"
+                >
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  {active.customer_id ? "Editar cliente" : "Cadastrar cliente"}
+                </Button>
               </div>
+
+              {/* Dialog de cadastro/edição de cliente */}
+              <Dialog open={regOpen} onOpenChange={setRegOpen}>
+                <DialogContent className="glass-card">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {active.customer_id ? "Editar cliente" : "Cadastrar cliente"}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Nome *</Label>
+                      <Input value={regName} onChange={(e) => setRegName(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Telefone</Label>
+                      <Input value={active.customer_phone} disabled />
+                    </div>
+                    <div>
+                      <Label>Email</Label>
+                      <Input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Endereço</Label>
+                      <Textarea rows={2} value={regAddress} onChange={(e) => setRegAddress(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Observações</Label>
+                      <Textarea rows={2} value={regNotes} onChange={(e) => setRegNotes(e.target.value)} />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={registerCustomer} disabled={regSaving} className="bg-gradient-primary">
+                      {regSaving ? "Salvando…" : "Salvar"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
 
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2">
                 {messages.length === 0 && (
