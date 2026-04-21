@@ -316,13 +316,48 @@ export default function Inventory() {
                 <Label>Variações (tamanho/cor/qtd)</Label>
                 <Button type="button" size="sm" variant="ghost" onClick={addVariant}><Plus className="h-3 w-3 mr-1" /> Adicionar</Button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {variants.map((v, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_80px_auto] gap-2">
-                    <Input placeholder="P/M/G" value={v.size} onChange={(e) => updVariant(i, { size: e.target.value })} className="glass-input" />
-                    <Input placeholder="Cor" value={v.color} onChange={(e) => updVariant(i, { color: e.target.value })} className="glass-input" />
-                    <Input type="number" value={v.quantity} onChange={(e) => updVariant(i, { quantity: Number(e.target.value) })} className="glass-input" />
-                    <Button type="button" size="icon" variant="ghost" onClick={() => delVariant(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <div key={i} className="p-3 rounded-xl bg-white/30 dark:bg-white/5 space-y-2">
+                    <div className="grid grid-cols-[1fr_1fr_80px_auto] gap-2">
+                      <Input placeholder="P/M/G" value={v.size} onChange={(e) => updVariant(i, { size: e.target.value })} className="glass-input" />
+                      <Input placeholder="Cor" value={v.color} onChange={(e) => updVariant(i, { color: e.target.value })} className="glass-input" />
+                      <Input type="number" value={v.quantity} onChange={(e) => updVariant(i, { quantity: Number(e.target.value) })} className="glass-input" />
+                      <Button type="button" size="icon" variant="ghost" onClick={() => delVariant(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.image_url ? (
+                        <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-white/40">
+                          <img src={v.image_url} alt={`${v.color || "variação"}`} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => updVariant(i, { image_url: null })}
+                            className="absolute top-0 right-0 bg-destructive/90 text-destructive-foreground rounded-bl-md p-0.5"
+                            aria-label="Remover foto"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="h-16 w-16 rounded-lg border border-dashed border-muted-foreground/40 flex items-center justify-center text-muted-foreground">
+                          <ImageIcon className="h-5 w-5" />
+                        </div>
+                      )}
+                      <label className="cursor-pointer text-xs inline-flex items-center gap-1 px-2 py-1 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition">
+                        <Upload className="h-3 w-3" />
+                        {v.image_url ? "Trocar foto" : "Adicionar foto"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadVariantImage(i, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 ))}
                 {variants.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma variação ainda.</p>}
