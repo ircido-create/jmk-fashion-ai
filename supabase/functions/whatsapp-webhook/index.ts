@@ -597,11 +597,23 @@ Deno.serve(async (req) => {
       { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name }
     );
 
+    // Se a cliente pediu foto, envia imagens antes da resposta de texto
+    let photosSentLog = "";
+    if (asksForPhoto(text)) {
+      const photos = await findPhotoMatches(text, ctx.supplierMentioned);
+      for (const ph of photos) {
+        await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+      }
+      if (photos.length > 0) {
+        photosSentLog = `\n[${photos.length} foto(s) enviada(s): ${photos.map((p) => p.caption).join(", ")}]`;
+      }
+    }
+
     await sendWhatsApp(fromPhone, reply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
-      content: reply,
+      content: reply + photosSentLog,
     });
     if (outErr) console.error("insert outbound error:", outErr);
     await supabase
