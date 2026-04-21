@@ -253,7 +253,11 @@ export default function Inventory() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Categoria</Label><Input name="category" defaultValue={editing?.category ?? ""} placeholder="Vestido, Blusa..." className="glass-input" /></div>
+              <div><Label>Fornecedor</Label><Input name="supplier" defaultValue={editing?.supplier ?? ""} placeholder="Nome do fornecedor" className="glass-input" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div><Label>Estoque mínimo</Label><Input name="low_stock_threshold" type="number" defaultValue={editing?.low_stock_threshold ?? 5} min={0} className="glass-input" /></div>
+              <div></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Preço (R$)</Label><Input name="price" type="number" step="0.01" defaultValue={editing?.price ?? 0} required className="glass-input" /></div>
