@@ -143,6 +143,56 @@ async function sendWhatsApp(to: string, text: string, cfg: any) {
   if (!res.ok) console.error("Meta send error:", res.status, await res.text());
 }
 
+async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
+  const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${cfg.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "image",
+      image: { link: imageUrl, caption: caption.slice(0, 1024) },
+    }),
+  });
+  if (!res.ok) console.error("Meta image send error:", res.status, await res.text());
+}
+
+// Detecta se a cliente pediu foto/imagem
+function asksForPhoto(text: string): boolean {
+  const t = norm(text);
+  return /(foto|fotos|imagem|imagens|figura|me manda.*foto|tem foto|tem imagem|posso ver|me mostra|manda.*foto)/.test(t);
+}
+
+// Busca variações com foto que correspondam à mensagem
+async function findPhotoMatches(userMsg: string, supplier: string | null): Promise<{ url: string; caption: string }[]> {
+  const keywords = extractKeywords(userMsg);
+  let q = supabase
+    .from("products")
+    .select("name, supplier, product_variants(size, color, image_url, quantity)")
+    .eq("active", true)
+    .limit(20);
+  if (supplier) q = q.eq("supplier", supplier);
+  if (keywords.length > 0) {
+    q = q.or(keywords.flatMap((k) => [`name.ilike.%${k}%`, `description.ilike.%${k}%`, `category.ilike.%${k}%`]).join(","));
+  }
+  const { data } = await q;
+  const out: { url: string; caption: string }[] = [];
+  for (const p of data ?? []) {
+    for (const v of (p as any).product_variants ?? []) {
+      if (v.image_url) {
+        const variantLabel = [v.size, v.color].filter(Boolean).join(" / ");
+        out.push({ url: v.image_url, caption: `${(p as any).name}${variantLabel ? ` — ${variantLabel}` : ""}` });
+        if (out.length >= 4) return out;
+      }
+    }
+  }
+  return out;
+}
+
 async function getOrCreateConversation(phone: string) {
   const { data: existing } = await supabase
     .from("whatsapp_conversations")
