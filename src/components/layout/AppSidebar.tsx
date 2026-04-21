@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Package, ArrowDownCircle, ArrowUpCircle,
-  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag
+  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag, Smartphone
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -19,6 +19,7 @@ const mainItems = [
   { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpCircle },
   { title: "Conversas", url: "/conversas", icon: MessageCircle },
   { title: "WhatsApp IA", url: "/whatsapp", icon: MessageSquare },
+  { title: "Instalar no celular", url: "/instalar", icon: Smartphone },
 ];
 
 const adminItems = [

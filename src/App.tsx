@@ -19,6 +19,7 @@ import WhatsApp from "./pages/WhatsApp";
 import Conversations from "./pages/Conversations";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
+import Install from "./pages/Install";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
                 <Route path="/contas-pagar" element={<Payable />} />
                 <Route path="/conversas" element={<Conversations />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
+                <Route path="/instalar" element={<Install />} />
               </Route>
               <Route element={<ProtectedRoute adminOnly />}>
                 <Route element={<AppLayout />}>
