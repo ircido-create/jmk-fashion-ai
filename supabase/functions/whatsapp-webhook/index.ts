@@ -179,7 +179,7 @@ async function sendWhatsApp(to: string, text: string, cfg: any) {
   }
 }
 
-async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
+async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any): Promise<boolean> {
   const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
   const res = await fetch(url, {
     method: "POST",
@@ -196,9 +196,11 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, 
   });
   if (!res.ok) {
     const body = await res.text();
-    console.error("Meta image send error:", res.status, body);
+    console.error("Meta image send error:", res.status, "url=", imageUrl, body);
     await recordMetaError(res.status, body);
+    return false;
   }
+  return true;
 }
 
 // Detecta se a cliente pediu foto/imagem
