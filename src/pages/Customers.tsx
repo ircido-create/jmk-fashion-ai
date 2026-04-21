@@ -11,6 +11,7 @@ import { Plus, Pencil, Trash2, Search, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Link } from "react-router-dom";
+import { usePagination } from "@/hooks/usePagination";
 
 interface Customer { id: string; name: string; phone: string | null; email: string | null; address: string | null; notes: string | null; }
 
@@ -75,6 +76,7 @@ export default function Customers() {
     (c.phone ?? "").includes(search) ||
     (c.email ?? "").toLowerCase().includes(search.toLowerCase())
   );
+  const { paged, Controls } = usePagination(filtered, 20);
 
   return (
     <div>
@@ -110,7 +112,7 @@ export default function Customers() {
         </div>
 
         <div className="space-y-2">
-          {filtered.map((c) => (
+          {paged.map((c) => (
             <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur hover:bg-white/60 dark:hover:bg-white/10 transition-all">
               <Link to={`/clientes/${c.id}`} className="min-w-0 flex-1 group">
                 <div className="font-medium truncate flex items-center gap-1 group-hover:text-primary transition-colors">
@@ -132,6 +134,7 @@ export default function Customers() {
             <div className="text-center py-12 text-muted-foreground text-sm">Nenhum cliente</div>
           )}
         </div>
+        <Controls />
       </GlassCard>
     </div>
   );
