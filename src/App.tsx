@@ -10,7 +10,9 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Customers from "./pages/Customers";
+import CustomerDetail from "./pages/CustomerDetail";
 import Inventory from "./pages/Inventory";
+import Sales from "./pages/Sales";
 import Receivable from "./pages/Receivable";
 import Payable from "./pages/Payable";
 import WhatsApp from "./pages/WhatsApp";
@@ -35,7 +37,9 @@ const App = () => (
               <Route element={<AppLayout />}>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/clientes" element={<Customers />} />
+                <Route path="/clientes/:id" element={<CustomerDetail />} />
                 <Route path="/estoque" element={<Inventory />} />
+                <Route path="/vendas" element={<Sales />} />
                 <Route path="/contas-receber" element={<Receivable />} />
                 <Route path="/contas-pagar" element={<Payable />} />
                 <Route path="/conversas" element={<Conversations />} />

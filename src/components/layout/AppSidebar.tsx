@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Package, ArrowDownCircle, ArrowUpCircle,
-  MessageSquare, MessageCircle, UserCog, Settings, Sparkles
+  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -14,6 +14,7 @@ const mainItems = [
   { title: "Painel", url: "/", icon: LayoutDashboard },
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Estoque", url: "/estoque", icon: Package },
+  { title: "Vendas", url: "/vendas", icon: ShoppingBag },
   { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownCircle },
   { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpCircle },
   { title: "Conversas", url: "/conversas", icon: MessageCircle },
