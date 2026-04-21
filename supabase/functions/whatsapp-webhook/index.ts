@@ -285,7 +285,10 @@ ${formatProducts(ctx.all)}
 ${matchInfo}
 
 === CLIENTE ===
-${ctx.customer ? `Nome: ${ctx.customer.name}${ctx.customer.address ? ` | Endereço: ${ctx.customer.address}` : ""}` : "Cliente NÃO cadastrado — colete nome e endereço se for fechar pedido."}
+${ctx.customer
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"}`
+  : "Cliente NÃO cadastrado."}
+CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço → email. NÃO fale de produtos enquanto faltar dados."}
 
 === DÍVIDAS PENDENTES (FONTE DA VERDADE — ignore datas/valores do histórico) ===
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
