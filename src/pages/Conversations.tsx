@@ -230,6 +230,7 @@ export default function Conversations() {
     setActive({ ...active, customer_id: customerId!, customer: { name: regName } });
   };
 
+  const filtered = conversations.filter((c) => {
     const q = search.toLowerCase();
     return (
       c.customer_phone.toLowerCase().includes(q) ||
