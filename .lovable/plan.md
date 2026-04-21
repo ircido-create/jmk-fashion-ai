@@ -1,100 +1,58 @@
 
 
-# Importar romaneios + Upload de PDF na aba Produtos
+# Ajustes na Monica (IA SDR)
 
-## Parte 1 — Importar os 2 romaneios anexados
+## 1. Não se reapresentar no meio da conversa
 
-### Regra de preço
-- `cost` = valor do romaneio (ex.: 239,90)
-- `price` = `cost × 2`, **arredondado para cima ao inteiro mais próximo** (ex.: 239,90 → 480; 167,94 → 336; 50,00 → 100)
+No system prompt da Monica, adicionar regra explícita: **só se apresenta na primeira mensagem da conversa**. Nas mensagens seguintes, vai direto ao ponto, sem "Oi, sou a Monica da JMK…".
 
-### Fornecedor 1 — Tatá Martello (09/04/2026)
-**Conta a pagar:** R$ 3.411,41 — venc. 09/04/2026 — à vista — "Romaneio Lancto 0007 — 21 peças"
+Implementação: o webhook já carrega o histórico — vou passar para a IA um marcador `isFirstMessage` (true quando não há mensagens anteriores) e instruir no prompt:
+- Se primeira mensagem → cumprimentar e se apresentar uma vez.
+- Se já existe histórico → **proibido** se reapresentar, dizer "sou a Monica", "aqui é da JMK", etc. Continuar a conversa naturalmente.
 
-**17 variações em 14 produtos** (SKU base = código do romaneio):
+## 2. Formato correto ao falar de tamanhos disponíveis
 
-| SKU | Produto | Cor | Tam | Qtd | Custo | Preço |
-|---|---|---|---|---|---|---|
-| 05705 | VESTIDO 5705 TAYLANE | VERDE | G | 1 | 239,90 | 480 |
-| 05705 | VESTIDO 5705 TAYLANE | ROSA | GG | 1 | 239,90 | 480 |
-| 05712 | VESTIDO 5712 MARILZA | ROSA | M | 1 | 259,90 | 520 |
-| 05712 | VESTIDO 5712 MARILZA | CRU | PP | 1 | 259,90 | 520 |
-| 05774 | VESTIDO 5774 PAULINE | PINK | GG | 1 | 249,90 | 500 |
-| 05788 | VESTIDO 5788 MAURA | AZUL | PP | 1 | 229,90 | 460 |
-| 05929 | VESTIDO 5929 NUBIA | PINK | G | 1 | 229,90 | 460 |
-| 06291 | VESTIDO 6291 KEYLA | VERMELHO | P | 1 | 199,90 | 400 |
-| 06291 | VESTIDO 6291 KEYLA | VERMELHO | M | 1 | 199,90 | 400 |
-| 06542 | VESTIDO 6542C ROSIMEIRE | BEGE | P | 1 | 299,90 | 600 |
-| 06566 | CONJUNTO 6566 JOICE | AMARELO | G | 1 | 199,90 | 400 |
-| 06566 | CONJUNTO 6566 JOICE | AMARELO | GG | 1 | 199,90 | 400 |
-| 06566 | CONJUNTO 6566 JOICE | AZUL | M | 1 | 199,90 | 400 |
-| 06573 | PIJAMA 6573 (CAMISOLA/KIMONO) | ROSA | M | 1 | 229,90 | 460 |
-| 06826 | VESTIDO 6826 POLIANA | MARROM | G | 1 | 239,90 | 480 |
-| 07196 | BLUSA 7196 CAROL TRICO | MARROM | UN | 3 | 139,90 | 280 |
-| 07197 | VESTIDO 7197 ÉLIDA TRICO | MARROM | UN | 3 | 239,90 | 480 |
+Adicionar regra no prompt:
+- 1 tamanho: `"Ele/ela está disponível no tamanho X"`
+- 2+ tamanhos: `"Ele/ela está disponível nos tamanhos X, Y e Z"`
+- Concordar gênero (vestido = "ele"; blusa/saia = "ela") com base no nome do produto.
 
-### Fornecedor 2 — Clara Neve / KAULY (Ticket 6.329, 20/04/2026)
-**Conta a pagar (6 parcelas):** 6× R$ 379,22 — venc. 20/05, 19/06, 19/07, 18/08, 17/09, 17/10/2026
+## 3. Reconhecer saudações religiosas comuns
 
-**12 variações em 7 produtos** (tamanhos numéricos):
+Adicionar ao prompt um glossário de **abreviações/saudações cristãs** (público da JMK é evangélico):
 
-| SKU | Produto | Cor | Tam | Qtd | Custo | Preço |
-|---|---|---|---|---|---|---|
-| 03669 | VESTIDO DET BOTÃO | BRANCO | 40 | 1 | 80,00 | 160 |
-| 04128 | CHEMISSIE RENDA | VERDE | 46 | 1 | 100,00 | 200 |
-| 04338 | VESTIDO LADY LIKE EM VOIL | AZUL | 38 | 1 | 179,94 | 360 |
-| 04428 | VESTIDO MAXI EM SEDA ESTAMPADO | ESTAMPADO | 48 | 1 | 269,90 | 540 |
-| 04324 | CHEMISSIE COM RECORTES ELÁSTICOS | CREME | 38 | 1 | 167,94 | 336 |
-| 04324 | CHEMISSIE COM RECORTES ELÁSTICOS | CREME | 40 | 1 | 167,94 | 336 |
-| 04187 | CHEMISSIE COLETE | BRANCO E PRETO | 40 | 1 | 50,00 | 100 |
-| 04187 | CHEMISSIE COLETE | BRANCO E PRETO | 42 | 1 | 50,00 | 100 |
-| 04187 | CHEMISSIE COLETE | BRANCO E PRETO | 46 | 1 | 50,00 | 100 |
-| 04433 | VESTIDO LONGO EM TULE ESTAMPADO | ESTAMPADO | 42 | 2 | 289,90 | 580 |
-| 04433 | VESTIDO LONGO EM TULE ESTAMPADO | ESTAMPADO | 44 | 1 | 289,90 | 580 |
-| 04433 | VESTIDO LONGO EM TULE ESTAMPADO | ESTAMPADO | 46 | 1 | 289,90 | 580 |
+| Cliente envia | Monica responde |
+|---|---|
+| `ApdDeus`, `A paz`, `A paz de Deus`, `Apaz`, `Paz do Senhor` | `Amém, [nome]! 🙏` (e segue o atendimento) |
+| `Deus abençoe`, `Deus te abençoe` | `Amém! Que Deus abençoe você também 💕` |
+| `Glória a Deus` | `Amém! 🙌` |
 
-### Como vou inserir
-- `products`: upsert por SKU. Se já existir, mantém o produto e só agrega novas variantes.
-- `product_variants`: se a combinação SKU+cor+tamanho já existir, **soma** a quantidade; senão cria.
-- `accounts_payable`: 1 lançamento Tatá + 6 parcelas KAULY, todos `pendente`.
+A Monica deve **sempre responder "Amém"** antes de continuar o assunto, nunca dizer que não entendeu a saudação. Se não souber o nome do cliente, responder apenas `Amém! 🙏`.
 
-## Parte 2 — Upload de romaneio na aba Produtos (Estoque)
+## 4. Cobrança com data desatualizada (Igor)
 
-Adicionar um botão **"Importar romaneio (PDF)"** no header da página `Estoque`, ao lado de "Novo produto".
+Duas correções:
 
-### Fluxo
-1. Usuário clica → abre dialog → seleciona PDF
-2. Upload para um bucket de Storage `romaneios` (privado, RLS por staff)
-3. Frontend chama edge function `parse-romaneio` enviando o caminho do arquivo
-4. Edge function:
-   - Baixa o PDF do Storage
-   - Envia para **Lovable AI** (`google/gemini-2.5-pro`, ótimo em PDF + tabelas + raciocínio) com prompt estruturado pedindo JSON: `{ supplier, total, installments[], items[{sku, name, color, size, quantity, cost}] }`
-   - Aplica margem 100% arredondada pra cima → `price`
-   - Faz upsert de produtos/variantes (mesma lógica da Parte 1)
-   - Cria conta(s) a pagar conforme parcelamento extraído
-   - Retorna resumo: `{ products_created, variants_added, payable_amount, installments_created }`
-5. Frontend mostra toast com o resumo e recarrega a lista
+### 4a. Formato da data nas mensagens de cobrança
+Hoje a função `dunning-cron` envia a data em formato ISO (`2026-04-10`). Vou trocar para formato brasileiro: `10/04/2026`. Mesma correção será aplicada ao contexto que a Monica recebe (campo `due_date` das dívidas).
 
-### Componentes/arquivos novos
-- **Migração SQL**: criar bucket `romaneios` (privado) + policies (staff insere, staff lê próprios uploads)
-- **Edge function** `supabase/functions/parse-romaneio/index.ts` — usa `LOVABLE_API_KEY` (já existe), service role para gravar produtos/variantes/conta a pagar
-- **`src/pages/Inventory.tsx`**: botão "Importar romaneio" + dialog de upload + chamada à edge function
+### 4b. Por que a Monica mandou a data antiga (22/04)
+Verifiquei o banco: a cobrança automática mais recente para o Igor já saiu **com a data correta (10/04)**. O problema relatado veio da **Monica falando na conversa do WhatsApp** — ela tem acesso às últimas 10 mensagens do histórico, e numa interação anterior ela já tinha dito "vence em 22/04". Quando o assunto voltou, ela copiou da memória da conversa em vez de olhar o dado atual.
 
-### Detalhes técnicos
-- Modelo: `google/gemini-2.5-pro` via Lovable AI Gateway (suporta PDF nativamente, melhor para tabelas com colunas variáveis como as do KAULY)
-- Prompt instrui a IA a:
-  - Identificar fornecedor (CNPJ/Razão Social do cabeçalho)
-  - Extrair condição de pagamento (à vista vs. parcelado, datas)
-  - Para cada linha: SKU base (sem sufixo de cor), nome, cor, tamanho, quantidade, custo unitário
-  - Validar totais (soma de itens deve bater com total do romaneio)
-- Resposta da IA em JSON estruturado (response_format json_object)
-- Tratamento de erro: se a IA não conseguir parsear ou totais não baterem, retorna erro com mensagem clara — nada é gravado
-- Idempotência: as próximas execuções do mesmo PDF vão somar quantidades (mesma lógica da Parte 1) — se quiser evitar reimportação, posso adicionar uma tabela `romaneios_imported` com hash do arquivo (não vou adicionar agora, mas fica como sugestão).
+Correção: adicionar regra **forte** no prompt — *"Sempre que mencionar valores, datas de vencimento ou status de dívidas, use EXCLUSIVAMENTE os dados do bloco DÍVIDAS PENDENTES atual. Nunca repita datas/valores que apareceram no histórico da conversa — esses dados podem estar desatualizados."*
+
+## Arquivos alterados
+
+- **`ai_settings.system_prompt`** (UPDATE no banco): novo prompt com as 4 regras acima.
+- **`supabase/functions/whatsapp-webhook/index.ts`**: 
+  - Passar marcador `isFirstMessage` (histórico vazio) no contexto da IA.
+  - Formatar `due_date` das dívidas como `dd/mm/aaaa` antes de enviar à IA.
+- **`supabase/functions/dunning-cron/index.ts`**: formatar `r.due_date` como `dd/mm/aaaa` na mensagem de WhatsApp.
 
 ## Resultado
 
-Após aprovação:
-- 7 lançamentos novos em **Contas a Pagar** (R$ 5.686,73 total)
-- 24 variantes novas em **Estoque** (34 peças, todas com preço = custo × 2 arredondado pra cima)
-- Aba **Estoque** ganha botão "Importar romaneio" — você anexa o PDF e o sistema faz tudo sozinho
+- Monica cumprimenta só uma vez por conversa.
+- Tamanhos sempre no formato "no/nos tamanho(s) X, Y e Z".
+- "ApdDeus" / "A paz" → `Amém, [nome]! 🙏`.
+- Cobranças (manuais e automáticas) sempre com data **atualizada** e em formato **dd/mm/aaaa**.
 
