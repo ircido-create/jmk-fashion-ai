@@ -41,6 +41,90 @@ async function loadAISettings() {
   return data;
 }
 
+// Baixa um media do WhatsApp Cloud API e retorna { base64, mimeType }
+async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base64: string; mimeType: string } | null> {
+  try {
+    // 1) pega URL temporária
+    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${cfg.access_token}` },
+    });
+    if (!metaRes.ok) {
+      console.error("media meta error:", metaRes.status, await metaRes.text());
+      return null;
+    }
+    const meta = await metaRes.json();
+    const mediaUrl = meta?.url;
+    const mimeType = meta?.mime_type ?? "audio/ogg";
+    if (!mediaUrl) return null;
+
+    // 2) baixa o binário
+    const fileRes = await fetch(mediaUrl, {
+      headers: { Authorization: `Bearer ${cfg.access_token}` },
+    });
+    if (!fileRes.ok) {
+      console.error("media file error:", fileRes.status);
+      return null;
+    }
+    const buf = await fileRes.arrayBuffer();
+
+    // 3) converte para base64 em chunks (evita stack overflow)
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as any);
+    }
+    const base64 = btoa(binary);
+    return { base64, mimeType };
+  } catch (e) {
+    console.error("downloadWhatsAppMedia error:", e);
+    return null;
+  }
+}
+
+// Transcreve áudio usando Lovable AI (Gemini multimodal)
+async function transcribeAudio(base64: string, mimeType: string): Promise<string | null> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return null;
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Transcreva fielmente este áudio em português brasileiro. Responda APENAS com a transcrição, sem comentários, sem aspas, sem prefixos.",
+              },
+              {
+                type: "input_audio",
+                input_audio: { data: base64, format: mimeType.includes("mp3") ? "mp3" : "ogg" },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!resp.ok) {
+      console.error("transcribe error:", resp.status, await resp.text());
+      return null;
+    }
+    const data = await resp.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    return text || null;
+  } catch (e) {
+    console.error("transcribeAudio error:", e);
+    return null;
+  }
+}
+
 async function sendWhatsApp(to: string, text: string, cfg: any) {
   const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
   const res = await fetch(url, {
