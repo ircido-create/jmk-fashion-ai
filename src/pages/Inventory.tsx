@@ -169,6 +169,20 @@ export default function Inventory() {
     return matchesSearch && matchesSupplier;
   });
 
+  const stockTotals = filtered.reduce(
+    (acc, p) => {
+      const qty = totalQty(p);
+      acc.units += qty;
+      acc.cost += qty * Number(p.cost ?? 0);
+      acc.potential += qty * Number(p.price ?? 0);
+      return acc;
+    },
+    { units: 0, cost: 0, potential: 0 }
+  );
+  const fmtBRL = (n: number) =>
+    n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const margin = stockTotals.potential - stockTotals.cost;
+
   return (
     <div>
       <PageHeader
