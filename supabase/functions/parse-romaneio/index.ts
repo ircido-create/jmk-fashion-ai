@@ -102,7 +102,13 @@ Deno.serve(async (req) => {
     if (dlErr || !fileData) return json({ error: `download failed: ${dlErr?.message}` }, 400);
 
     const buf = await fileData.arrayBuffer();
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as unknown as number[]);
+    }
+    const b64 = btoa(binary);
 
     // Chamar Lovable AI com o PDF (Gemini 2.5 Pro suporta PDF nativamente)
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
