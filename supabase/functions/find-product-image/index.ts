@@ -192,17 +192,34 @@ async function handleSave(req: SaveRequest, supabase: any) {
   const { image_url, product_id, variant_id, apply_to_all_variants } = req;
   if (!image_url) throw new Error("image_url é obrigatório");
 
-  // Download image server-side
-  const imgRes = await fetch(image_url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; Lovable/1.0)" },
-  });
-  if (!imgRes.ok) throw new Error(`Falha ao baixar imagem: ${imgRes.status}`);
-  const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-  if (!contentType.startsWith("image/")) throw new Error("URL não é uma imagem");
-  const buffer = await imgRes.arrayBuffer();
+  // Baixa SEMPRE como JPEG via wsrv.nl (proxy de imagens) — converte webp/avif/etc para JPEG
+  // que é o formato aceito pelo WhatsApp Cloud API. Mantém qualidade boa (q=90) e largura máx 1600.
+  const proxied = `https://wsrv.nl/?url=${encodeURIComponent(image_url)}&output=jpg&q=90&w=1600`;
+  let imgRes = await fetch(proxied);
+  let contentType = imgRes.headers.get("content-type") || "";
+  let buffer: ArrayBuffer;
+
+  if (imgRes.ok && contentType.startsWith("image/")) {
+    buffer = await imgRes.arrayBuffer();
+    contentType = "image/jpeg";
+  } else {
+    // Fallback: baixa direto
+    if (imgRes.ok) await imgRes.arrayBuffer().catch(() => {});
+    imgRes = await fetch(image_url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Lovable/1.0)" },
+    });
+    if (!imgRes.ok) throw new Error(`Falha ao baixar imagem: ${imgRes.status}`);
+    contentType = imgRes.headers.get("content-type") || "image/jpeg";
+    if (!contentType.startsWith("image/")) throw new Error("URL não é uma imagem");
+    buffer = await imgRes.arrayBuffer();
+  }
+
   if (buffer.byteLength > 8 * 1024 * 1024) throw new Error("Imagem maior que 8MB");
 
-  const ext = contentType.split("/")[1]?.split(";")[0] || "jpg";
+  // Garante extensão jpg/png/webp — nunca deixa formato exótico
+  let ext = contentType.split("/")[1]?.split(";")[0]?.toLowerCase() || "jpg";
+  if (ext === "jpeg") ext = "jpg";
+  if (!["jpg", "png", "webp"].includes(ext)) ext = "jpg";
   const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
   const { error: upErr } = await supabase.storage
