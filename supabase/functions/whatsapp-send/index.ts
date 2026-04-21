@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       if (conv) {
         await admin.from("whatsapp_messages").insert({
           conversation_id: conv.id,
-          direction: "out",
+          direction: "outbound",
           content: message,
         });
         await admin.from("whatsapp_conversations")
