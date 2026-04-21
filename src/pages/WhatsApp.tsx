@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { MessageSquare, Save, Send, Sparkles, Copy, Check } from "lucide-react";
+import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle } from "lucide-react";
 
 interface Config {
   id?: string;
@@ -18,6 +18,8 @@ interface Config {
   waba_id: string | null;
   app_secret: string | null;
   verify_token: string | null;
+  last_error_at?: string | null;
+  last_error_message?: string | null;
 }
 
 interface AISettings {
