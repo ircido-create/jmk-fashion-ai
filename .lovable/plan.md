@@ -1,65 +1,46 @@
 
 
-## Buscar imagens dos produtos automaticamente do site do fornecedor
+## Diagnóstico e correção da divergência
 
-### Como vai funcionar
+### O que aconteceu
 
-No formulário de cada produto (e no card da lista), um botão **"Buscar imagem do fornecedor"** vai:
+**1. Diferença de R$ 304,00 (PDF R$ 100.032,04 vs Sistema R$ 99.728,04)**
 
-1. Pegar o **nome do produto** + **fornecedor** já cadastrados
-2. Procurar a peça no site oficial do fornecedor (ex: tatamartelo.com)
-3. Mostrar **3-6 imagens candidatas** num modal
-4. Você clica na que combina → ela é salva como imagem da variação (ou de todas as variações sem foto)
+Três lançamentos do PDF **não foram importados** porque não tinham número de documento (Carteira), que era usado como chave única no import:
 
-Funciona pra qualquer fornecedor — basta ter o nome dele preenchido no produto. O sistema descobre o site sozinho via busca; se quiser fixar, dá pra cadastrar o domínio do fornecedor.
+| Cliente | Vencimento | Status | Valor |
+|---|---|---|---|
+| RAQUEL RODRIGUES | 30/04/2026 | aberto | R$ 130,00 |
+| RAQUEL RODRIGUES | 30/04/2026 | parcial | R$ 124,00 |
+| ELLEN PATY ("RESTA") | 28/02/2026 | atrasada | R$ 50,00 |
+| **Total** | | | **R$ 304,00** |
 
-### Fluxo visual
+**2. "NEIA - LIVIA IGOR" e "LIVIA IGOR"**
 
-```text
-[Produto: "Vestido Florença" | Fornecedor: "Tata Martelo"]
-              │
-              ▼  clica "Buscar imagem do fornecedor"
-   ┌──────────────────────────────────────┐
-   │  Buscando em tatamartelo.com…        │
-   │  ┌────┐ ┌────┐ ┌────┐ ┌────┐         │
-   │  │img1│ │img2│ │img3│ │img4│         │
-   │  └────┘ └────┘ └────┘ └────┘         │
-   │  [Aplicar a todas as variações]      │
-   └──────────────────────────────────────┘
-```
+Esses lançamentos **estão no sistema**, só foram vinculados a clientes com nomes diferentes:
 
-### O que vai mudar
+- `NEIA - LIVIA IGOR` (3 lançamentos do pedido 6557) → vinculado ao cliente já existente **"Néia Irma Livia"** (fez match por similaridade)
+- `LIVIA IGOR` (2 lançamentos do pedido 6665) → vinculado ao cliente **"LIVIA IGOR"** que **já existe** no cadastro
 
-**Banco**
-- Nova tabela `supplier_sites` (opcional, manual): `supplier_name`, `domain` — pra fixar "Tata Martelo → tatamartelo.com" e evitar busca às cegas. Vem pré-populada com fornecedores que já estão no estoque (a confirmar com você no setup)
-- Nova coluna `products.image_url` — imagem principal do produto (hoje só existe por variação)
+Ou seja, não há cliente faltando — o que pode confundir é que o sistema mostra o nome do cliente **cadastrado** (ex: "Néia Irma Livia") e não o nome **literal do PDF** ("NEIA - LIVIA IGOR").
 
-**Backend (edge function nova: `find-product-image`)**
-- Recebe: `product_name`, `supplier`
-- Lógica:
-  1. Lê `supplier_sites` pra achar o domínio. Se não achar, faz busca web (`site:fornecedor.com nome do produto`)
-  2. Faz scrape da página de busca do site → pega URLs de produtos que batem com o nome
-  3. Faz scrape da página do produto → extrai `og:image` + imagens grandes
-  4. Devolve lista de até 6 URLs ranqueadas por similaridade do título
-- Usa **Firecrawl** (connector) pra scraping confiável — funciona mesmo em sites com JS pesado tipo Shopify/VTEX que muita loja de moda usa
+### O que vou fazer
 
-**Frontend (`src/pages/Inventory.tsx`)**
-- Botão **"Buscar imagem do fornecedor"** no formulário de produto (ao lado de cada variação) e em cada card da lista
-- Modal `SupplierImageSearch` mostra grid de candidatas com preview, badge de "match X%", e ações: aplicar à variação X, aplicar a todas, ou usar como imagem principal do produto
-- Estado de loading + mensagem clara quando o site do fornecedor não é encontrado
-- Imagens escolhidas são baixadas pelo backend e salvas no bucket `product-images` (não fica linkando pro CDN do fornecedor — evita quebrar se o site sair do ar)
+**1. Inserir os 3 lançamentos faltantes** (R$ 304,00)
+- Cliente "RAQUEL RODRIGUES" → já existe, vinculo direto (2 lançamentos somando R$ 254,00)
+- Cliente "ELLEN PATY" → verifico se existe; se não, crio
+- Como não têm número de documento, uso descrição: `Bling RAQUEL RODRIGUES 30/04/2026 (aberto) - sem nº doc` etc., para evitar duplicatas se você reimportar
 
-### Pré-requisitos
+**2. Validar o total final**
+Após inserir, o total na tela `/contas-receber` deve passar a ser exatamente **R$ 100.032,04**, batendo com o PDF.
 
-- **Conector Firecrawl** precisa ser ligado no projeto (te peço a aprovação na próxima etapa). É o jeito mais robusto de raspar sites de loja sem cair em bloqueio anti-bot
-- Se preferir não usar Firecrawl, dá pra usar `fetch` + parsing simples — funciona em sites estáticos mas falha em VTEX/Shopify (a maioria das marcas de moda). Te recomendo Firecrawl
+**3. (Opcional) Mostrar o nome original do PDF**
+Se quiser, posso adicionar na descrição do lançamento o nome literal que vem do PDF (ex: "NEIA - LIVIA IGOR" mesmo quando o cliente cadastrado é "Néia Irma Livia"), facilitando a conferência futura. Me avisa se quer essa parte também.
 
 ### Detalhes técnicos
 
-- Arquivos a criar: `supabase/functions/find-product-image/index.ts`, migração SQL (1 tabela + 1 coluna)
-- Arquivos a editar: `src/pages/Inventory.tsx`, novo componente `src/components/SupplierImageSearch.tsx`
-- Pipeline: Firecrawl `search` → Firecrawl `scrape` (formats: `links`, `html`) → extrair `og:image` e `<img>` em containers de produto → ranqueamento por Jaccard de tokens entre título do produto e título da página
-- Download server-side da imagem escolhida → upload no bucket `product-images` → grava `image_url` no produto/variação
-- RLS na nova tabela `supplier_sites`: staff lê/escreve, admin deleta (mesmo padrão das outras)
-- Rate limit simples (5 req/min por usuário) na função pra evitar abuso/custo
+- INSERT direto via tool de dados (sem migration, é apenas data) na tabela `accounts_receivable`
+- 3 registros: status `pendente` (mantendo regra "atrasada/parcial/aberto = pendente"), `due_date` 2026-04-30 (Raquel) e 2026-02-28 (Ellen), `customer_id` resolvido por nome
+- Se "ELLEN PATY" não existir em `customers`, INSERT do cliente antes
+- Sem alterações de schema, sem código frontend
 
