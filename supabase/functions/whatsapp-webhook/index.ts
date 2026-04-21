@@ -690,11 +690,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    await sendWhatsApp(fromPhone, reply, cfg);
+    let finalReply = reply;
+    if (photoFailed) {
+      finalReply = `Ah, desculpa! Tentei te mandar as fotos mas não consegui enviar agora 😅 Mas posso te descrever:\n\n${reply}`;
+    }
+    await sendWhatsApp(fromPhone, finalReply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
-      content: reply + photosSentLog,
+      content: finalReply + photosSentLog,
     });
     if (outErr) console.error("insert outbound error:", outErr);
     await supabase
