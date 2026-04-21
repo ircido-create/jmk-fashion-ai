@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2, Image as ImageIcon, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-interface Variant { id?: string; size: string; color: string; quantity: number; }
+interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
   id: string; name: string; description: string | null; category: string | null;
   sku: string | null; supplier: string | null;
@@ -80,8 +80,20 @@ export default function Inventory() {
   const openNew = () => { setEditing(null); setVariants([]); setOpen(true); };
   const openEdit = (p: Product) => {
     setEditing(p);
-    setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity })) ?? []);
+    setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity, image_url: v.image_url ?? null })) ?? []);
     setOpen(true);
+  };
+
+  const uploadVariantImage = async (i: number, file: File) => {
+    if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem"); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande (máx 5MB)"); return; }
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("product-images").upload(path, file, { upsert: false });
+    if (upErr) { toast.error("Falha no upload: " + upErr.message); return; }
+    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    updVariant(i, { image_url: data.publicUrl });
+    toast.success("Foto adicionada");
   };
 
   const save = async (e: React.FormEvent<HTMLFormElement>) => {
