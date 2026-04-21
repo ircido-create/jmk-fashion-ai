@@ -41,6 +41,34 @@ async function loadAISettings() {
   return data;
 }
 
+// Registra falha de auth (token expirado) na tabela de config
+async function recordMetaError(status: number, body: string) {
+  try {
+    const isAuth = status === 401 || /OAuthException|expired|access token/i.test(body);
+    if (!isAuth) return;
+    const msg = body.slice(0, 500);
+    await supabase
+      .from("whatsapp_config")
+      .update({ last_error_at: new Date().toISOString(), last_error_message: msg })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    console.error("⚠️ TOKEN WHATSAPP EXPIRADO/INVÁLIDO — atualize em Configurações → WhatsApp");
+  } catch (e) {
+    console.error("recordMetaError failed:", e);
+  }
+}
+
+// Limpa marca de erro quando uma chamada à Meta volta a funcionar
+async function clearMetaError() {
+  try {
+    await supabase
+      .from("whatsapp_config")
+      .update({ last_error_at: null, last_error_message: null })
+      .not("last_error_at", "is", null);
+  } catch {
+    /* noop */
+  }
+}
+
 // Baixa um media do WhatsApp Cloud API e retorna { base64, mimeType }
 async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base64: string; mimeType: string } | null> {
   try {
@@ -49,7 +77,9 @@ async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base6
       headers: { Authorization: `Bearer ${cfg.access_token}` },
     });
     if (!metaRes.ok) {
-      console.error("media meta error:", metaRes.status, await metaRes.text());
+      const errBody = await metaRes.text();
+      console.error("media meta error:", metaRes.status, errBody);
+      await recordMetaError(metaRes.status, errBody);
       return null;
     }
     const meta = await metaRes.json();
