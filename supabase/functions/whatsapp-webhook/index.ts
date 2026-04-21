@@ -201,24 +201,6 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, 
   }
 }
 
-async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
-  const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${cfg.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to,
-      type: "image",
-      image: { link: imageUrl, caption: caption.slice(0, 1024) },
-    }),
-  });
-  if (!res.ok) console.error("Meta image send error:", res.status, await res.text());
-}
-
 // Detecta se a cliente pediu foto/imagem
 function asksForPhoto(text: string): boolean {
   const t = norm(text);
