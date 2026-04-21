@@ -129,6 +129,33 @@ export default function WhatsApp() {
     <div className="space-y-6">
       <PageHeader title="WhatsApp + IA" description="Atendimento automático via API Oficial Meta" />
 
+      {cfg.last_error_at && (
+        <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-destructive">Token do WhatsApp expirado ou inválido</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Última falha: {new Date(cfg.last_error_at).toLocaleString("pt-BR")}. Mensagens (incluindo áudios)
+              podem não estar sendo entregues. Gere um <strong>System User Token permanente</strong> no Meta
+              Business Suite (Configurações → Usuários do sistema) com permissões{" "}
+              <code className="text-xs">whatsapp_business_messaging</code> e{" "}
+              <code className="text-xs">whatsapp_business_management</code>, marque <strong>"Nunca expira"</strong>,
+              e cole abaixo no campo Access Token.
+            </p>
+            {cfg.last_error_message && (
+              <details className="mt-2">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                  Detalhes do erro retornado pela Meta
+                </summary>
+                <pre className="text-xs mt-1 p-2 bg-background/50 rounded overflow-x-auto">
+                  {cfg.last_error_message}
+                </pre>
+              </details>
+            )}
+          </div>
+        </div>
+      )}
+
       <GlassCard>
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-3">
