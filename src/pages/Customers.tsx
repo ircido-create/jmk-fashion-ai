@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,9 +29,14 @@ export default function Customers() {
   const [search, setSearch] = useState("");
 
   const load = async () => {
-    const { data, error } = await supabase.from("customers").select("*").order("name");
-    if (error) toast.error(error.message);
-    else setList(data ?? []);
+    try {
+      const all = await fetchAll<Customer>((sb) =>
+        sb.from("customers").select("*").order("name")
+      );
+      setList(all);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
   };
 
   useEffect(() => { load(); }, []);

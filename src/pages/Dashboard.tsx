@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
   TrendingUp, TrendingDown, Package, Users, AlertTriangle, DollarSign,
@@ -30,19 +31,19 @@ export default function Dashboard() {
     const [c, p, r, ap, od, ls] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
-      supabase.from("accounts_receivable").select("amount").eq("status", "pendente"),
-      supabase.from("accounts_payable").select("amount").eq("status", "pendente"),
+      fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").eq("status", "pendente")),
+      fetchAll<{ amount: number }>((sb) => sb.from("accounts_payable").select("amount").eq("status", "pendente")),
       supabase.from("accounts_receivable").select("id", { count: "exact", head: true }).eq("status", "pendente").lt("due_date", today),
-      supabase.from("product_variants").select("quantity, products!inner(low_stock_threshold)"),
+      fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
     ]);
 
-    const lowStock = (ls.data ?? []).filter((v: any) => v.quantity <= (v.products?.low_stock_threshold ?? 5)).length;
+    const lowStock = ls.filter((v: any) => v.quantity <= (v.products?.low_stock_threshold ?? 5)).length;
 
     setStats({
       customers: c.count ?? 0,
       products: p.count ?? 0,
-      receivable: (r.data ?? []).reduce((s, x) => s + Number(x.amount), 0),
-      payable: (ap.data ?? []).reduce((s, x) => s + Number(x.amount), 0),
+      receivable: r.reduce((s, x) => s + Number(x.amount), 0),
+      payable: ap.reduce((s, x) => s + Number(x.amount), 0),
       overdue: od.count ?? 0,
       lowStock,
     });
@@ -54,13 +55,13 @@ export default function Dashboard() {
     });
     const start = months[0].toISOString().slice(0, 10);
     const [recAll, payAll] = await Promise.all([
-      supabase.from("accounts_receivable").select("amount, due_date").gte("due_date", start),
-      supabase.from("accounts_payable").select("amount, due_date").gte("due_date", start),
+      fetchAll<{ amount: number; due_date: string }>((sb) => sb.from("accounts_receivable").select("amount, due_date").gte("due_date", start)),
+      fetchAll<{ amount: number; due_date: string }>((sb) => sb.from("accounts_payable").select("amount, due_date").gte("due_date", start)),
     ]);
     const data = months.map((m) => {
       const key = format(m, "yyyy-MM");
-      const receber = (recAll.data ?? []).filter((x) => x.due_date.startsWith(key)).reduce((s, x) => s + Number(x.amount), 0);
-      const pagar = (payAll.data ?? []).filter((x) => x.due_date.startsWith(key)).reduce((s, x) => s + Number(x.amount), 0);
+      const receber = recAll.filter((x) => x.due_date.startsWith(key)).reduce((s, x) => s + Number(x.amount), 0);
+      const pagar = payAll.filter((x) => x.due_date.startsWith(key)).reduce((s, x) => s + Number(x.amount), 0);
       return { month: format(m, "MMM", { locale: ptBR }), receber, pagar };
     });
     setChart(data);
