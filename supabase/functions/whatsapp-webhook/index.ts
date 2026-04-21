@@ -170,7 +170,35 @@ async function sendWhatsApp(to: string, text: string, cfg: any) {
       text: { body: text },
     }),
   });
-  if (!res.ok) console.error("Meta send error:", res.status, await res.text());
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("Meta send error:", res.status, body);
+    await recordMetaError(res.status, body);
+  } else {
+    await clearMetaError();
+  }
+}
+
+async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
+  const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${cfg.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "image",
+      image: { link: imageUrl, caption: caption.slice(0, 1024) },
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("Meta image send error:", res.status, body);
+    await recordMetaError(res.status, body);
+  }
 }
 
 async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
