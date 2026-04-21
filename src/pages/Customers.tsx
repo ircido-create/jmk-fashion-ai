@@ -1,0 +1,124 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { toast } from "sonner";
+import { z } from "zod";
+
+interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; }
+
+const schema = z.object({
+  name: z.string().trim().min(2, "Nome muito curto").max(100),
+  phone: z.string().trim().max(20).optional().or(z.literal("")),
+  email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
+});
+
+export default function Customers() {
+  const [list, setList] = useState<Customer[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [search, setSearch] = useState("");
+
+  const load = async () => {
+    const { data, error } = await supabase.from("customers").select("*").order("name");
+    if (error) toast.error(error.message);
+    else setList(data ?? []);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const save = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const parsed = schema.safeParse({
+      name: f.get("name"), phone: f.get("phone"), email: f.get("email"), notes: f.get("notes"),
+    });
+    if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    const payload = {
+      name: parsed.data.name,
+      phone: parsed.data.phone || null,
+      email: parsed.data.email || null,
+      notes: parsed.data.notes || null,
+    };
+    const { error } = editing
+      ? await supabase.from("customers").update(payload).eq("id", editing.id)
+      : await supabase.from("customers").insert(payload);
+    if (error) { toast.error(error.message); return; }
+    toast.success(editing ? "Cliente atualizado" : "Cliente cadastrado");
+    setOpen(false); setEditing(null); load();
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Excluir este cliente?")) return;
+    const { error } = await supabase.from("customers").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Excluído"); load(); }
+  };
+
+  const filtered = list.filter((c) =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    (c.phone ?? "").includes(search) ||
+    (c.email ?? "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div>
+      <PageHeader
+        title="Clientes"
+        description={`${list.length} clientes cadastrados`}
+        actions={
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null); }}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
+                <Plus className="h-4 w-4 mr-1" /> Novo
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="glass-card border-white/40">
+              <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
+              <form onSubmit={save} className="space-y-3">
+                <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+                <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
+                <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
+                <div><Label>Observações</Label><Textarea name="notes" defaultValue={editing?.notes ?? ""} className="glass-input" rows={3} /></div>
+                <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <GlassCard>
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." className="glass-input pl-10" />
+        </div>
+
+        <div className="space-y-2">
+          {filtered.map((c) => (
+            <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">{c.name}</div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {c.phone || "—"} {c.email ? `• ${c.email}` : ""}
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" onClick={() => remove(c.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground text-sm">Nenhum cliente</div>
+          )}
+        </div>
+      </GlassCard>
+    </div>
+  );
+}

@@ -1,0 +1,224 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+import { z } from "zod";
+
+interface Variant { id?: string; size: string; color: string; quantity: number; }
+interface Product {
+  id: string; name: string; description: string | null; category: string | null;
+  price: number; cost: number; low_stock_threshold: number; active: boolean;
+  product_variants?: Variant[];
+}
+
+const schema = z.object({
+  name: z.string().trim().min(2).max(100),
+  category: z.string().trim().max(60).optional().or(z.literal("")),
+  description: z.string().trim().max(500).optional().or(z.literal("")),
+  price: z.number().nonnegative(),
+  cost: z.number().nonnegative(),
+  low_stock_threshold: z.number().int().nonnegative(),
+});
+
+export default function Inventory() {
+  const [list, setList] = useState<Product[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [variants, setVariants] = useState<Variant[]>([]);
+  const [search, setSearch] = useState("");
+
+  const load = async () => {
+    const { data, error } = await supabase
+      .from("products")
+      .select("*, product_variants(*)")
+      .order("name");
+    if (error) toast.error(error.message);
+    else setList((data ?? []) as Product[]);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openNew = () => { setEditing(null); setVariants([]); setOpen(true); };
+  const openEdit = (p: Product) => {
+    setEditing(p);
+    setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity })) ?? []);
+    setOpen(true);
+  };
+
+  const save = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const parsed = schema.safeParse({
+      name: f.get("name"),
+      category: f.get("category"),
+      description: f.get("description"),
+      price: Number(f.get("price")),
+      cost: Number(f.get("cost")),
+      low_stock_threshold: Number(f.get("low_stock_threshold") || 5),
+    });
+    if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    const payload = {
+      name: parsed.data.name,
+      description: parsed.data.description || null,
+      category: parsed.data.category || null,
+      price: parsed.data.price,
+      cost: parsed.data.cost,
+      low_stock_threshold: parsed.data.low_stock_threshold,
+    };
+
+    let productId = editing?.id;
+    if (editing) {
+      const { error } = await supabase.from("products").update(payload).eq("id", editing.id);
+      if (error) { toast.error(error.message); return; }
+    } else {
+      const { data, error } = await supabase.from("products").insert(payload).select().single();
+      if (error || !data) { toast.error(error?.message || "Erro"); return; }
+      productId = data.id;
+    }
+
+    // Sync variants
+    if (productId) {
+      await supabase.from("product_variants").delete().eq("product_id", productId);
+      if (variants.length > 0) {
+        const toInsert = variants
+          .filter((v) => v.size || v.color)
+          .map((v) => ({
+            product_id: productId,
+            size: v.size || null,
+            color: v.color || null,
+            quantity: Number(v.quantity) || 0,
+          }));
+        if (toInsert.length > 0) {
+          const { error: ve } = await supabase.from("product_variants").insert(toInsert);
+          if (ve) toast.error("Erro nas variações: " + ve.message);
+        }
+      }
+    }
+
+    toast.success(editing ? "Produto atualizado" : "Produto cadastrado");
+    setOpen(false); setEditing(null); load();
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Excluir produto e suas variações?")) return;
+    const { error } = await supabase.from("products").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Excluído"); load(); }
+  };
+
+  const addVariant = () => setVariants((v) => [...v, { size: "", color: "", quantity: 0 }]);
+  const updVariant = (i: number, patch: Partial<Variant>) =>
+    setVariants((v) => v.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+  const delVariant = (i: number) => setVariants((v) => v.filter((_, idx) => idx !== i));
+
+  const totalQty = (p: Product) => p.product_variants?.reduce((s, v) => s + v.quantity, 0) ?? 0;
+  const isLow = (p: Product) => totalQty(p) <= p.low_stock_threshold;
+
+  const filtered = list.filter((p) =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    (p.category ?? "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div>
+      <PageHeader
+        title="Estoque"
+        description={`${list.length} produtos`}
+        actions={
+          <Button onClick={openNew} className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
+            <Plus className="h-4 w-4 mr-1" /> Novo produto
+          </Button>
+        }
+      />
+
+      <GlassCard>
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produto..." className="glass-input pl-10" />
+        </div>
+
+        <div className="grid gap-3">
+          {filtered.map((p) => (
+            <div key={p.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium">{p.name}</span>
+                    {p.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{p.category}</span>}
+                    {isLow(p) && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground inline-flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" /> Estoque baixo
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    R$ {Number(p.price).toFixed(2)} • {totalQty(p)} em estoque
+                  </div>
+                  {p.product_variants && p.product_variants.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {p.product_variants.map((v, i) => (
+                        <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-secondary inline-flex items-center gap-1">
+                          <Layers className="h-2.5 w-2.5" />
+                          {[v.size, v.color].filter(Boolean).join(" / ")}: {v.quantity}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => remove(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nenhum produto</div>}
+        </div>
+      </GlassCard>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="glass-card border-white/40 max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} produto</DialogTitle></DialogHeader>
+          <form onSubmit={save} className="space-y-3">
+            <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Categoria</Label><Input name="category" defaultValue={editing?.category ?? ""} placeholder="Vestido, Blusa..." className="glass-input" /></div>
+              <div><Label>Estoque mínimo</Label><Input name="low_stock_threshold" type="number" defaultValue={editing?.low_stock_threshold ?? 5} min={0} className="glass-input" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Preço (R$)</Label><Input name="price" type="number" step="0.01" defaultValue={editing?.price ?? 0} required className="glass-input" /></div>
+              <div><Label>Custo (R$)</Label><Input name="cost" type="number" step="0.01" defaultValue={editing?.cost ?? 0} className="glass-input" /></div>
+            </div>
+            <div><Label>Descrição</Label><Textarea name="description" defaultValue={editing?.description ?? ""} className="glass-input" rows={2} /></div>
+
+            <div className="border-t border-white/30 pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label>Variações (tamanho/cor/qtd)</Label>
+                <Button type="button" size="sm" variant="ghost" onClick={addVariant}><Plus className="h-3 w-3 mr-1" /> Adicionar</Button>
+              </div>
+              <div className="space-y-2">
+                {variants.map((v, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_80px_auto] gap-2">
+                    <Input placeholder="P/M/G" value={v.size} onChange={(e) => updVariant(i, { size: e.target.value })} className="glass-input" />
+                    <Input placeholder="Cor" value={v.color} onChange={(e) => updVariant(i, { color: e.target.value })} className="glass-input" />
+                    <Input type="number" value={v.quantity} onChange={(e) => updVariant(i, { quantity: Number(e.target.value) })} className="glass-input" />
+                    <Button type="button" size="icon" variant="ghost" onClick={() => delVariant(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  </div>
+                ))}
+                {variants.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma variação ainda.</p>}
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
