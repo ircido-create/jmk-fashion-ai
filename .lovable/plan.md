@@ -1,54 +1,65 @@
 
 
-## Problema: Áudio do Igor sumiu e Monica não respondeu
+## Buscar imagens dos produtos automaticamente do site do fornecedor
 
-### Causa raiz
-Confirmei nos logs: o **token de acesso do WhatsApp expirou** às 14:00 PDT (sessão temporária da Meta). O áudio do Igor chegou depois disso, então:
+### Como vai funcionar
 
-1. O webhook tentou baixar o áudio da Meta → **401 Authentication Error** (token expirado)
-2. Como o download falhou, a função saiu silenciosamente sem registrar a mensagem nem avisar a cliente
-3. Mesmo se tivesse transcrito, o envio da resposta também falharia (mesmo 401)
+No formulário de cada produto (e no card da lista), um botão **"Buscar imagem do fornecedor"** vai:
 
-Erro exato dos logs:
+1. Pegar o **nome do produto** + **fornecedor** já cadastrados
+2. Procurar a peça no site oficial do fornecedor (ex: tatamartelo.com)
+3. Mostrar **3-6 imagens candidatas** num modal
+4. Você clica na que combina → ela é salva como imagem da variação (ou de todas as variações sem foto)
+
+Funciona pra qualquer fornecedor — basta ter o nome dele preenchido no produto. O sistema descobre o site sozinho via busca; se quiser fixar, dá pra cadastrar o domínio do fornecedor.
+
+### Fluxo visual
+
+```text
+[Produto: "Vestido Florença" | Fornecedor: "Tata Martelo"]
+              │
+              ▼  clica "Buscar imagem do fornecedor"
+   ┌──────────────────────────────────────┐
+   │  Buscando em tatamartelo.com…        │
+   │  ┌────┐ ┌────┐ ┌────┐ ┌────┐         │
+   │  │img1│ │img2│ │img3│ │img4│         │
+   │  └────┘ └────┘ └────┘ └────┘         │
+   │  [Aplicar a todas as variações]      │
+   └──────────────────────────────────────┘
 ```
-Meta send error: 401 "Session has expired on Tuesday, 21-Apr-26 14:00:00 PDT"
-media meta error: 401 "Authentication Error"
-```
 
-### O que precisa ser feito
+### O que vai mudar
 
-**1. Renovar o token do WhatsApp (ação sua, no painel)**
-O token atual é um token de usuário temporário (expira em ~24h). Para produção, você precisa gerar um **System User Token permanente** no Meta Business:
-- Meta Business Suite → Configurações → Usuários do sistema
-- Criar/selecionar um System User → Gerar Token → escolher o app do WhatsApp → permissões `whatsapp_business_messaging` + `whatsapp_business_management` → marcar **"Nunca expira"**
-- Colar o novo token em **Configurações → WhatsApp** no app
+**Banco**
+- Nova tabela `supplier_sites` (opcional, manual): `supplier_name`, `domain` — pra fixar "Tata Martelo → tatamartelo.com" e evitar busca às cegas. Vem pré-populada com fornecedores que já estão no estoque (a confirmar com você no setup)
+- Nova coluna `products.image_url` — imagem principal do produto (hoje só existe por variação)
 
-**2. Tornar o webhook mais resiliente (eu implemento)**
+**Backend (edge function nova: `find-product-image`)**
+- Recebe: `product_name`, `supplier`
+- Lógica:
+  1. Lê `supplier_sites` pra achar o domínio. Se não achar, faz busca web (`site:fornecedor.com nome do produto`)
+  2. Faz scrape da página de busca do site → pega URLs de produtos que batem com o nome
+  3. Faz scrape da página do produto → extrai `og:image` + imagens grandes
+  4. Devolve lista de até 6 URLs ranqueadas por similaridade do título
+- Usa **Firecrawl** (connector) pra scraping confiável — funciona mesmo em sites com JS pesado tipo Shopify/VTEX que muita loja de moda usa
 
-Mudanças no `supabase/functions/whatsapp-webhook/index.ts`:
+**Frontend (`src/pages/Inventory.tsx`)**
+- Botão **"Buscar imagem do fornecedor"** no formulário de produto (ao lado de cada variação) e em cada card da lista
+- Modal `SupplierImageSearch` mostra grid de candidatas com preview, badge de "match X%", e ações: aplicar à variação X, aplicar a todas, ou usar como imagem principal do produto
+- Estado de loading + mensagem clara quando o site do fornecedor não é encontrado
+- Imagens escolhidas são baixadas pelo backend e salvas no bucket `product-images` (não fica linkando pro CDN do fornecedor — evita quebrar se o site sair do ar)
 
-- **Registrar áudio mesmo quando falhar:** salvar uma mensagem inbound `[Áudio recebido — falha ao baixar/transcrever]` na conversa, para você ver que o cliente mandou áudio.
-- **Detectar token expirado (401 erro 190):** quando o `downloadWhatsAppMedia` ou `sendWhatsApp` retornar 401, marcar a config como problemática e logar de forma destacada.
-- **Avisar a cliente:** se o áudio falhou no download (não só na transcrição), também enviar a mensagem "não consegui ouvir seu áudio, pode escrever?" — hoje só avisa quando a transcrição volta vazia.
-- **Banner de aviso na UI:** adicionar um indicador na página **Configurações → WhatsApp** mostrando "⚠️ Token possivelmente expirado — última falha: HH:MM" baseado em uma nova coluna `last_error_at` em `whatsapp_config`.
+### Pré-requisitos
 
-**3. Migração no banco**
-Adicionar à tabela `whatsapp_config`:
-- `last_error_at timestamptz` — última vez que a Meta retornou 401
-- `last_error_message text` — texto do erro
-
-A função grava aí quando detectar 401; a UI lê e mostra alerta visual.
-
-### Resultado esperado
-- Você vai ver claramente no app quando o token expirar (banner vermelho em Configurações)
-- Áudios não somem mais — sempre aparecem na conversa, mesmo com erro
-- A cliente recebe um aviso quando o áudio falha (em vez de silêncio)
-- Depois que você colar o token permanente, isso não acontece mais
+- **Conector Firecrawl** precisa ser ligado no projeto (te peço a aprovação na próxima etapa). É o jeito mais robusto de raspar sites de loja sem cair em bloqueio anti-bot
+- Se preferir não usar Firecrawl, dá pra usar `fetch` + parsing simples — funciona em sites estáticos mas falha em VTEX/Shopify (a maioria das marcas de moda). Te recomendo Firecrawl
 
 ### Detalhes técnicos
-- Arquivos editados: `supabase/functions/whatsapp-webhook/index.ts`, `src/pages/Settings.tsx`
-- Nova migração SQL: 2 colunas em `whatsapp_config`
-- Helper `metaFetch()` que centraliza chamadas à Graph API e grava `last_error_at` em caso de 401
-- Sem mudanças nas tabelas de mensagens/conversas
-- A correção do código não substitui a renovação do token — ela apenas evita que mensagens sumam silenciosamente
+
+- Arquivos a criar: `supabase/functions/find-product-image/index.ts`, migração SQL (1 tabela + 1 coluna)
+- Arquivos a editar: `src/pages/Inventory.tsx`, novo componente `src/components/SupplierImageSearch.tsx`
+- Pipeline: Firecrawl `search` → Firecrawl `scrape` (formats: `links`, `html`) → extrair `og:image` e `<img>` em containers de produto → ranqueamento por Jaccard de tokens entre título do produto e título da página
+- Download server-side da imagem escolhida → upload no bucket `product-images` → grava `image_url` no produto/variação
+- RLS na nova tabela `supplier_sites`: staff lê/escreve, admin deleta (mesmo padrão das outras)
+- Rate limit simples (5 req/min por usuário) na função pra evitar abuso/custo
 
