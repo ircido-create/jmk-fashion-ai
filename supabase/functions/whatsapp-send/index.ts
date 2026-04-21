@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { to, message } = await req.json();
+    const { to, message, save_history = false } = await req.json();
     if (!to || !message) {
       return new Response(JSON.stringify({ error: "to e message obrigatórios" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -68,6 +68,36 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: result }), {
         status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Salvar no histórico de conversas (envio do operador)
+    if (save_history) {
+      let { data: conv } = await admin
+        .from("whatsapp_conversations")
+        .select("*")
+        .eq("customer_phone", to)
+        .maybeSingle();
+
+      if (!conv) {
+        const { data: customer } = await admin
+          .from("customers").select("id").eq("phone", to).maybeSingle();
+        const { data: created } = await admin
+          .from("whatsapp_conversations")
+          .insert({ customer_phone: to, customer_id: customer?.id ?? null })
+          .select().single();
+        conv = created;
+      }
+
+      if (conv) {
+        await admin.from("whatsapp_messages").insert({
+          conversation_id: conv.id,
+          direction: "out",
+          content: message,
+        });
+        await admin.from("whatsapp_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+      }
     }
 
     return new Response(JSON.stringify({ success: true, result }), {
