@@ -10,12 +10,13 @@ import { Plus, Pencil, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-interface Customer { id: string; name: string; phone: string | null; email: string | null; notes: string | null; }
+interface Customer { id: string; name: string; phone: string | null; email: string | null; address: string | null; notes: string | null; }
 
 const schema = z.object({
   name: z.string().trim().min(2, "Nome muito curto").max(100),
   phone: z.string().trim().max(20).optional().or(z.literal("")),
   email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
+  address: z.string().trim().max(300).optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
 });
 
@@ -37,13 +38,14 @@ export default function Customers() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const parsed = schema.safeParse({
-      name: f.get("name"), phone: f.get("phone"), email: f.get("email"), notes: f.get("notes"),
+      name: f.get("name"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
     const payload = {
       name: parsed.data.name,
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
+      address: parsed.data.address || null,
       notes: parsed.data.notes || null,
     };
     const { error } = editing
@@ -85,6 +87,7 @@ export default function Customers() {
                 <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
                 <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
                 <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
+                <div><Label>Endereço</Label><Textarea name="address" defaultValue={editing?.address ?? ""} placeholder="Rua, número, bairro, cidade — UF, CEP" className="glass-input" rows={2} /></div>
                 <div><Label>Observações</Label><Textarea name="notes" defaultValue={editing?.notes ?? ""} className="glass-input" rows={3} /></div>
                 <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
               </form>
@@ -107,6 +110,7 @@ export default function Customers() {
                 <div className="text-xs text-muted-foreground truncate">
                   {c.phone || "—"} {c.email ? `• ${c.email}` : ""}
                 </div>
+                {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
               </div>
               <div className="flex gap-1">
                 <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
