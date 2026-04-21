@@ -348,11 +348,59 @@ export default function Conversations() {
                 <div className="h-10 w-10 rounded-full bg-gradient-primary flex items-center justify-center">
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <div>
-                  <div className="font-medium">{active.customer?.name ?? "Cliente"}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{active.customer?.name ?? "Cliente"}</div>
                   <div className="text-xs text-muted-foreground">{active.customer_phone}</div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openRegister}
+                  className="shrink-0"
+                >
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  {active.customer_id ? "Editar cliente" : "Cadastrar cliente"}
+                </Button>
               </div>
+
+              {/* Dialog de cadastro/edição de cliente */}
+              <Dialog open={regOpen} onOpenChange={setRegOpen}>
+                <DialogContent className="glass-card">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {active.customer_id ? "Editar cliente" : "Cadastrar cliente"}
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Nome *</Label>
+                      <Input value={regName} onChange={(e) => setRegName(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Telefone</Label>
+                      <Input value={active.customer_phone} disabled />
+                    </div>
+                    <div>
+                      <Label>Email</Label>
+                      <Input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Endereço</Label>
+                      <Textarea rows={2} value={regAddress} onChange={(e) => setRegAddress(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Observações</Label>
+                      <Textarea rows={2} value={regNotes} onChange={(e) => setRegNotes(e.target.value)} />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={registerCustomer} disabled={regSaving} className="bg-gradient-primary">
+                      {regSaving ? "Salvando…" : "Salvar"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
 
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2">
                 {messages.length === 0 && (
