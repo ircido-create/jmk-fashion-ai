@@ -132,14 +132,108 @@ function formatDateBR(iso: string | null | undefined): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-async function buildContext(phone: string, userMsg: string) {
+// Heurísticas para extrair dados de cadastro da mensagem do cliente
+function extractEmail(text: string): string | null {
+  const m = text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+  return m ? m[0].toLowerCase() : null;
+}
+
+function looksLikeAddress(text: string): boolean {
+  // Tem número + alguma palavra típica de endereço, ou CEP
+  const t = text.toLowerCase();
+  if (/\d{5}-?\d{3}/.test(t)) return true; // CEP
+  const hasNumber = /\d/.test(t);
+  const hasKeyword = /(rua|av\.?|avenida|travessa|alameda|estrada|rodovia|bairro|quadra|n[º°ºo]|cep|cidade)/i.test(t);
+  return hasNumber && hasKeyword && t.length >= 15;
+}
+
+function looksLikeName(text: string): boolean {
+  // 2+ palavras alfabéticas, sem dígitos, sem @, curto
+  const t = text.trim();
+  if (t.length > 80 || t.length < 3) return false;
+  if (/[@\d]/.test(t)) return false;
+  const words = t.split(/\s+/).filter((w) => /^[A-Za-zÀ-ÿ'`-]{2,}$/.test(w));
+  return words.length >= 1 && words.length <= 6;
+}
+
+function missingFields(c: any | null): string[] {
+  const miss: string[] = [];
+  if (!c?.name || c.name.trim() === "" || c.name === c.phone) miss.push("nome");
+  if (!c?.address || c.address.trim() === "") miss.push("endereço");
+  if (!c?.email || c.email.trim() === "") miss.push("email");
+  return miss;
+}
+
+// Tenta auto-cadastrar a partir do texto + último campo solicitado (do histórico)
+async function autoUpdateCustomer(phone: string, customer: any | null, userMsg: string, lastAskedField: string | null) {
+  const updates: any = {};
+  const text = userMsg.trim();
+
+  const email = extractEmail(text);
+  if (email && (!customer?.email || customer.email.trim() === "")) {
+    updates.email = email;
+  }
+
+  // Se a IA acabou de pedir um campo específico, assume que a resposta é esse campo
+  if (lastAskedField === "nome" && (!customer?.name || customer.name === customer.phone)) {
+    if (looksLikeName(text)) updates.name = text;
+  } else if (lastAskedField === "endereço" && (!customer?.address || customer.address.trim() === "")) {
+    if (text.length >= 10) updates.address = text;
+  } else {
+    // Heurística geral
+    if ((!customer?.address || customer.address.trim() === "") && looksLikeAddress(text)) {
+      updates.address = text;
+    } else if ((!customer?.name || customer.name === customer.phone) && looksLikeName(text) && !email) {
+      updates.name = text;
+    }
+  }
+
+  if (Object.keys(updates).length === 0) return customer;
+
+  if (customer) {
+    const { data } = await supabase
+      .from("customers")
+      .update(updates)
+      .eq("id", customer.id)
+      .select("id, name, address, email")
+      .maybeSingle();
+    return data ?? customer;
+  } else {
+    const { data } = await supabase
+      .from("customers")
+      .insert({ phone, name: updates.name ?? phone, address: updates.address ?? null, email: updates.email ?? null })
+      .select("id, name, address, email")
+      .maybeSingle();
+    // vincula conversa
+    if (data) {
+      await supabase.from("whatsapp_conversations").update({ customer_id: data.id }).eq("customer_phone", phone);
+    }
+    return data;
+  }
+}
+
+// Detecta qual campo a IA pediu na última mensagem outbound
+function detectLastAskedField(history: any[]): string | null {
+  const lastBot = [...history].reverse().find((m) => m.direction === "outbound");
+  if (!lastBot) return null;
+  const c = lastBot.content.toLowerCase();
+  if (/(qual.*(seu|teu).*nome|me diz.*nome|qual.*nome.*querida)/.test(c)) return "nome";
+  if (/(endere[çc]o|rua|cep|bairro)/.test(c)) return "endereço";
+  if (/(e-?mail)/.test(c)) return "email";
+  return null;
+}
+
+async function buildContext(phone: string, userMsg: string, history: any[]) {
   const { matched, all } = await searchProducts(userMsg);
 
-  const { data: customer } = await supabase
+  const { data: rawCustomer } = await supabase
     .from("customers")
-    .select("id, name, address")
+    .select("id, name, address, email")
     .eq("phone", phone)
     .maybeSingle();
+
+  const lastAsked = detectLastAskedField(history);
+  const customer = await autoUpdateCustomer(phone, rawCustomer, userMsg, lastAsked);
 
   let debts: any[] = [];
   if (customer) {
@@ -151,7 +245,9 @@ async function buildContext(phone: string, userMsg: string) {
     debts = (data ?? []).map((d: any) => ({ ...d, due_date: formatDateBR(d.due_date) }));
   }
 
-  return { matched, all, customer, debts };
+  const missing = missingFields(customer);
+
+  return { matched, all, customer, debts, missing };
 }
 
 function formatProducts(list: any[]) {
@@ -189,7 +285,10 @@ ${formatProducts(ctx.all)}
 ${matchInfo}
 
 === CLIENTE ===
-${ctx.customer ? `Nome: ${ctx.customer.name}${ctx.customer.address ? ` | Endereço: ${ctx.customer.address}` : ""}` : "Cliente NÃO cadastrado — colete nome e endereço se for fechar pedido."}
+${ctx.customer
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"}`
+  : "Cliente NÃO cadastrado."}
+CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço → email. NÃO fale de produtos enquanto faltar dados."}
 
 === DÍVIDAS PENDENTES (FONTE DA VERDADE — ignore datas/valores do histórico) ===
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
@@ -282,7 +381,7 @@ Deno.serve(async (req) => {
     // Primeira mensagem = só existe a inbound que acabamos de inserir agora
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
-    const ctx = await buildContext(fromPhone, text);
+    const ctx = await buildContext(fromPhone, text, history ?? []);
     const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx, isFirstMessage);
 
     await sendWhatsApp(fromPhone, reply, cfg);
