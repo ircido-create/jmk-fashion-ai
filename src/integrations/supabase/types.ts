@@ -101,18 +101,27 @@ export type Database = {
         Row: {
           id: string
           persona: string
+          pix_key: string | null
+          pix_key_type: string | null
+          pix_recipient_name: string | null
           system_prompt: string
           updated_at: string
         }
         Insert: {
           id?: string
           persona?: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          pix_recipient_name?: string | null
           system_prompt?: string
           updated_at?: string
         }
         Update: {
           id?: string
           persona?: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          pix_recipient_name?: string | null
           system_prompt?: string
           updated_at?: string
         }
