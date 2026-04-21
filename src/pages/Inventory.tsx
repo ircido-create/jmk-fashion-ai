@@ -90,6 +90,7 @@ export default function Inventory() {
     const parsed = schema.safeParse({
       name: f.get("name"),
       sku: f.get("sku"),
+      supplier: f.get("supplier"),
       category: f.get("category"),
       description: f.get("description"),
       price: Number(f.get("price")),
@@ -100,6 +101,7 @@ export default function Inventory() {
     const payload = {
       name: parsed.data.name,
       sku: parsed.data.sku || null,
+      supplier: parsed.data.supplier || null,
       description: parsed.data.description || null,
       category: parsed.data.category || null,
       price: parsed.data.price,
