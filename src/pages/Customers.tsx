@@ -28,23 +28,14 @@ export default function Customers() {
   const [search, setSearch] = useState("");
 
   const load = async () => {
-    // Paginar: Supabase limita a 1000 linhas por query
-    const PAGE = 1000;
-    let from = 0;
-    const all: Customer[] = [];
-    while (true) {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("*")
-        .order("name")
-        .range(from, from + PAGE - 1);
-      if (error) { toast.error(error.message); return; }
-      if (!data || data.length === 0) break;
-      all.push(...(data as Customer[]));
-      if (data.length < PAGE) break;
-      from += PAGE;
+    try {
+      const all = await fetchAll<Customer>((sb) =>
+        sb.from("customers").select("*").order("name")
+      );
+      setList(all);
+    } catch (e: any) {
+      toast.error(e.message);
     }
-    setList(all);
   };
 
   useEffect(() => { load(); }, []);
