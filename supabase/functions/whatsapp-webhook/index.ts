@@ -41,6 +41,34 @@ async function loadAISettings() {
   return data;
 }
 
+// Registra falha de auth (token expirado) na tabela de config
+async function recordMetaError(status: number, body: string) {
+  try {
+    const isAuth = status === 401 || /OAuthException|expired|access token/i.test(body);
+    if (!isAuth) return;
+    const msg = body.slice(0, 500);
+    await supabase
+      .from("whatsapp_config")
+      .update({ last_error_at: new Date().toISOString(), last_error_message: msg })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    console.error("⚠️ TOKEN WHATSAPP EXPIRADO/INVÁLIDO — atualize em Configurações → WhatsApp");
+  } catch (e) {
+    console.error("recordMetaError failed:", e);
+  }
+}
+
+// Limpa marca de erro quando uma chamada à Meta volta a funcionar
+async function clearMetaError() {
+  try {
+    await supabase
+      .from("whatsapp_config")
+      .update({ last_error_at: null, last_error_message: null })
+      .not("last_error_at", "is", null);
+  } catch {
+    /* noop */
+  }
+}
+
 // Baixa um media do WhatsApp Cloud API e retorna { base64, mimeType }
 async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base64: string; mimeType: string } | null> {
   try {
@@ -49,7 +77,9 @@ async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base6
       headers: { Authorization: `Bearer ${cfg.access_token}` },
     });
     if (!metaRes.ok) {
-      console.error("media meta error:", metaRes.status, await metaRes.text());
+      const errBody = await metaRes.text();
+      console.error("media meta error:", metaRes.status, errBody);
+      await recordMetaError(metaRes.status, errBody);
       return null;
     }
     const meta = await metaRes.json();
@@ -140,7 +170,13 @@ async function sendWhatsApp(to: string, text: string, cfg: any) {
       text: { body: text },
     }),
   });
-  if (!res.ok) console.error("Meta send error:", res.status, await res.text());
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("Meta send error:", res.status, body);
+    await recordMetaError(res.status, body);
+  } else {
+    await clearMetaError();
+  }
 }
 
 async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
@@ -158,7 +194,11 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, 
       image: { link: imageUrl, caption: caption.slice(0, 1024) },
     }),
   });
-  if (!res.ok) console.error("Meta image send error:", res.status, await res.text());
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("Meta image send error:", res.status, body);
+    await recordMetaError(res.status, body);
+  }
 }
 
 // Detecta se a cliente pediu foto/imagem
@@ -548,6 +588,7 @@ Deno.serve(async (req) => {
     let text: string = message.text?.body ?? "";
 
     // Suporte a áudio: baixa do WhatsApp e transcreve via Lovable AI
+    let audioFailureNote: string | null = null;
     if (!text && (message.type === "audio" || message.type === "voice")) {
       const mediaId = message.audio?.id ?? message.voice?.id;
       if (mediaId) {
@@ -558,11 +599,36 @@ Deno.serve(async (req) => {
             text = transcript;
             console.log("Áudio transcrito:", text);
           } else {
-            await sendWhatsApp(fromPhone, "Desculpe, não consegui entender seu áudio 😅 Pode escrever ou gravar de novo, por favor? 💕", cfg);
-            return new Response("ok", { status: 200, headers: corsHeaders });
+            audioFailureNote = "[🎤 Áudio recebido — falha ao transcrever]";
           }
+        } else {
+          audioFailureNote = "[🎤 Áudio recebido — falha ao baixar da Meta (token pode ter expirado)]";
         }
+      } else {
+        audioFailureNote = "[🎤 Áudio recebido — sem media id]";
       }
+    }
+
+    // Se houve falha de áudio, registra na conversa e avisa a cliente, em vez de dropar silenciosamente
+    if (audioFailureNote && !text) {
+      const conv = await getOrCreateConversation(fromPhone);
+      if (conv) {
+        await supabase.from("whatsapp_messages").insert({
+          conversation_id: conv.id,
+          direction: "inbound",
+          content: audioFailureNote,
+        });
+        await supabase
+          .from("whatsapp_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+      }
+      await sendWhatsApp(
+        fromPhone,
+        "Desculpe, não consegui ouvir seu áudio 😅 Pode escrever a mensagem ou gravar novamente, por favor? 💕",
+        cfg
+      );
+      return new Response("ok", { status: 200, headers: corsHeaders });
     }
 
     if (!text) return new Response("ok", { status: 200, headers: corsHeaders });
