@@ -1,0 +1,262 @@
+// @ts-nocheck
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+const SYSTEM_PROMPT = `Você extrai dados de romaneios/notas de fornecedor brasileiros (PDFs).
+
+REGRAS:
+1. Identifique o FORNECEDOR (razão social no cabeçalho).
+2. Identifique a CONDIÇÃO DE PAGAMENTO: à vista (1 parcela na data de emissão) ou parcelado (busque tabela com vencimentos).
+3. Para CADA LINHA de produto extraia:
+   - sku: código base do produto (ex.: "05705" mesmo se aparecer "05705.008")
+   - name: nome do produto
+   - color: cor (texto)
+   - size: tamanho (P/M/G/GG/PP/UN ou numérico 36/38/40...)
+   - quantity: quantidade
+   - cost: preço unitário (custo) em reais (use ponto decimal)
+4. Se uma linha tiver grade com múltiplos tamanhos numéricos (38, 40, 42...) e quantidades por coluna, gere UM item por tamanho com quantidade > 0.
+5. Ignore totalizadores, cabeçalhos, observações e políticas.
+6. NUNCA invente dados. Se algo não estiver claro, omita.
+
+Retorne via tool call.`;
+
+const tool = {
+  type: "function",
+  function: {
+    name: "extract_romaneio",
+    description: "Estrutura de dados extraída do romaneio",
+    parameters: {
+      type: "object",
+      properties: {
+        supplier: { type: "string", description: "Razão social do fornecedor" },
+        total: { type: "number", description: "Valor total do romaneio em reais" },
+        installments: {
+          type: "array",
+          description: "Parcelas. Se à vista, retornar uma única parcela com data de emissão.",
+          items: {
+            type: "object",
+            properties: {
+              due_date: { type: "string", description: "Data ISO YYYY-MM-DD" },
+              amount: { type: "number" },
+            },
+            required: ["due_date", "amount"],
+          },
+        },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              sku: { type: "string" },
+              name: { type: "string" },
+              color: { type: "string" },
+              size: { type: "string" },
+              quantity: { type: "number" },
+              cost: { type: "number" },
+            },
+            required: ["sku", "name", "color", "size", "quantity", "cost"],
+          },
+        },
+      },
+      required: ["supplier", "total", "installments", "items"],
+    },
+  },
+};
+
+const ceilToInt = (n: number) => Math.ceil(n);
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const auth = req.headers.get("Authorization") ?? "";
+    if (!auth.startsWith("Bearer ")) {
+      return json({ error: "missing auth" }, 401);
+    }
+
+    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: auth } },
+    });
+    const { data: userRes } = await userClient.auth.getUser();
+    if (!userRes?.user) return json({ error: "unauthorized" }, 401);
+
+    const { storage_path } = await req.json();
+    if (!storage_path || typeof storage_path !== "string") {
+      return json({ error: "storage_path required" }, 400);
+    }
+
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    // Baixar PDF do storage
+    const { data: fileData, error: dlErr } = await admin.storage
+      .from("romaneios")
+      .download(storage_path);
+    if (dlErr || !fileData) return json({ error: `download failed: ${dlErr?.message}` }, 400);
+
+    const buf = await fileData.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+
+    // Chamar Lovable AI com o PDF (Gemini 2.5 Pro suporta PDF nativamente)
+    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Extraia os dados deste romaneio." },
+              {
+                type: "file",
+                file: { filename: "romaneio.pdf", file_data: `data:application/pdf;base64,${b64}` },
+              },
+            ],
+          },
+        ],
+        tools: [tool],
+        tool_choice: { type: "function", function: { name: "extract_romaneio" } },
+      }),
+    });
+
+    if (!aiResp.ok) {
+      const errText = await aiResp.text();
+      console.error("AI gateway error", aiResp.status, errText);
+      if (aiResp.status === 429) return json({ error: "Rate limit. Tente novamente em alguns segundos." }, 429);
+      if (aiResp.status === 402) return json({ error: "Créditos esgotados. Adicione fundos em Lovable AI." }, 402);
+      return json({ error: "AI error: " + errText.slice(0, 200) }, 500);
+    }
+
+    const aiJson = await aiResp.json();
+    const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) {
+      console.error("No tool call in response", JSON.stringify(aiJson).slice(0, 500));
+      return json({ error: "IA não conseguiu extrair os dados" }, 422);
+    }
+
+    const extracted = JSON.parse(toolCall.function.arguments);
+    console.log("Extracted:", JSON.stringify(extracted).slice(0, 1000));
+
+    const { supplier, total, installments, items } = extracted;
+    if (!Array.isArray(items) || items.length === 0) {
+      return json({ error: "Nenhum produto encontrado no romaneio" }, 422);
+    }
+
+    let productsCreated = 0;
+    let variantsAdded = 0;
+    let variantsUpdated = 0;
+
+    // Inserir produtos + variantes
+    for (const it of items) {
+      const sku = String(it.sku).trim();
+      const cost = Number(it.cost);
+      const price = ceilToInt(cost * 2);
+
+      // Buscar produto existente
+      const { data: existing } = await admin
+        .from("products")
+        .select("id")
+        .eq("sku", sku)
+        .maybeSingle();
+
+      let productId: string;
+      if (existing) {
+        productId = existing.id;
+      } else {
+        const { data: newP, error: pErr } = await admin
+          .from("products")
+          .insert({
+            sku,
+            name: it.name,
+            cost,
+            price,
+            low_stock_threshold: 5,
+          })
+          .select("id")
+          .single();
+        if (pErr) {
+          console.error("product insert err", pErr);
+          continue;
+        }
+        productId = newP.id;
+        productsCreated++;
+      }
+
+      // Buscar variante existente
+      const { data: existVar } = await admin
+        .from("product_variants")
+        .select("id, quantity")
+        .eq("product_id", productId)
+        .eq("size", it.size)
+        .eq("color", it.color)
+        .maybeSingle();
+
+      if (existVar) {
+        await admin
+          .from("product_variants")
+          .update({ quantity: existVar.quantity + Number(it.quantity) })
+          .eq("id", existVar.id);
+        variantsUpdated++;
+      } else {
+        const { error: vErr } = await admin.from("product_variants").insert({
+          product_id: productId,
+          size: it.size,
+          color: it.color,
+          quantity: Number(it.quantity),
+        });
+        if (vErr) console.error("variant insert err", vErr);
+        else variantsAdded++;
+      }
+    }
+
+    // Inserir contas a pagar
+    let payableCreated = 0;
+    if (Array.isArray(installments) && installments.length > 0) {
+      const n = installments.length;
+      const rows = installments.map((p, i) => ({
+        supplier,
+        description: `Romaneio ${n > 1 ? `parcela ${i + 1}/${n}` : "à vista"}`,
+        category: "Mercadoria",
+        amount: Number(p.amount),
+        due_date: p.due_date,
+        status: "pendente" as const,
+      }));
+      const { error: payErr } = await admin.from("accounts_payable").insert(rows);
+      if (payErr) console.error("payable insert err", payErr);
+      else payableCreated = rows.length;
+    }
+
+    return json({
+      ok: true,
+      supplier,
+      total,
+      products_created: productsCreated,
+      variants_added: variantsAdded,
+      variants_updated: variantsUpdated,
+      payable_created: payableCreated,
+      items_count: items.length,
+    });
+  } catch (e) {
+    console.error("parse-romaneio error", e);
+    return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
+  }
+});
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
