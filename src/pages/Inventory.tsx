@@ -13,12 +13,14 @@ import { z } from "zod";
 interface Variant { id?: string; size: string; color: string; quantity: number; }
 interface Product {
   id: string; name: string; description: string | null; category: string | null;
+  sku: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
   product_variants?: Variant[];
 }
 
 const schema = z.object({
   name: z.string().trim().min(2).max(100),
+  sku: z.string().trim().max(60).optional().or(z.literal("")),
   category: z.string().trim().max(60).optional().or(z.literal("")),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   price: z.number().nonnegative(),
@@ -56,6 +58,7 @@ export default function Inventory() {
     const f = new FormData(e.currentTarget);
     const parsed = schema.safeParse({
       name: f.get("name"),
+      sku: f.get("sku"),
       category: f.get("category"),
       description: f.get("description"),
       price: Number(f.get("price")),
@@ -65,6 +68,7 @@ export default function Inventory() {
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
     const payload = {
       name: parsed.data.name,
+      sku: parsed.data.sku || null,
       description: parsed.data.description || null,
       category: parsed.data.category || null,
       price: parsed.data.price,
@@ -150,6 +154,7 @@ export default function Inventory() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{p.name}</span>
+                    {p.sku && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">SKU: {p.sku}</span>}
                     {p.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{p.category}</span>}
                     {isLow(p) && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground inline-flex items-center gap-1">
@@ -186,7 +191,10 @@ export default function Inventory() {
         <DialogContent className="glass-card border-white/40 max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} produto</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-3">
-            <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+              <div><Label>SKU</Label><Input name="sku" defaultValue={editing?.sku ?? ""} placeholder="VST-001" className="glass-input" /></div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Categoria</Label><Input name="category" defaultValue={editing?.category ?? ""} placeholder="Vestido, Blusa..." className="glass-input" /></div>
               <div><Label>Estoque mínimo</Label><Input name="low_stock_threshold" type="number" defaultValue={editing?.low_stock_threshold ?? 5} min={0} className="glass-input" /></div>

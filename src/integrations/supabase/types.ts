@@ -120,6 +120,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          address: string | null
           created_at: string
           email: string | null
           id: string
@@ -129,6 +130,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -138,6 +140,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -239,6 +242,7 @@ export type Database = {
           low_stock_threshold: number
           name: string
           price: number
+          sku: string | null
           updated_at: string
         }
         Insert: {
@@ -251,6 +255,7 @@ export type Database = {
           low_stock_threshold?: number
           name: string
           price?: number
+          sku?: string | null
           updated_at?: string
         }
         Update: {
@@ -263,6 +268,7 @@ export type Database = {
           low_stock_threshold?: number
           name?: string
           price?: number
+          sku?: string | null
           updated_at?: string
         }
         Relationships: []
