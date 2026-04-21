@@ -175,13 +175,18 @@ Deno.serve(async (req) => {
     if (!text) return new Response("ok", { status: 200, headers: corsHeaders });
 
     const conv = await getOrCreateConversation(fromPhone);
+    if (!conv) {
+      console.error("Falha ao criar/obter conversa para", fromPhone);
+      return new Response("ok", { status: 200, headers: corsHeaders });
+    }
 
     // salvar mensagem recebida
-    await supabase.from("whatsapp_messages").insert({
+    const { error: insErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
-      direction: "in",
+      direction: "inbound",
       content: text,
     });
+    if (insErr) console.error("insert inbound error:", insErr);
 
     // histórico
     const { data: history } = await supabase
@@ -195,11 +200,12 @@ Deno.serve(async (req) => {
     const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx);
 
     await sendWhatsApp(fromPhone, reply, cfg);
-    await supabase.from("whatsapp_messages").insert({
+    const { error: outErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
-      direction: "out",
+      direction: "outbound",
       content: reply,
     });
+    if (outErr) console.error("insert outbound error:", outErr);
     await supabase
       .from("whatsapp_conversations")
       .update({ last_message_at: new Date().toISOString() })

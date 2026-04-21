@@ -26,7 +26,7 @@ interface Conversation {
 interface Message {
   id: string;
   conversation_id: string;
-  direction: "in" | "out";
+  direction: "inbound" | "outbound";
   content: string;
   created_at: string;
 }
@@ -294,13 +294,13 @@ export default function Conversations() {
                     key={m.id}
                     className={cn(
                       "flex",
-                      m.direction === "out" ? "justify-end" : "justify-start"
+                      m.direction === "outbound" ? "justify-end" : "justify-start"
                     )}
                   >
                     <div
                       className={cn(
                         "max-w-[75%] px-4 py-2 rounded-2xl text-sm shadow-sm",
-                        m.direction === "out"
+                        m.direction === "outbound"
                           ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
                           : "bg-white/80 backdrop-blur rounded-bl-sm"
                       )}
@@ -309,7 +309,7 @@ export default function Conversations() {
                       <div
                         className={cn(
                           "text-[10px] mt-1 opacity-70",
-                          m.direction === "out" ? "text-primary-foreground/80" : "text-muted-foreground"
+                          m.direction === "outbound" ? "text-primary-foreground/80" : "text-muted-foreground"
                         )}
                       >
                         {new Date(m.created_at).toLocaleTimeString("pt-BR", {
