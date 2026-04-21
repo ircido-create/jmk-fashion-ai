@@ -401,6 +401,14 @@ export default function Inventory() {
                           }}
                         />
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => openImgSearchForVariant(i)}
+                        className="text-xs inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition"
+                        title="Buscar imagem no site do fornecedor"
+                      >
+                        <Sparkles className="h-3 w-3" /> Buscar do fornecedor
+                      </button>
                     </div>
                   </div>
                 ))}
