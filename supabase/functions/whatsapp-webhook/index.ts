@@ -538,7 +538,14 @@ Deno.serve(async (req) => {
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
     const ctx = await buildContext(fromPhone, text, history ?? []);
-    const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx, isFirstMessage);
+    const reply = await callAI(
+      ai?.system_prompt ?? "",
+      history ?? [],
+      text,
+      ctx,
+      isFirstMessage,
+      { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name }
+    );
 
     await sendWhatsApp(fromPhone, reply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
