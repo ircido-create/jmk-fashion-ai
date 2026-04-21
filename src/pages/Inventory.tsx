@@ -157,10 +157,17 @@ export default function Inventory() {
   const totalQty = (p: Product) => p.product_variants?.reduce((s, v) => s + v.quantity, 0) ?? 0;
   const isLow = (p: Product) => totalQty(p) <= p.low_stock_threshold;
 
-  const filtered = list.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.category ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const suppliers = Array.from(new Set(list.map((p) => p.supplier).filter((s): s is string => !!s && s.trim() !== ""))).sort();
+
+  const filtered = list.filter((p) => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      p.name.toLowerCase().includes(q) ||
+      (p.category ?? "").toLowerCase().includes(q) ||
+      (p.supplier ?? "").toLowerCase().includes(q);
+    const matchesSupplier = supplierFilter === "all" || p.supplier === supplierFilter;
+    return matchesSearch && matchesSupplier;
+  });
 
   return (
     <div>
