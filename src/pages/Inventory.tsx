@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -34,6 +34,35 @@ export default function Inventory() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [search, setSearch] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleImport = async () => {
+    if (!importFile) { toast.error("Selecione um PDF"); return; }
+    if (importFile.type !== "application/pdf") { toast.error("Apenas PDF é suportado"); return; }
+    setImporting(true);
+    try {
+      const path = `${Date.now()}_${importFile.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const { error: upErr } = await supabase.storage.from("romaneios").upload(path, importFile);
+      if (upErr) throw upErr;
+      const { data, error } = await supabase.functions.invoke("parse-romaneio", {
+        body: { storage_path: path },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(
+        `Romaneio importado: ${data.products_created} produtos novos, ${data.variants_added} variações adicionadas, ${data.payable_created} conta(s) a pagar criada(s)`
+      );
+      setImportOpen(false);
+      setImportFile(null);
+      load();
+    } catch (e: any) {
+      toast.error("Falha na importação: " + (e?.message || "erro desconhecido"));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const load = async () => {
     const { data, error } = await supabase
@@ -135,9 +164,14 @@ export default function Inventory() {
         title="Estoque"
         description={`${list.length} produtos`}
         actions={
-          <Button onClick={openNew} className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
-            <Plus className="h-4 w-4 mr-1" /> Novo produto
-          </Button>
+          <>
+            <Button onClick={() => setImportOpen(true)} variant="outline" className="rounded-xl">
+              <FileUp className="h-4 w-4 mr-1" /> Importar romaneio
+            </Button>
+            <Button onClick={openNew} className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
+              <Plus className="h-4 w-4 mr-1" /> Novo produto
+            </Button>
+          </>
         }
       />
 
@@ -225,6 +259,36 @@ export default function Inventory() {
 
             <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFile(null); } }}>
+        <DialogContent className="glass-card border-white/40 max-w-md">
+          <DialogHeader><DialogTitle>Importar romaneio (PDF)</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Anexe o PDF do romaneio. A IA extrai fornecedor, produtos e parcelas para cadastrar
+              automaticamente no estoque (margem 100% arredondada para cima) e em contas a pagar.
+            </p>
+            <div>
+              <Label>Arquivo PDF</Label>
+              <Input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                disabled={importing}
+                className="glass-input mt-1"
+              />
+              {importFile && <p className="text-xs text-muted-foreground mt-1">{importFile.name}</p>}
+            </div>
+            <Button
+              onClick={handleImport}
+              disabled={!importFile || importing}
+              className="w-full bg-gradient-primary text-primary-foreground rounded-xl"
+            >
+              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar</>)}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
