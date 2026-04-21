@@ -13,7 +13,7 @@ import { z } from "zod";
 interface Variant { id?: string; size: string; color: string; quantity: number; }
 interface Product {
   id: string; name: string; description: string | null; category: string | null;
-  sku: string | null;
+  sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
   product_variants?: Variant[];
 }
@@ -21,6 +21,7 @@ interface Product {
 const schema = z.object({
   name: z.string().trim().min(2).max(100),
   sku: z.string().trim().max(60).optional().or(z.literal("")),
+  supplier: z.string().trim().max(120).optional().or(z.literal("")),
   category: z.string().trim().max(60).optional().or(z.literal("")),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   price: z.number().nonnegative(),
