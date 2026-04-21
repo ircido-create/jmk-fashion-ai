@@ -235,7 +235,7 @@ export default function Inventory() {
           </div>
         </div>
 
-        <div className="grid gap-3"></div>
+        <div className="grid gap-3">
           {filtered.map((p) => (
             <div key={p.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
               <div className="flex items-start justify-between gap-3">
