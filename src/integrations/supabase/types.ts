@@ -451,6 +451,8 @@ export type Database = {
           app_secret: string | null
           enabled: boolean
           id: string
+          last_error_at: string | null
+          last_error_message: string | null
           phone_number_id: string | null
           updated_at: string
           verify_token: string | null
@@ -461,6 +463,8 @@ export type Database = {
           app_secret?: string | null
           enabled?: boolean
           id?: string
+          last_error_at?: string | null
+          last_error_message?: string | null
           phone_number_id?: string | null
           updated_at?: string
           verify_token?: string | null
@@ -471,6 +475,8 @@ export type Database = {
           app_secret?: string | null
           enabled?: boolean
           id?: string
+          last_error_at?: string | null
+          last_error_message?: string | null
           phone_number_id?: string | null
           updated_at?: string
           verify_token?: string | null
