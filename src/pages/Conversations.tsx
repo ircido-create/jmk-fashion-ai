@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { MessageCircle, Send, Plus, Search, User } from "lucide-react";
+import { MessageCircle, Send, Plus, Search, User, UserPlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -43,6 +43,13 @@ export default function Conversations() {
   const [newPhone, setNewPhone] = useState("");
   const [newName, setNewName] = useState("");
   const [newMessage, setNewMessage] = useState("");
+  // Cadastro de cliente a partir da conversa ativa
+  const [regOpen, setRegOpen] = useState(false);
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regAddress, setRegAddress] = useState("");
+  const [regNotes, setRegNotes] = useState("");
+  const [regSaving, setRegSaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = async () => {

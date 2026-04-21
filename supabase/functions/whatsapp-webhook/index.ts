@@ -1,4 +1,4 @@
-// WhatsApp webhook (Meta Cloud API) - recebe mensagens e responde com IA
+// WhatsApp webhook (Meta Cloud API) - recebe mensagens e responde com a IA Monica (RAG)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -10,6 +10,26 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
+
+const STOPWORDS = new Set([
+  "a","o","as","os","de","da","do","das","dos","e","ou","um","uma","para","por","com","sem",
+  "que","qual","quais","quanto","quanta","quantas","quantos","tem","ter","tenho","queria",
+  "quero","gostaria","poderia","pode","me","mim","meu","minha","seu","sua","no","na","nos","nas",
+  "em","ao","aos","à","às","é","são","ser","estar","está","estão","ola","olá","oi","bom","boa",
+  "dia","tarde","noite","obrigado","obrigada","por favor","favor","vc","você","voce","preço",
+  "preco","valor","custo","quanto","ai","aí","la","lá","aqui","esse","essa","esses","essas",
+  "isso","isto","aquilo","já","ainda","só","so","mais","menos","muito","pouco","sim","não","nao"
+]);
+
+function extractKeywords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+    .slice(0, 8);
+}
 
 async function loadConfig() {
   const { data } = await supabase.from("whatsapp_config").select("*").maybeSingle();
@@ -61,18 +81,55 @@ async function getOrCreateConversation(phone: string) {
   return created;
 }
 
-async function buildContext(phone: string) {
-  // Catálogo (top 30 produtos ativos)
-  const { data: products } = await supabase
+// RAG: busca produtos relevantes à mensagem do cliente
+async function searchProducts(userMsg: string) {
+  const keywords = extractKeywords(userMsg);
+  let matched: any[] = [];
+
+  if (keywords.length > 0) {
+    // OR ilike em nome/descrição/categoria/sku
+    const orFilter = keywords
+      .flatMap((k) => [
+        `name.ilike.%${k}%`,
+        `description.ilike.%${k}%`,
+        `category.ilike.%${k}%`,
+        `sku.ilike.%${k}%`,
+      ])
+      .join(",");
+
+    const { data } = await supabase
+      .from("products")
+      .select("name, price, category, description, sku, product_variants(size, color, quantity)")
+      .eq("active", true)
+      .or(orFilter)
+      .limit(15);
+    matched = data ?? [];
+  }
+
+  // Catálogo geral (top 20) como fallback / contexto amplo
+  const { data: general } = await supabase
     .from("products")
     .select("name, price, category, description, sku, product_variants(size, color, quantity)")
     .eq("active", true)
-    .limit(30);
+    .limit(20);
 
-  // Cliente + dívidas
+  // dedup por nome
+  const seen = new Set<string>();
+  const all = [...matched, ...(general ?? [])].filter((p: any) => {
+    if (seen.has(p.name)) return false;
+    seen.add(p.name);
+    return true;
+  });
+
+  return { matched, all };
+}
+
+async function buildContext(phone: string, userMsg: string) {
+  const { matched, all } = await searchProducts(userMsg);
+
   const { data: customer } = await supabase
     .from("customers")
-    .select("id, name")
+    .select("id, name, address")
     .eq("phone", phone)
     .maybeSingle();
 
@@ -86,24 +143,39 @@ async function buildContext(phone: string) {
     debts = data ?? [];
   }
 
-  return { products: products ?? [], customer, debts };
+  return { matched, all, customer, debts };
+}
+
+function formatProducts(list: any[]) {
+  if (list.length === 0) return "(nenhum)";
+  return list
+    .map((p: any) => {
+      const vars = (p.product_variants ?? [])
+        .map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"} (estoque: ${v.quantity})`)
+        .join("; ");
+      return `• ${p.name} (SKU ${p.sku ?? "-"}) — R$ ${p.price} — ${p.category ?? ""} — Variações: ${vars || "única"}`;
+    })
+    .join("\n");
 }
 
 async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY ausente");
 
+  const matchInfo =
+    ctx.matched.length > 0
+      ? `Produtos que correspondem à pergunta do cliente:\n${formatProducts(ctx.matched)}`
+      : `⚠️ Nenhum produto do catálogo corresponde à pergunta atual do cliente. Se ele pediu um modelo específico (ex: "vestido amanda"), diga que NÃO temos esse modelo e ofereça alternativas reais da lista geral abaixo.`;
+
   const contextText = `
-=== CATÁLOGO DA LOJA ===
-${ctx.products.map((p: any) => {
-  const vars = (p.product_variants ?? [])
-    .map((v: any) => `${v.size ?? ""}/${v.color ?? ""} (estoque: ${v.quantity})`)
-    .join("; ");
-  return `• ${p.name} (SKU ${p.sku ?? "-"}) — R$ ${p.price} — ${p.category ?? ""} — Variações: ${vars || "única"}`;
-}).join("\n")}
+=== CATÁLOGO COMPLETO (use SOMENTE estes produtos, nada além) ===
+${formatProducts(ctx.all)}
+
+=== BUSCA NA PERGUNTA ATUAL ===
+${matchInfo}
 
 === CLIENTE ===
-${ctx.customer ? `Nome: ${ctx.customer.name}` : "Cliente não cadastrado"}
+${ctx.customer ? `Nome: ${ctx.customer.name}${ctx.customer.address ? ` | Endereço: ${ctx.customer.address}` : ""}` : "Cliente NÃO cadastrado — colete nome e endereço se for fechar pedido."}
 
 === DÍVIDAS PENDENTES ===
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
@@ -114,7 +186,7 @@ ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
   const messages = [
     { role: "system", content: systemPrompt + "\n\n" + contextText },
     ...history.slice(-10).map((m: any) => ({
-      role: m.direction === "in" ? "user" : "assistant",
+      role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
     })),
     { role: "user", content: userMsg },
@@ -142,7 +214,6 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
 
-  // Verificação inicial do webhook (Meta)
   if (req.method === "GET") {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
@@ -180,7 +251,6 @@ Deno.serve(async (req) => {
       return new Response("ok", { status: 200, headers: corsHeaders });
     }
 
-    // salvar mensagem recebida
     const { error: insErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "inbound",
@@ -188,7 +258,6 @@ Deno.serve(async (req) => {
     });
     if (insErr) console.error("insert inbound error:", insErr);
 
-    // histórico
     const { data: history } = await supabase
       .from("whatsapp_messages")
       .select("direction, content")
@@ -196,7 +265,7 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: true })
       .limit(20);
 
-    const ctx = await buildContext(fromPhone);
+    const ctx = await buildContext(fromPhone, text);
     const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx);
 
     await sendWhatsApp(fromPhone, reply, cfg);
