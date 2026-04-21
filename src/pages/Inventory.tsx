@@ -285,7 +285,14 @@ export default function Inventory() {
         <div className="grid gap-3">
           {filtered.map((p) => (
             <div key={p.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                {p.image_url ? (
+                  <img src={p.image_url} alt={p.name} className="h-16 w-16 rounded-xl object-cover border border-white/40 shrink-0" />
+                ) : (
+                  <div className="h-16 w-16 rounded-xl border border-dashed border-muted-foreground/40 bg-white/20 flex items-center justify-center shrink-0">
+                    <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{p.name}</span>
@@ -313,6 +320,9 @@ export default function Inventory() {
                   )}
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" onClick={() => openImgSearchForProduct(p)} title="Buscar imagem do fornecedor" className="text-xs">
+                    <Sparkles className="h-3.5 w-3.5 mr-1" /> Foto
+                  </Button>
                   <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" onClick={() => remove(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
