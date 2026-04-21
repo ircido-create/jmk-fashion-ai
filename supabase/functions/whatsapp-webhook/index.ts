@@ -670,13 +670,23 @@ Deno.serve(async (req) => {
 
     // Se a cliente pediu foto, envia imagens antes da resposta de texto
     let photosSentLog = "";
+    let photoFailed = false;
     if (asksForPhoto(text)) {
       const photos = await findPhotoMatches(text, ctx.supplierMentioned);
+      const sent: { caption: string }[] = [];
+      const failed: { caption: string }[] = [];
       for (const ph of photos) {
-        await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+        const ok = await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+        if (ok) sent.push(ph); else failed.push(ph);
       }
-      if (photos.length > 0) {
-        photosSentLog = `\n[${photos.length} foto(s) enviada(s): ${photos.map((p) => p.caption).join(", ")}]`;
+      if (sent.length > 0) {
+        photosSentLog = `\n[${sent.length} foto(s) enviada(s): ${sent.map((p) => p.caption).join(", ")}]`;
+      }
+      if (failed.length > 0) {
+        photosSentLog += `\n[⚠️ ${failed.length} foto(s) FALHARAM no envio: ${failed.map((p) => p.caption).join(", ")}]`;
+      }
+      if (photos.length > 0 && sent.length === 0) {
+        photoFailed = true;
       }
     }
 
