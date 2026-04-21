@@ -450,6 +450,22 @@ export default function Inventory() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {imgSearchTarget && (
+        <SupplierImageSearch
+          open={imgSearchOpen}
+          onOpenChange={(o) => { setImgSearchOpen(o); if (!o) setImgSearchTarget(null); }}
+          productName={imgSearchTarget.productName}
+          supplier={imgSearchTarget.supplier}
+          variantId={imgSearchTarget.variantId}
+          productId={imgSearchTarget.productId}
+          applyToAllVariants={imgSearchTarget.applyToAllVariants}
+          onSaved={(url) => {
+            imgSearchTarget.onLocal?.(url);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }
