@@ -59,12 +59,12 @@ export default function Sales() {
     const [s, p, c] = await Promise.all([
       supabase.from("sales").select("*, customers(name), sale_items(*)").order("sale_date", { ascending: false }).limit(100),
       supabase.from("products").select("id, name, price, cost, product_variants(id, size, color, quantity)").eq("active", true).order("name"),
-      supabase.from("customers").select("id, name, phone").order("name"),
+      fetchAll<Customer>((sb) => sb.from("customers").select("id, name, phone").order("name")),
     ]);
     if (s.error) toast.error(s.error.message);
     setSales((s.data ?? []) as SaleRow[]);
     setProducts((p.data ?? []) as Product[]);
-    setCustomers((c.data ?? []) as Customer[]);
+    setCustomers(c as Customer[]);
   };
 
   useEffect(() => { load(); }, []);

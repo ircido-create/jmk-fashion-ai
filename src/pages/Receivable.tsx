@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,18 +42,24 @@ export default function Receivable() {
   const [filter, setFilter] = useState<string>("todos");
 
   const load = async () => {
-    const { data } = await supabase
-      .from("accounts_receivable")
-      .select("*, customers(name)")
-      .order("due_date", { ascending: false });
-    const today = new Date().toISOString().slice(0, 10);
-    // mark overdue locally
-    setList((data ?? []).map((r: any) => ({
-      ...r,
-      status: r.status === "pendente" && r.due_date < today ? "vencido" : r.status,
-    })));
-    const { data: cs } = await supabase.from("customers").select("id, name").order("name");
-    setCustomers(cs ?? []);
+    try {
+      const data = await fetchAll<any>((sb) =>
+        sb.from("accounts_receivable")
+          .select("*, customers(name)")
+          .order("due_date", { ascending: false })
+      );
+      const today = new Date().toISOString().slice(0, 10);
+      setList(data.map((r: any) => ({
+        ...r,
+        status: r.status === "pendente" && r.due_date < today ? "vencido" : r.status,
+      })));
+      const cs = await fetchAll<Customer>((sb) =>
+        sb.from("customers").select("id, name").order("name")
+      );
+      setCustomers(cs);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
   };
 
   useEffect(() => { load(); }, []);

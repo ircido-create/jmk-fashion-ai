@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,12 +39,18 @@ export default function Payable() {
   const [filter, setFilter] = useState<string>("todos");
 
   const load = async () => {
-    const { data } = await supabase.from("accounts_payable").select("*").order("due_date", { ascending: false });
-    const today = new Date().toISOString().slice(0, 10);
-    setList((data ?? []).map((r: any) => ({
-      ...r,
-      status: r.status === "pendente" && r.due_date < today ? "vencido" : r.status,
-    })));
+    try {
+      const data = await fetchAll<any>((sb) =>
+        sb.from("accounts_payable").select("*").order("due_date", { ascending: false })
+      );
+      const today = new Date().toISOString().slice(0, 10);
+      setList(data.map((r: any) => ({
+        ...r,
+        status: r.status === "pendente" && r.due_date < today ? "vencido" : r.status,
+      })));
+    } catch (e: any) {
+      toast.error(e.message);
+    }
   };
 
   useEffect(() => { load(); }, []);
