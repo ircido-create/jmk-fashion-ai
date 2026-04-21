@@ -1,0 +1,2 @@
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS address TEXT;
