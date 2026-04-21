@@ -10,6 +10,7 @@ import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2, I
 import { toast } from "sonner";
 import { z } from "zod";
 import SupplierImageSearch from "@/components/SupplierImageSearch";
+import { usePagination } from "@/hooks/usePagination";
 
 interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
@@ -215,6 +216,7 @@ export default function Inventory() {
     const matchesSupplier = supplierFilter === "all" || p.supplier === supplierFilter;
     return matchesSearch && matchesSupplier;
   });
+  const { paged, Controls } = usePagination(filtered, 20);
 
   const stockTotals = filtered.reduce(
     (acc, p) => {
@@ -283,7 +285,7 @@ export default function Inventory() {
         </div>
 
         <div className="grid gap-3">
-          {filtered.map((p) => (
+          {paged.map((p) => (
             <div key={p.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
               <div className="flex items-start gap-3">
                 {p.image_url ? (
@@ -331,6 +333,7 @@ export default function Inventory() {
           ))}
           {filtered.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nenhum produto</div>}
         </div>
+        <Controls />
       </GlassCard>
 
       <Dialog open={open} onOpenChange={setOpen}>
