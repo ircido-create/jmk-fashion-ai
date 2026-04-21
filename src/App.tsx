@@ -13,6 +13,7 @@ import Inventory from "./pages/Inventory";
 import Receivable from "./pages/Receivable";
 import Payable from "./pages/Payable";
 import WhatsApp from "./pages/WhatsApp";
+import Conversations from "./pages/Conversations";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound.tsx";
@@ -35,6 +36,7 @@ const App = () => (
                 <Route path="/estoque" element={<Inventory />} />
                 <Route path="/contas-receber" element={<Receivable />} />
                 <Route path="/contas-pagar" element={<Payable />} />
+                <Route path="/conversas" element={<Conversations />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
               </Route>
               <Route element={<ProtectedRoute adminOnly />}>
