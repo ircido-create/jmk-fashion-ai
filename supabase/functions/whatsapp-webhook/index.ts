@@ -279,8 +279,11 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: true })
       .limit(20);
 
+    // Primeira mensagem = só existe a inbound que acabamos de inserir agora
+    const isFirstMessage = (history?.length ?? 0) <= 1;
+
     const ctx = await buildContext(fromPhone, text);
-    const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx);
+    const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx, isFirstMessage);
 
     await sendWhatsApp(fromPhone, reply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({

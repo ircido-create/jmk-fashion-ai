@@ -49,7 +49,11 @@ Deno.serve(async (req) => {
         .gte("sent_at", new Date(today).toISOString());
       if ((count ?? 0) > 0) continue;
 
-      const msg = `Olá, ${cust.name} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${r.due_date}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸`;
+      const dueBR = (() => {
+        const m = String(r.due_date).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `${m[3]}/${m[2]}/${m[1]}` : String(r.due_date);
+      })();
+      const msg = `Olá, ${cust.name} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${dueBR}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸`;
 
       const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
       const res = await fetch(url, {
