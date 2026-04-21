@@ -166,7 +166,70 @@ export default function Conversations() {
     await loadConversations();
   };
 
-  const filtered = conversations.filter((c) => {
+  const openRegister = () => {
+    if (!active) return;
+    setRegName(active.customer?.name ?? "");
+    setRegEmail("");
+    setRegAddress("");
+    setRegNotes("");
+    setRegOpen(true);
+  };
+
+  const registerCustomer = async () => {
+    if (!active) return;
+    if (!regName.trim()) {
+      toast({ title: "Informe o nome do cliente", variant: "destructive" });
+      return;
+    }
+    setRegSaving(true);
+    const phone = active.customer_phone;
+
+    // Verifica se já existe cliente com este telefone
+    const { data: existing } = await supabase
+      .from("customers").select("id").eq("phone", phone).maybeSingle();
+
+    let customerId = existing?.id;
+    if (existing) {
+      const { error } = await supabase.from("customers").update({
+        name: regName,
+        email: regEmail || null,
+        address: regAddress || null,
+        notes: regNotes || null,
+      }).eq("id", existing.id);
+      if (error) {
+        setRegSaving(false);
+        toast({ title: "Falha ao atualizar cliente", description: error.message, variant: "destructive" });
+        return;
+      }
+    } else {
+      const { data: created, error } = await supabase.from("customers").insert({
+        name: regName,
+        phone,
+        email: regEmail || null,
+        address: regAddress || null,
+        notes: regNotes || null,
+      }).select("id").single();
+      if (error) {
+        setRegSaving(false);
+        toast({ title: "Falha ao cadastrar cliente", description: error.message, variant: "destructive" });
+        return;
+      }
+      customerId = created.id;
+    }
+
+    // Vincula a conversa ao cliente
+    await supabase.from("whatsapp_conversations")
+      .update({ customer_id: customerId })
+      .eq("id", active.id);
+
+    setRegSaving(false);
+    setRegOpen(false);
+    toast({ title: "Cliente salvo 💕" });
+    await loadConversations();
+    // Atualiza a conversa ativa em memória
+    setActive({ ...active, customer_id: customerId!, customer: { name: regName } });
+  };
+
     const q = search.toLowerCase();
     return (
       c.customer_phone.toLowerCase().includes(q) ||
