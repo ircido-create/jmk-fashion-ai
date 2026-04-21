@@ -6,15 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2, Image as ImageIcon, Upload, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2, Image as ImageIcon, Upload, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
+import SupplierImageSearch from "@/components/SupplierImageSearch";
 
 interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
   id: string; name: string; description: string | null; category: string | null;
   sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
+  image_url?: string | null;
   product_variants?: Variant[];
 }
 
