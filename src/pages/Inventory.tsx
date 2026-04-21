@@ -142,6 +142,7 @@ export default function Inventory() {
             size: v.size || null,
             color: v.color || null,
             quantity: Number(v.quantity) || 0,
+            image_url: v.image_url || null,
           }));
         if (toInsert.length > 0) {
           const { error: ve } = await supabase.from("product_variants").insert(toInsert);
