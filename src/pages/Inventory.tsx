@@ -169,6 +169,20 @@ export default function Inventory() {
     return matchesSearch && matchesSupplier;
   });
 
+  const stockTotals = filtered.reduce(
+    (acc, p) => {
+      const qty = totalQty(p);
+      acc.units += qty;
+      acc.cost += qty * Number(p.cost ?? 0);
+      acc.potential += qty * Number(p.price ?? 0);
+      return acc;
+    },
+    { units: 0, cost: 0, potential: 0 }
+  );
+  const fmtBRL = (n: number) =>
+    n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const margin = stockTotals.potential - stockTotals.cost;
+
   return (
     <div>
       <PageHeader
@@ -200,6 +214,25 @@ export default function Inventory() {
             <option value="all">Todos os fornecedores</option>
             {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Peças em estoque</div>
+            <div className="text-lg font-semibold mt-0.5">{stockTotals.units}</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Investido (custo)</div>
+            <div className="text-lg font-semibold mt-0.5">{fmtBRL(stockTotals.cost)}</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Potencial de venda</div>
+            <div className="text-lg font-semibold mt-0.5 text-primary">{fmtBRL(stockTotals.potential)}</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Lucro potencial</div>
+            <div className="text-lg font-semibold mt-0.5 text-success">{fmtBRL(margin)}</div>
+          </div>
         </div>
 
         <div className="grid gap-3">
