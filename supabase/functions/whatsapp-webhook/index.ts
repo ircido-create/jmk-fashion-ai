@@ -124,6 +124,14 @@ async function searchProducts(userMsg: string) {
   return { matched, all };
 }
 
+function formatDateBR(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  // iso: "2026-04-10" -> "10/04/2026"
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(iso);
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 async function buildContext(phone: string, userMsg: string) {
   const { matched, all } = await searchProducts(userMsg);
 
@@ -140,7 +148,7 @@ async function buildContext(phone: string, userMsg: string) {
       .select("description, amount, due_date, status")
       .eq("customer_id", customer.id)
       .neq("status", "pago");
-    debts = data ?? [];
+    debts = (data ?? []).map((d: any) => ({ ...d, due_date: formatDateBR(d.due_date) }));
   }
 
   return { matched, all, customer, debts };
@@ -158,7 +166,7 @@ function formatProducts(list: any[]) {
     .join("\n");
 }
 
-async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any) {
+async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY ausente");
 
@@ -168,6 +176,12 @@ async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx
       : `⚠️ Nenhum produto do catálogo corresponde à pergunta atual do cliente. Se ele pediu um modelo específico (ex: "vestido amanda"), diga que NÃO temos esse modelo e ofereça alternativas reais da lista geral abaixo.`;
 
   const contextText = `
+=== ESTADO DA CONVERSA ===
+PRIMEIRA_MENSAGEM=${isFirstMessage ? "true" : "false"}
+${isFirstMessage
+  ? "→ Esta é a PRIMEIRA mensagem desta conversa. Cumprimente e se apresente UMA vez."
+  : "→ Conversa JÁ EM ANDAMENTO. NÃO se apresente, NÃO diga seu nome, NÃO diga 'aqui é da JMK'. Vá direto ao ponto."}
+
 === CATÁLOGO COMPLETO (use SOMENTE estes produtos, nada além) ===
 ${formatProducts(ctx.all)}
 
@@ -177,7 +191,7 @@ ${matchInfo}
 === CLIENTE ===
 ${ctx.customer ? `Nome: ${ctx.customer.name}${ctx.customer.address ? ` | Endereço: ${ctx.customer.address}` : ""}` : "Cliente NÃO cadastrado — colete nome e endereço se for fechar pedido."}
 
-=== DÍVIDAS PENDENTES ===
+=== DÍVIDAS PENDENTES (FONTE DA VERDADE — ignore datas/valores do histórico) ===
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
   `• ${d.description ?? "Compra"} — R$ ${d.amount} — vence ${d.due_date} — status ${d.status}`
 ).join("\n")}
@@ -265,8 +279,11 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: true })
       .limit(20);
 
+    // Primeira mensagem = só existe a inbound que acabamos de inserir agora
+    const isFirstMessage = (history?.length ?? 0) <= 1;
+
     const ctx = await buildContext(fromPhone, text);
-    const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx);
+    const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx, isFirstMessage);
 
     await sendWhatsApp(fromPhone, reply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
