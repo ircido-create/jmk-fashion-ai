@@ -261,6 +261,36 @@ export default function Inventory() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFile(null); } }}>
+        <DialogContent className="glass-card border-white/40 max-w-md">
+          <DialogHeader><DialogTitle>Importar romaneio (PDF)</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Anexe o PDF do romaneio. A IA extrai fornecedor, produtos e parcelas para cadastrar
+              automaticamente no estoque (margem 100% arredondada para cima) e em contas a pagar.
+            </p>
+            <div>
+              <Label>Arquivo PDF</Label>
+              <Input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                disabled={importing}
+                className="glass-input mt-1"
+              />
+              {importFile && <p className="text-xs text-muted-foreground mt-1">{importFile.name}</p>}
+            </div>
+            <Button
+              onClick={handleImport}
+              disabled={!importFile || importing}
+              className="w-full bg-gradient-primary text-primary-foreground rounded-xl"
+            >
+              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar</>)}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
