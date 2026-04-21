@@ -374,7 +374,7 @@ function formatProducts(list: any[]) {
     .join("\n");
 }
 
-async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean) {
+async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean, pix: { key?: string | null; type?: string | null; recipient?: string | null }) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY ausente");
 
@@ -386,6 +386,21 @@ async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx
   const supplierBlock = ctx.supplierMentioned
     ? `→ O cliente mencionou o FORNECEDOR "${ctx.supplierMentioned}". Mostre APENAS produtos deste fornecedor (a lista abaixo já está filtrada). Se ele pedir algo de outro fornecedor depois, troque o filtro.`
     : `→ Nenhum fornecedor específico mencionado. Use o catálogo geral.`;
+
+  const pixBlock = pix.key
+    ? `Chave PIX configurada: ${pix.key}
+Tipo: ${pix.type ?? "não informado"}${pix.recipient ? `\nRecebedor: ${pix.recipient}` : ""}
+
+→ Quando a cliente disser que QUER PAGAR, FECHAR PEDIDO, FINALIZAR COMPRA, perguntar "como pago?", "qual a forma de pagamento?", "como faço o pagamento?", ou similar:
+   1. Sugira pagamento via PIX de forma natural e calorosa.
+   2. Envie a chave PIX EXATAMENTE como está acima (sem alterar dígitos), informando o tipo e o recebedor (se houver).
+   3. Peça que ela envie o comprovante após o pagamento.
+   4. Formato sugerido (adapte o tom):
+      "Pode pagar via PIX 💕
+      Chave (${pix.type ?? "PIX"}): ${pix.key}${pix.recipient ? `\n      Recebedor: ${pix.recipient}` : ""}
+      Me manda o comprovante quando pagar, por favor 🥰"
+   5. NÃO invente outras chaves PIX, contas bancárias ou formas de pagamento.`
+    : `→ Nenhuma chave PIX configurada. Se a cliente perguntar sobre pagamento, diga que vai verificar com a equipe e retorna em breve.`;
 
   const contextText = `
 === ESTADO DA CONVERSA ===
@@ -413,6 +428,9 @@ CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃ
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
   `• ${d.description ?? "Compra"} — R$ ${d.amount} — vence ${d.due_date} — status ${d.status}`
 ).join("\n")}
+
+=== PAGAMENTO (PIX) ===
+${pixBlock}
 `.trim();
 
   const messages = [
@@ -520,7 +538,14 @@ Deno.serve(async (req) => {
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
     const ctx = await buildContext(fromPhone, text, history ?? []);
-    const reply = await callAI(ai?.system_prompt ?? "", history ?? [], text, ctx, isFirstMessage);
+    const reply = await callAI(
+      ai?.system_prompt ?? "",
+      history ?? [],
+      text,
+      ctx,
+      isFirstMessage,
+      { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name }
+    );
 
     await sendWhatsApp(fromPhone, reply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
