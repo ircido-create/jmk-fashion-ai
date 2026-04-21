@@ -216,7 +216,26 @@ export default function Inventory() {
           </select>
         </div>
 
-        <div className="grid gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Peças em estoque</div>
+            <div className="text-lg font-semibold mt-0.5">{stockTotals.units}</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Investido (custo)</div>
+            <div className="text-lg font-semibold mt-0.5">{fmtBRL(stockTotals.cost)}</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Potencial de venda</div>
+            <div className="text-lg font-semibold mt-0.5 text-primary">{fmtBRL(stockTotals.potential)}</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+            <div className="text-[11px] text-muted-foreground">Lucro potencial</div>
+            <div className="text-lg font-semibold mt-0.5 text-success">{fmtBRL(margin)}</div>
+          </div>
+        </div>
+
+        <div className="grid gap-3"></div>
           {filtered.map((p) => (
             <div key={p.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
               <div className="flex items-start justify-between gap-3">
