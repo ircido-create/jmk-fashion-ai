@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { AIAssistant } from "@/components/AIAssistant";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function AppLayout() {
   const { user, signOut, isAdmin } = useAuth();
@@ -25,10 +26,11 @@ export function AppLayout() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <span className="hidden sm:inline-flex text-xs px-3 py-1 rounded-full bg-gradient-primary text-primary-foreground font-medium">
                 {isAdmin ? "Admin" : "Vendedor"}
               </span>
+              <ThemeToggle />
               <Button variant="ghost" size="sm" onClick={signOut}>
                 <LogOut className="h-4 w-4" />
               </Button>
