@@ -165,13 +165,37 @@ async function getOrCreateConversation(phone: string) {
   return created;
 }
 
-// RAG: busca produtos relevantes à mensagem do cliente
-async function searchProducts(userMsg: string) {
+// Normaliza para comparação (sem acento, minúsculo, sem espaços extras)
+function norm(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+// Detecta se o cliente mencionou um fornecedor específico na mensagem
+async function detectSupplier(userMsg: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("products")
+    .select("supplier")
+    .eq("active", true)
+    .not("supplier", "is", null);
+  const suppliers = Array.from(
+    new Set((data ?? []).map((r: any) => r.supplier).filter((s: any) => !!s && s.trim() !== ""))
+  );
+  const msg = norm(userMsg);
+  for (const s of suppliers) {
+    const ns = norm(s);
+    if (msg.includes(ns)) return s;
+    const tokens = ns.split(/\s+/).filter((t) => t.length >= 4);
+    if (tokens.some((t) => msg.includes(t))) return s;
+  }
+  return null;
+}
+
+// RAG: busca produtos relevantes à mensagem do cliente, opcionalmente restrito a um fornecedor
+async function searchProducts(userMsg: string, supplier: string | null) {
   const keywords = extractKeywords(userMsg);
   let matched: any[] = [];
 
   if (keywords.length > 0) {
-    // OR ilike em nome/descrição/categoria/sku
     const orFilter = keywords
       .flatMap((k) => [
         `name.ilike.%${k}%`,
@@ -181,23 +205,26 @@ async function searchProducts(userMsg: string) {
       ])
       .join(",");
 
-    const { data } = await supabase
+    let q = supabase
       .from("products")
-      .select("name, price, category, description, sku, product_variants(size, color, quantity)")
+      .select("name, price, category, description, sku, supplier, product_variants(size, color, quantity)")
       .eq("active", true)
       .or(orFilter)
-      .limit(15);
+      .limit(20);
+    if (supplier) q = q.eq("supplier", supplier);
+    const { data } = await q;
     matched = data ?? [];
   }
 
-  // Catálogo geral (top 20) como fallback / contexto amplo
-  const { data: general } = await supabase
+  // Catálogo geral — restringe ao fornecedor se mencionado
+  let gq = supabase
     .from("products")
-    .select("name, price, category, description, sku, product_variants(size, color, quantity)")
+    .select("name, price, category, description, sku, supplier, product_variants(size, color, quantity)")
     .eq("active", true)
-    .limit(20);
+    .limit(supplier ? 50 : 20);
+  if (supplier) gq = gq.eq("supplier", supplier);
+  const { data: general } = await gq;
 
-  // dedup por nome
   const seen = new Set<string>();
   const all = [...matched, ...(general ?? [])].filter((p: any) => {
     if (seen.has(p.name)) return false;
