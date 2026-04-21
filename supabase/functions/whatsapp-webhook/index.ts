@@ -588,6 +588,7 @@ Deno.serve(async (req) => {
     let text: string = message.text?.body ?? "";
 
     // Suporte a áudio: baixa do WhatsApp e transcreve via Lovable AI
+    let audioFailureNote: string | null = null;
     if (!text && (message.type === "audio" || message.type === "voice")) {
       const mediaId = message.audio?.id ?? message.voice?.id;
       if (mediaId) {
@@ -598,11 +599,36 @@ Deno.serve(async (req) => {
             text = transcript;
             console.log("Áudio transcrito:", text);
           } else {
-            await sendWhatsApp(fromPhone, "Desculpe, não consegui entender seu áudio 😅 Pode escrever ou gravar de novo, por favor? 💕", cfg);
-            return new Response("ok", { status: 200, headers: corsHeaders });
+            audioFailureNote = "[🎤 Áudio recebido — falha ao transcrever]";
           }
+        } else {
+          audioFailureNote = "[🎤 Áudio recebido — falha ao baixar da Meta (token pode ter expirado)]";
         }
+      } else {
+        audioFailureNote = "[🎤 Áudio recebido — sem media id]";
       }
+    }
+
+    // Se houve falha de áudio, registra na conversa e avisa a cliente, em vez de dropar silenciosamente
+    if (audioFailureNote && !text) {
+      const conv = await getOrCreateConversation(fromPhone);
+      if (conv) {
+        await supabase.from("whatsapp_messages").insert({
+          conversation_id: conv.id,
+          direction: "inbound",
+          content: audioFailureNote,
+        });
+        await supabase
+          .from("whatsapp_conversations")
+          .update({ last_message_at: new Date().toISOString() })
+          .eq("id", conv.id);
+      }
+      await sendWhatsApp(
+        fromPhone,
+        "Desculpe, não consegui ouvir seu áudio 😅 Pode escrever a mensagem ou gravar novamente, por favor? 💕",
+        cfg
+      );
+      return new Response("ok", { status: 200, headers: corsHeaders });
     }
 
     if (!text) return new Response("ok", { status: 200, headers: corsHeaders });
