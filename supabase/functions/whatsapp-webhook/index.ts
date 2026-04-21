@@ -179,7 +179,7 @@ async function sendWhatsApp(to: string, text: string, cfg: any) {
   }
 }
 
-async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
+async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any): Promise<boolean> {
   const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
   const res = await fetch(url, {
     method: "POST",
@@ -196,9 +196,11 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, 
   });
   if (!res.ok) {
     const body = await res.text();
-    console.error("Meta image send error:", res.status, body);
+    console.error("Meta image send error:", res.status, "url=", imageUrl, body);
     await recordMetaError(res.status, body);
+    return false;
   }
+  return true;
 }
 
 // Detecta se a cliente pediu foto/imagem
@@ -668,21 +670,35 @@ Deno.serve(async (req) => {
 
     // Se a cliente pediu foto, envia imagens antes da resposta de texto
     let photosSentLog = "";
+    let photoFailed = false;
     if (asksForPhoto(text)) {
       const photos = await findPhotoMatches(text, ctx.supplierMentioned);
+      const sent: { caption: string }[] = [];
+      const failed: { caption: string }[] = [];
       for (const ph of photos) {
-        await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+        const ok = await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+        if (ok) sent.push(ph); else failed.push(ph);
       }
-      if (photos.length > 0) {
-        photosSentLog = `\n[${photos.length} foto(s) enviada(s): ${photos.map((p) => p.caption).join(", ")}]`;
+      if (sent.length > 0) {
+        photosSentLog = `\n[${sent.length} foto(s) enviada(s): ${sent.map((p) => p.caption).join(", ")}]`;
+      }
+      if (failed.length > 0) {
+        photosSentLog += `\n[⚠️ ${failed.length} foto(s) FALHARAM no envio: ${failed.map((p) => p.caption).join(", ")}]`;
+      }
+      if (photos.length > 0 && sent.length === 0) {
+        photoFailed = true;
       }
     }
 
-    await sendWhatsApp(fromPhone, reply, cfg);
+    let finalReply = reply;
+    if (photoFailed) {
+      finalReply = `Ah, desculpa! Tentei te mandar as fotos mas não consegui enviar agora 😅 Mas posso te descrever:\n\n${reply}`;
+    }
+    await sendWhatsApp(fromPhone, finalReply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
-      content: reply + photosSentLog,
+      content: finalReply + photosSentLog,
     });
     if (outErr) console.error("insert outbound error:", outErr);
     await supabase
