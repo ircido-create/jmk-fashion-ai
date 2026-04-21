@@ -143,6 +143,56 @@ async function sendWhatsApp(to: string, text: string, cfg: any) {
   if (!res.ok) console.error("Meta send error:", res.status, await res.text());
 }
 
+async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any) {
+  const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${cfg.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "image",
+      image: { link: imageUrl, caption: caption.slice(0, 1024) },
+    }),
+  });
+  if (!res.ok) console.error("Meta image send error:", res.status, await res.text());
+}
+
+// Detecta se a cliente pediu foto/imagem
+function asksForPhoto(text: string): boolean {
+  const t = norm(text);
+  return /(foto|fotos|imagem|imagens|figura|me manda.*foto|tem foto|tem imagem|posso ver|me mostra|manda.*foto)/.test(t);
+}
+
+// Busca variações com foto que correspondam à mensagem
+async function findPhotoMatches(userMsg: string, supplier: string | null): Promise<{ url: string; caption: string }[]> {
+  const keywords = extractKeywords(userMsg);
+  let q = supabase
+    .from("products")
+    .select("name, supplier, product_variants(size, color, image_url, quantity)")
+    .eq("active", true)
+    .limit(20);
+  if (supplier) q = q.eq("supplier", supplier);
+  if (keywords.length > 0) {
+    q = q.or(keywords.flatMap((k) => [`name.ilike.%${k}%`, `description.ilike.%${k}%`, `category.ilike.%${k}%`]).join(","));
+  }
+  const { data } = await q;
+  const out: { url: string; caption: string }[] = [];
+  for (const p of data ?? []) {
+    for (const v of (p as any).product_variants ?? []) {
+      if (v.image_url) {
+        const variantLabel = [v.size, v.color].filter(Boolean).join(" / ");
+        out.push({ url: v.image_url, caption: `${(p as any).name}${variantLabel ? ` — ${variantLabel}` : ""}` });
+        if (out.length >= 4) return out;
+      }
+    }
+  }
+  return out;
+}
+
 async function getOrCreateConversation(phone: string) {
   const { data: existing } = await supabase
     .from("whatsapp_conversations")
@@ -409,6 +459,9 @@ ${isFirstMessage
   ? "→ Esta é a PRIMEIRA mensagem desta conversa. Cumprimente e se apresente UMA vez."
   : "→ Conversa JÁ EM ANDAMENTO. NÃO se apresente, NÃO diga seu nome, NÃO diga 'aqui é da JMK'. Vá direto ao ponto."}
 
+=== FOTOS ===
+Se a cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó 💕", "Olha que lindos") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
+
 === FILTRO POR FORNECEDOR ===
 ${supplierBlock}
 
@@ -547,11 +600,23 @@ Deno.serve(async (req) => {
       { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name }
     );
 
+    // Se a cliente pediu foto, envia imagens antes da resposta de texto
+    let photosSentLog = "";
+    if (asksForPhoto(text)) {
+      const photos = await findPhotoMatches(text, ctx.supplierMentioned);
+      for (const ph of photos) {
+        await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+      }
+      if (photos.length > 0) {
+        photosSentLog = `\n[${photos.length} foto(s) enviada(s): ${photos.map((p) => p.caption).join(", ")}]`;
+      }
+    }
+
     await sendWhatsApp(fromPhone, reply, cfg);
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
-      content: reply,
+      content: reply + photosSentLog,
     });
     if (outErr) console.error("insert outbound error:", outErr);
     await supabase

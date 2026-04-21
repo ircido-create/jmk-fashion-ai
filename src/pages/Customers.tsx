@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Link } from "react-router-dom";
 
 interface Customer { id: string; name: string; phone: string | null; email: string | null; address: string | null; notes: string | null; }
 
@@ -104,14 +105,17 @@ export default function Customers() {
 
         <div className="space-y-2">
           {filtered.map((c) => (
-            <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
-              <div className="min-w-0 flex-1">
-                <div className="font-medium truncate">{c.name}</div>
+            <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur hover:bg-white/60 dark:hover:bg-white/10 transition-all">
+              <Link to={`/clientes/${c.id}`} className="min-w-0 flex-1 group">
+                <div className="font-medium truncate flex items-center gap-1 group-hover:text-primary transition-colors">
+                  {c.name}
+                  <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
                 <div className="text-xs text-muted-foreground truncate">
                   {c.phone || "—"} {c.email ? `• ${c.email}` : ""}
                 </div>
                 {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
-              </div>
+              </Link>
               <div className="flex gap-1">
                 <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
                 <Button size="icon" variant="ghost" onClick={() => remove(c.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>

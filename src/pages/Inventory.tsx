@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Layers, AlertTriangle, FileUp, Loader2, Image as ImageIcon, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-interface Variant { id?: string; size: string; color: string; quantity: number; }
+interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
   id: string; name: string; description: string | null; category: string | null;
   sku: string | null; supplier: string | null;
@@ -80,8 +80,20 @@ export default function Inventory() {
   const openNew = () => { setEditing(null); setVariants([]); setOpen(true); };
   const openEdit = (p: Product) => {
     setEditing(p);
-    setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity })) ?? []);
+    setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity, image_url: v.image_url ?? null })) ?? []);
     setOpen(true);
+  };
+
+  const uploadVariantImage = async (i: number, file: File) => {
+    if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem"); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande (máx 5MB)"); return; }
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("product-images").upload(path, file, { upsert: false });
+    if (upErr) { toast.error("Falha no upload: " + upErr.message); return; }
+    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    updVariant(i, { image_url: data.publicUrl });
+    toast.success("Foto adicionada");
   };
 
   const save = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -130,6 +142,7 @@ export default function Inventory() {
             size: v.size || null,
             color: v.color || null,
             quantity: Number(v.quantity) || 0,
+            image_url: v.image_url || null,
           }));
         if (toInsert.length > 0) {
           const { error: ve } = await supabase.from("product_variants").insert(toInsert);
@@ -303,13 +316,48 @@ export default function Inventory() {
                 <Label>Variações (tamanho/cor/qtd)</Label>
                 <Button type="button" size="sm" variant="ghost" onClick={addVariant}><Plus className="h-3 w-3 mr-1" /> Adicionar</Button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {variants.map((v, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_80px_auto] gap-2">
-                    <Input placeholder="P/M/G" value={v.size} onChange={(e) => updVariant(i, { size: e.target.value })} className="glass-input" />
-                    <Input placeholder="Cor" value={v.color} onChange={(e) => updVariant(i, { color: e.target.value })} className="glass-input" />
-                    <Input type="number" value={v.quantity} onChange={(e) => updVariant(i, { quantity: Number(e.target.value) })} className="glass-input" />
-                    <Button type="button" size="icon" variant="ghost" onClick={() => delVariant(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <div key={i} className="p-3 rounded-xl bg-white/30 dark:bg-white/5 space-y-2">
+                    <div className="grid grid-cols-[1fr_1fr_80px_auto] gap-2">
+                      <Input placeholder="P/M/G" value={v.size} onChange={(e) => updVariant(i, { size: e.target.value })} className="glass-input" />
+                      <Input placeholder="Cor" value={v.color} onChange={(e) => updVariant(i, { color: e.target.value })} className="glass-input" />
+                      <Input type="number" value={v.quantity} onChange={(e) => updVariant(i, { quantity: Number(e.target.value) })} className="glass-input" />
+                      <Button type="button" size="icon" variant="ghost" onClick={() => delVariant(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.image_url ? (
+                        <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-white/40">
+                          <img src={v.image_url} alt={`${v.color || "variação"}`} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => updVariant(i, { image_url: null })}
+                            className="absolute top-0 right-0 bg-destructive/90 text-destructive-foreground rounded-bl-md p-0.5"
+                            aria-label="Remover foto"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="h-16 w-16 rounded-lg border border-dashed border-muted-foreground/40 flex items-center justify-center text-muted-foreground">
+                          <ImageIcon className="h-5 w-5" />
+                        </div>
+                      )}
+                      <label className="cursor-pointer text-xs inline-flex items-center gap-1 px-2 py-1 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition">
+                        <Upload className="h-3 w-3" />
+                        {v.image_url ? "Trocar foto" : "Adicionar foto"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadVariantImage(i, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 ))}
                 {variants.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma variação ainda.</p>}
