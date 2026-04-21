@@ -37,7 +37,7 @@ export default function Auth() {
       password: form.get("password"),
     });
     if (!parsed.success) {
-      toast.error(parsed.error.errors[0].message);
+      toast.error(parsed.error.issues[0].message);
       return;
     }
     setLoading(true);
@@ -60,7 +60,7 @@ export default function Auth() {
       fullName: form.get("fullName"),
     });
     if (!parsed.success) {
-      toast.error(parsed.error.errors[0].message);
+      toast.error(parsed.error.issues[0].message);
       return;
     }
     setLoading(true);
