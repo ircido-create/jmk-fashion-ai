@@ -180,6 +180,8 @@ Deno.serve(async (req) => {
       let productId: string;
       if (existing) {
         productId = existing.id;
+        // Atualiza fornecedor caso ainda não esteja preenchido
+        await admin.from("products").update({ supplier }).eq("id", productId).is("supplier", null);
       } else {
         const { data: newP, error: pErr } = await admin
           .from("products")
@@ -188,6 +190,7 @@ Deno.serve(async (req) => {
             name: it.name,
             cost,
             price,
+            supplier,
             low_stock_threshold: 5,
           })
           .select("id")

@@ -13,7 +13,7 @@ import { z } from "zod";
 interface Variant { id?: string; size: string; color: string; quantity: number; }
 interface Product {
   id: string; name: string; description: string | null; category: string | null;
-  sku: string | null;
+  sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
   product_variants?: Variant[];
 }
@@ -21,6 +21,7 @@ interface Product {
 const schema = z.object({
   name: z.string().trim().min(2).max(100),
   sku: z.string().trim().max(60).optional().or(z.literal("")),
+  supplier: z.string().trim().max(120).optional().or(z.literal("")),
   category: z.string().trim().max(60).optional().or(z.literal("")),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   price: z.number().nonnegative(),
@@ -34,6 +35,7 @@ export default function Inventory() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [search, setSearch] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
@@ -88,6 +90,7 @@ export default function Inventory() {
     const parsed = schema.safeParse({
       name: f.get("name"),
       sku: f.get("sku"),
+      supplier: f.get("supplier"),
       category: f.get("category"),
       description: f.get("description"),
       price: Number(f.get("price")),
@@ -98,6 +101,7 @@ export default function Inventory() {
     const payload = {
       name: parsed.data.name,
       sku: parsed.data.sku || null,
+      supplier: parsed.data.supplier || null,
       description: parsed.data.description || null,
       category: parsed.data.category || null,
       price: parsed.data.price,
@@ -153,10 +157,17 @@ export default function Inventory() {
   const totalQty = (p: Product) => p.product_variants?.reduce((s, v) => s + v.quantity, 0) ?? 0;
   const isLow = (p: Product) => totalQty(p) <= p.low_stock_threshold;
 
-  const filtered = list.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.category ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const suppliers = Array.from(new Set(list.map((p) => p.supplier).filter((s): s is string => !!s && s.trim() !== ""))).sort();
+
+  const filtered = list.filter((p) => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      p.name.toLowerCase().includes(q) ||
+      (p.category ?? "").toLowerCase().includes(q) ||
+      (p.supplier ?? "").toLowerCase().includes(q);
+    const matchesSupplier = supplierFilter === "all" || p.supplier === supplierFilter;
+    return matchesSearch && matchesSupplier;
+  });
 
   return (
     <div>
@@ -176,9 +187,19 @@ export default function Inventory() {
       />
 
       <GlassCard>
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produto..." className="glass-input pl-10" />
+        <div className="flex flex-col sm:flex-row gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produto, categoria ou fornecedor..." className="glass-input pl-10" />
+          </div>
+          <select
+            value={supplierFilter}
+            onChange={(e) => setSupplierFilter(e.target.value)}
+            className="glass-input h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-56"
+          >
+            <option value="all">Todos os fornecedores</option>
+            {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
 
         <div className="grid gap-3">
@@ -190,6 +211,7 @@ export default function Inventory() {
                     <span className="font-medium">{p.name}</span>
                     {p.sku && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">SKU: {p.sku}</span>}
                     {p.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{p.category}</span>}
+                    {p.supplier && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground">{p.supplier}</span>}
                     {isLow(p) && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground inline-flex items-center gap-1">
                         <AlertTriangle className="h-3 w-3" /> Estoque baixo
@@ -231,7 +253,11 @@ export default function Inventory() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Categoria</Label><Input name="category" defaultValue={editing?.category ?? ""} placeholder="Vestido, Blusa..." className="glass-input" /></div>
+              <div><Label>Fornecedor</Label><Input name="supplier" defaultValue={editing?.supplier ?? ""} placeholder="Nome do fornecedor" className="glass-input" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div><Label>Estoque mínimo</Label><Input name="low_stock_threshold" type="number" defaultValue={editing?.low_stock_threshold ?? 5} min={0} className="glass-input" /></div>
+              <div></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Preço (R$)</Label><Input name="price" type="number" step="0.01" defaultValue={editing?.price ?? 0} required className="glass-input" /></div>
