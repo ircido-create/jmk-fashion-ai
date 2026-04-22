@@ -135,13 +135,13 @@ export default function Receivable() {
     <div>
       <PageHeader
         title="Contas a Receber"
-        description={`Total filtrado: R$ ${total.toFixed(2)}`}
+        description={`${filterLabels[filter]}: R$ ${total.toFixed(2)} • ${filtered.length} título(s)`}
         actions={
           <>
             <Button
               variant="outline"
               className="rounded-xl"
-              onClick={() => exportReceivablePdf(filtered, filter)}
+              onClick={() => exportReceivablePdf(filtered, filterLabels[filter])}
               disabled={filtered.length === 0}
             >
               <FileDown className="h-4 w-4 mr-1" /> PDF
