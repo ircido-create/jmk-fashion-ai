@@ -41,7 +41,8 @@ export default function Receivable() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Receivable | null>(null);
-  const [filter, setFilter] = useState<string>("todos");
+  // Filtros: a_receber (default, inclui pendente+vencido), a_vencer, vencido, pago, todos
+  const [filter, setFilter] = useState<string>("a_receber");
 
   const load = async () => {
     try {
@@ -102,9 +103,33 @@ export default function Receivable() {
     if (error) toast.error(error.message); else { toast.success("Excluído"); load(); }
   };
 
-  const filtered = filter === "todos" ? list : list.filter((r) => r.status === filter);
+  const filtered = (() => {
+    switch (filter) {
+      case "todos": return list;
+      case "a_receber": return list.filter((r) => r.status === "pendente" || r.status === "vencido");
+      case "a_vencer": return list.filter((r) => r.status === "pendente");
+      case "vencido": return list.filter((r) => r.status === "vencido");
+      case "pago": return list.filter((r) => r.status === "pago");
+      default: return list;
+    }
+  })();
   const total = filtered.reduce((s, r) => s + Number(r.amount), 0);
+
+  // Totais globais (não dependem do filtro) para os cards de resumo
+  const sum = (arr: Receivable[]) => arr.reduce((s, r) => s + Number(r.amount), 0);
+  const aReceberAll = list.filter((r) => r.status === "pendente" || r.status === "vencido");
+  const vencidoAll = list.filter((r) => r.status === "vencido");
+  const pagoAll = list.filter((r) => r.status === "pago");
+
   const { paged, Controls } = usePagination(filtered, 20);
+
+  const filterLabels: Record<string, string> = {
+    todos: "Todos",
+    a_receber: "A Receber",
+    a_vencer: "A Vencer",
+    vencido: "Vencido",
+    pago: "Pago",
+  };
 
   return (
     <div>
