@@ -161,13 +161,37 @@ export default function Payable() {
         }
       />
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div className="glass-card p-4">
+          <div className="text-xs text-muted-foreground">A Pagar (total)</div>
+          <div className="text-2xl font-bold gradient-text">R$ {sum(aPagarAll).toFixed(2)}</div>
+          <div className="text-[11px] text-muted-foreground mt-1">{aPagarAll.length} título(s)</div>
+        </div>
+        <div className="glass-card p-4">
+          <div className="text-xs text-muted-foreground">↳ Vencido</div>
+          <div className="text-2xl font-bold text-destructive">R$ {sum(vencidoAll).toFixed(2)}</div>
+          <div className="text-[11px] text-muted-foreground mt-1">{vencidoAll.length} título(s)</div>
+        </div>
+        <div className="glass-card p-4">
+          <div className="text-xs text-muted-foreground">Pago</div>
+          <div className="text-2xl font-bold text-success">R$ {sum(pagoAll).toFixed(2)}</div>
+          <div className="text-[11px] text-muted-foreground mt-1">{pagoAll.length} título(s)</div>
+        </div>
+      </div>
+
       <GlassCard>
         <div className="flex gap-2 mb-4 flex-wrap">
-          {["todos", "pendente", "vencido", "pago"].map((s) => (
-            <Button key={s} size="sm" variant={filter === s ? "default" : "outline"}
-              onClick={() => setFilter(s)}
-              className={filter === s ? "bg-gradient-primary text-primary-foreground" : ""}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+          {[
+            { k: "a_pagar", label: "A Pagar" },
+            { k: "a_vencer", label: "A Vencer" },
+            { k: "vencido", label: "Vencido" },
+            { k: "pago", label: "Pago" },
+            { k: "todos", label: "Todos" },
+          ].map(({ k, label }) => (
+            <Button key={k} size="sm" variant={filter === k ? "default" : "outline"}
+              onClick={() => setFilter(k)}
+              className={filter === k ? "bg-gradient-primary text-primary-foreground" : ""}>
+              {label}
             </Button>
           ))}
         </div>
