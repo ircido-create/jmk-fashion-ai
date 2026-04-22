@@ -550,6 +550,10 @@ export type Database = {
           created_at: string
           direction: Database["public"]["Enums"]["message_direction"]
           id: string
+          media_filename: string | null
+          media_mime: string | null
+          media_path: string | null
+          media_type: string | null
         }
         Insert: {
           content: string
@@ -557,6 +561,10 @@ export type Database = {
           created_at?: string
           direction: Database["public"]["Enums"]["message_direction"]
           id?: string
+          media_filename?: string | null
+          media_mime?: string | null
+          media_path?: string | null
+          media_type?: string | null
         }
         Update: {
           content?: string
@@ -564,6 +572,10 @@ export type Database = {
           created_at?: string
           direction?: Database["public"]["Enums"]["message_direction"]
           id?: string
+          media_filename?: string | null
+          media_mime?: string | null
+          media_path?: string | null
+          media_type?: string | null
         }
         Relationships: [
           {
