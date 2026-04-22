@@ -1,46 +1,63 @@
 
 
-## Diagnóstico e correção da divergência
+## Ajuste: "Pendente" deve incluir o que está vencido
 
-### O que aconteceu
+### O problema atual
 
-**1. Diferença de R$ 304,00 (PDF R$ 100.032,04 vs Sistema R$ 99.728,04)**
+Hoje a página **Contas a Receber** trata "Pendente" e "Vencido" como categorias separadas:
 
-Três lançamentos do PDF **não foram importados** porque não tinham número de documento (Carteira), que era usado como chave única no import:
+- **Pendente** = `status = 'pendente'` E `due_date >= hoje` → R$ 74.879,00
+- **Vencido** = `status = 'pendente'` E `due_date < hoje` → R$ 25.153,04
+- **Total a receber real** = R$ 100.032,04
 
-| Cliente | Vencimento | Status | Valor |
-|---|---|---|---|
-| RAQUEL RODRIGUES | 30/04/2026 | aberto | R$ 130,00 |
-| RAQUEL RODRIGUES | 30/04/2026 | parcial | R$ 124,00 |
-| ELLEN PATY ("RESTA") | 28/02/2026 | atrasada | R$ 50,00 |
-| **Total** | | | **R$ 304,00** |
+Isso causa confusão: tudo que ainda não foi pago é, na prática, **a receber**. Vencido é apenas um sub-estado de pendente.
 
-**2. "NEIA - LIVIA IGOR" e "LIVIA IGOR"**
+### Mudança proposta
 
-Esses lançamentos **estão no sistema**, só foram vinculados a clientes com nomes diferentes:
+Reorganizar os filtros/abas de **Contas a Receber** (e aplicar o mesmo a **Contas a Pagar**) para refletir a realidade financeira:
 
-- `NEIA - LIVIA IGOR` (3 lançamentos do pedido 6557) → vinculado ao cliente já existente **"Néia Irma Livia"** (fez match por similaridade)
-- `LIVIA IGOR` (2 lançamentos do pedido 6665) → vinculado ao cliente **"LIVIA IGOR"** que **já existe** no cadastro
+**Novas abas:**
 
-Ou seja, não há cliente faltando — o que pode confundir é que o sistema mostra o nome do cliente **cadastrado** (ex: "Néia Irma Livia") e não o nome **literal do PDF** ("NEIA - LIVIA IGOR").
+| Aba | Critério | Significado |
+|---|---|---|
+| **Todos** | tudo | Visão completa |
+| **A Receber** (padrão) | `status = 'pendente'` (vencido + a vencer) | **R$ 100.032,04** — tudo que ainda entra |
+| **↳ A vencer** | `pendente` + `due_date >= hoje` | R$ 74.879,00 |
+| **↳ Vencido** | `pendente` + `due_date < hoje` | R$ 25.153,04 — destacado em vermelho |
+| **Pago** | `status = 'pago'` | Histórico recebido |
 
-### O que vou fazer
+"A vencer" e "Vencido" viram **sub-filtros** (chips/toggle) dentro de "A Receber", não abas irmãs do mesmo nível.
 
-**1. Inserir os 3 lançamentos faltantes** (R$ 304,00)
-- Cliente "RAQUEL RODRIGUES" → já existe, vinculo direto (2 lançamentos somando R$ 254,00)
-- Cliente "ELLEN PATY" → verifico se existe; se não, crio
-- Como não têm número de documento, uso descrição: `Bling RAQUEL RODRIGUES 30/04/2026 (aberto) - sem nº doc` etc., para evitar duplicatas se você reimportar
+### Indicador visual no topo
 
-**2. Validar o total final**
-Após inserir, o total na tela `/contas-receber` deve passar a ser exatamente **R$ 100.032,04**, batendo com o PDF.
+Cards de resumo sempre visíveis (independente do filtro):
 
-**3. (Opcional) Mostrar o nome original do PDF**
-Se quiser, posso adicionar na descrição do lançamento o nome literal que vem do PDF (ex: "NEIA - LIVIA IGOR" mesmo quando o cliente cadastrado é "Néia Irma Livia"), facilitando a conferência futura. Me avisa se quer essa parte também.
+```text
+┌─────────────────┬─────────────────┬─────────────────┐
+│  A RECEBER      │  ↳ Vencido      │  Recebido (mês) │
+│  R$ 100.032,04  │  R$ 25.153,04   │  R$ X.XXX,XX    │
+│  425 títulos    │  117 títulos    │                 │
+└─────────────────┴─────────────────┴─────────────────┘
+```
+
+Assim você bate o olho e vê o número que esperava (≈100k) sem precisar trocar filtro.
+
+### Mesma lógica para Contas a Pagar
+
+Espelhar:
+- **A Pagar** (padrão) = pendente + vencido somados
+- Sub-filtros: A vencer / Vencido
+- **Pago** = histórico
+
+### Arquivos afetados
+
+- `src/pages/Receivable.tsx` — reestruturar abas e cards de totais
+- `src/pages/Payable.tsx` — mesma reestruturação
+- `src/lib/financePdf.ts` — ajustar agrupamento do resumo no PDF (somar pendente+vencido como "A receber/pagar")
 
 ### Detalhes técnicos
 
-- INSERT direto via tool de dados (sem migration, é apenas data) na tabela `accounts_receivable`
-- 3 registros: status `pendente` (mantendo regra "atrasada/parcial/aberto = pendente"), `due_date` 2026-04-30 (Raquel) e 2026-02-28 (Ellen), `customer_id` resolvido por nome
-- Se "ELLEN PATY" não existir em `customers`, INSERT do cliente antes
-- Sem alterações de schema, sem código frontend
+- Sem alterações de schema nem de dados — `status` continua `pendente` no banco; "vencido" segue sendo derivado de `due_date < now()` no frontend.
+- Filtro padrão da página passa a ser **"A Receber"** (que já mostra os 100k), com toggle interno para isolar vencidos quando precisar cobrar.
+- Cards de totais usam `useMemo` sobre o dataset completo (não o filtrado), pra sempre mostrar o valor real.
 
