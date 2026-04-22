@@ -38,7 +38,8 @@ export default function Payable() {
   const [list, setList] = useState<Payable[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Payable | null>(null);
-  const [filter, setFilter] = useState<string>("todos");
+  // Filtros: a_pagar (default, inclui pendente+vencido), a_vencer, vencido, pago, todos
+  const [filter, setFilter] = useState<string>("a_pagar");
 
   const load = async () => {
     try {
@@ -94,21 +95,44 @@ export default function Payable() {
     if (error) toast.error(error.message); else { toast.success("Excluído"); load(); }
   };
 
-  const filtered = filter === "todos" ? list : list.filter((r) => r.status === filter);
+  const filtered = (() => {
+    switch (filter) {
+      case "todos": return list;
+      case "a_pagar": return list.filter((r) => r.status === "pendente" || r.status === "vencido");
+      case "a_vencer": return list.filter((r) => r.status === "pendente");
+      case "vencido": return list.filter((r) => r.status === "vencido");
+      case "pago": return list.filter((r) => r.status === "pago");
+      default: return list;
+    }
+  })();
   const total = filtered.reduce((s, r) => s + Number(r.amount), 0);
+
+  const sum = (arr: Payable[]) => arr.reduce((s, r) => s + Number(r.amount), 0);
+  const aPagarAll = list.filter((r) => r.status === "pendente" || r.status === "vencido");
+  const vencidoAll = list.filter((r) => r.status === "vencido");
+  const pagoAll = list.filter((r) => r.status === "pago");
+
   const { paged, Controls } = usePagination(filtered, 20);
+
+  const filterLabels: Record<string, string> = {
+    todos: "Todos",
+    a_pagar: "A Pagar",
+    a_vencer: "A Vencer",
+    vencido: "Vencido",
+    pago: "Pago",
+  };
 
   return (
     <div>
       <PageHeader
         title="Contas a Pagar"
-        description={`Total filtrado: R$ ${total.toFixed(2)}`}
+        description={`${filterLabels[filter]}: R$ ${total.toFixed(2)} • ${filtered.length} título(s)`}
         actions={
           <>
             <Button
               variant="outline"
               className="rounded-xl"
-              onClick={() => exportPayablePdf(filtered, filter)}
+              onClick={() => exportPayablePdf(filtered, filterLabels[filter])}
               disabled={filtered.length === 0}
             >
               <FileDown className="h-4 w-4 mr-1" /> PDF
@@ -137,13 +161,37 @@ export default function Payable() {
         }
       />
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div className="glass-card p-4">
+          <div className="text-xs text-muted-foreground">A Pagar (total)</div>
+          <div className="text-2xl font-bold gradient-text">R$ {sum(aPagarAll).toFixed(2)}</div>
+          <div className="text-[11px] text-muted-foreground mt-1">{aPagarAll.length} título(s)</div>
+        </div>
+        <div className="glass-card p-4">
+          <div className="text-xs text-muted-foreground">↳ Vencido</div>
+          <div className="text-2xl font-bold text-destructive">R$ {sum(vencidoAll).toFixed(2)}</div>
+          <div className="text-[11px] text-muted-foreground mt-1">{vencidoAll.length} título(s)</div>
+        </div>
+        <div className="glass-card p-4">
+          <div className="text-xs text-muted-foreground">Pago</div>
+          <div className="text-2xl font-bold text-success">R$ {sum(pagoAll).toFixed(2)}</div>
+          <div className="text-[11px] text-muted-foreground mt-1">{pagoAll.length} título(s)</div>
+        </div>
+      </div>
+
       <GlassCard>
         <div className="flex gap-2 mb-4 flex-wrap">
-          {["todos", "pendente", "vencido", "pago"].map((s) => (
-            <Button key={s} size="sm" variant={filter === s ? "default" : "outline"}
-              onClick={() => setFilter(s)}
-              className={filter === s ? "bg-gradient-primary text-primary-foreground" : ""}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+          {[
+            { k: "a_pagar", label: "A Pagar" },
+            { k: "a_vencer", label: "A Vencer" },
+            { k: "vencido", label: "Vencido" },
+            { k: "pago", label: "Pago" },
+            { k: "todos", label: "Todos" },
+          ].map(({ k, label }) => (
+            <Button key={k} size="sm" variant={filter === k ? "default" : "outline"}
+              onClick={() => setFilter(k)}
+              className={filter === k ? "bg-gradient-primary text-primary-foreground" : ""}>
+              {label}
             </Button>
           ))}
         </div>
