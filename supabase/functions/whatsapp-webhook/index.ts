@@ -69,8 +69,8 @@ async function clearMetaError() {
   }
 }
 
-// Baixa um media do WhatsApp Cloud API e retorna { base64, mimeType }
-async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base64: string; mimeType: string } | null> {
+// Baixa um media do WhatsApp Cloud API e retorna { bytes, base64, mimeType }
+async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ bytes: Uint8Array; base64: string; mimeType: string } | null> {
   try {
     // 1) pega URL temporária
     const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
@@ -84,7 +84,7 @@ async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base6
     }
     const meta = await metaRes.json();
     const mediaUrl = meta?.url;
-    const mimeType = meta?.mime_type ?? "audio/ogg";
+    const mimeType = meta?.mime_type ?? "application/octet-stream";
     if (!mediaUrl) return null;
 
     // 2) baixa o binário
@@ -105,9 +105,45 @@ async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ base6
       binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as any);
     }
     const base64 = btoa(binary);
-    return { base64, mimeType };
+    return { bytes, base64, mimeType };
   } catch (e) {
     console.error("downloadWhatsAppMedia error:", e);
+    return null;
+  }
+}
+
+function inboundExt(mime: string): string {
+  const m: Record<string, string> = {
+    "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+    "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac", "audio/webm": "webm",
+    "application/pdf": "pdf",
+    "video/mp4": "mp4", "video/3gpp": "3gp",
+  };
+  return m[mime.split(";")[0].trim().toLowerCase()] ?? "bin";
+}
+
+// Salva mídia recebida no bucket whatsapp-media e retorna o storage path
+async function saveInboundMedia(
+  bytes: Uint8Array,
+  mimeType: string,
+  fromPhone: string,
+  suggestedName?: string,
+): Promise<string | null> {
+  try {
+    const ext = inboundExt(mimeType);
+    const safe = suggestedName?.replace(/[^\w.-]/g, "_") ?? `file.${ext}`;
+    const finalName = safe.includes(".") ? safe : `${safe}.${ext}`;
+    const path = `inbound/${fromPhone}/${Date.now()}-${finalName}`;
+    const { error } = await supabase.storage
+      .from("whatsapp-media")
+      .upload(path, bytes, { contentType: mimeType, upsert: false });
+    if (error) {
+      console.error("saveInboundMedia upload error:", error);
+      return null;
+    }
+    return path;
+  } catch (e) {
+    console.error("saveInboundMedia error:", e);
     return null;
   }
 }
