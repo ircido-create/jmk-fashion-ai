@@ -694,32 +694,58 @@ Deno.serve(async (req) => {
     if (!message) return new Response("ok", { status: 200, headers: corsHeaders });
 
     const fromPhone: string = message.from;
-    let text: string = message.text?.body ?? "";
+    let text: string = message.text?.body ?? message.image?.caption ?? message.document?.caption ?? message.video?.caption ?? "";
 
-    // Suporte a áudio: baixa do WhatsApp e transcreve via Lovable AI
-    let audioFailureNote: string | null = null;
-    if (!text && (message.type === "audio" || message.type === "voice")) {
+    // === MÍDIA RECEBIDA (image, audio, voice, document, video) ===
+    let inboundMedia: {
+      kind: "image" | "audio" | "document" | "video";
+      mediaId: string;
+      filename?: string;
+    } | null = null;
+
+    if (message.type === "audio" || message.type === "voice") {
       const mediaId = message.audio?.id ?? message.voice?.id;
-      if (mediaId) {
-        const media = await downloadWhatsAppMedia(mediaId, cfg);
-        if (media) {
+      if (mediaId) inboundMedia = { kind: "audio", mediaId };
+    } else if (message.type === "image") {
+      const mediaId = message.image?.id;
+      if (mediaId) inboundMedia = { kind: "image", mediaId };
+    } else if (message.type === "document") {
+      const mediaId = message.document?.id;
+      if (mediaId) inboundMedia = { kind: "document", mediaId, filename: message.document?.filename };
+    } else if (message.type === "video") {
+      const mediaId = message.video?.id;
+      if (mediaId) inboundMedia = { kind: "video", mediaId };
+    }
+
+    let savedMediaPath: string | null = null;
+    let savedMediaMime: string | null = null;
+    let savedMediaName: string | null = null;
+    let audioFailureNote: string | null = null;
+
+    if (inboundMedia) {
+      const media = await downloadWhatsAppMedia(inboundMedia.mediaId, cfg);
+      if (media) {
+        savedMediaPath = await saveInboundMedia(media.bytes, media.mimeType, fromPhone, inboundMedia.filename);
+        savedMediaMime = media.mimeType;
+        savedMediaName = inboundMedia.filename ?? null;
+
+        // Áudio: também transcreve para alimentar a IA
+        if (inboundMedia.kind === "audio" && !text) {
           const transcript = await transcribeAudio(media.base64, media.mimeType);
           if (transcript) {
             text = transcript;
             console.log("Áudio transcrito:", text);
-          } else {
+          } else if (!savedMediaPath) {
             audioFailureNote = "[🎤 Áudio recebido — falha ao transcrever]";
           }
-        } else {
-          audioFailureNote = "[🎤 Áudio recebido — falha ao baixar da Meta (token pode ter expirado)]";
         }
-      } else {
-        audioFailureNote = "[🎤 Áudio recebido — sem media id]";
+      } else if (inboundMedia.kind === "audio") {
+        audioFailureNote = "[🎤 Áudio recebido — falha ao baixar da Meta (token pode ter expirado)]";
       }
     }
 
-    // Se houve falha de áudio, registra na conversa e avisa a cliente, em vez de dropar silenciosamente
-    if (audioFailureNote && !text) {
+    // Se houve falha de áudio sem nada salvo nem texto, registra e avisa
+    if (audioFailureNote && !text && !savedMediaPath) {
       const conv = await getOrCreateConversation(fromPhone);
       if (conv) {
         await supabase.from("whatsapp_messages").insert({
@@ -740,7 +766,8 @@ Deno.serve(async (req) => {
       return new Response("ok", { status: 200, headers: corsHeaders });
     }
 
-    if (!text) return new Response("ok", { status: 200, headers: corsHeaders });
+    // Sem texto e sem mídia salva → ignora
+    if (!text && !savedMediaPath) return new Response("ok", { status: 200, headers: corsHeaders });
 
     const conv = await getOrCreateConversation(fromPhone);
     if (!conv) {
@@ -748,12 +775,34 @@ Deno.serve(async (req) => {
       return new Response("ok", { status: 200, headers: corsHeaders });
     }
 
+    // Inserção da mensagem inbound (com mídia se houver)
+    const labelByKind: Record<string, string> = {
+      image: "[📷 Imagem]",
+      audio: "[🎤 Áudio]",
+      document: "[📎 Documento]",
+      video: "[🎥 Vídeo]",
+    };
+    const inboundContent = text?.trim() ? text : (inboundMedia ? labelByKind[inboundMedia.kind] : "");
+
     const { error: insErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "inbound",
-      content: text,
+      content: inboundContent,
+      media_path: savedMediaPath,
+      media_type: inboundMedia?.kind ?? null,
+      media_mime: savedMediaMime,
+      media_filename: savedMediaName,
     });
     if (insErr) console.error("insert inbound error:", insErr);
+
+    // Se não temos texto nenhum (foto sem caption por ex.), não chama a IA — só registra
+    if (!text) {
+      await supabase
+        .from("whatsapp_conversations")
+        .update({ last_message_at: new Date().toISOString() })
+        .eq("id", conv.id);
+      return new Response("ok", { status: 200, headers: corsHeaders });
+    }
 
     const { data: history } = await supabase
       .from("whatsapp_messages")
