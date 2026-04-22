@@ -44,7 +44,7 @@ export function AppLayout() {
           </main>
         </div>
 
-        <AIAssistant />
+        {!hideAssistant && <AIAssistant />}
       </div>
     </SidebarProvider>
   );
