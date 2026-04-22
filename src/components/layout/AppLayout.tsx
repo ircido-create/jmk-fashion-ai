@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,6 +9,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function AppLayout() {
   const { user, signOut, isAdmin } = useAuth();
+  const location = useLocation();
+  const hideAssistant = location.pathname.startsWith("/conversas");
 
   return (
     <SidebarProvider>
@@ -42,7 +44,7 @@ export function AppLayout() {
           </main>
         </div>
 
-        <AIAssistant />
+        {!hideAssistant && <AIAssistant />}
       </div>
     </SidebarProvider>
   );
