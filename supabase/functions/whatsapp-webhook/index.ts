@@ -179,7 +179,77 @@ async function sendWhatsApp(to: string, text: string, cfg: any) {
   }
 }
 
+function inferExtensionFromMimeType(mimeType: string): string {
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+  };
+  return map[mimeType] ?? "jpg";
+}
+
+async function uploadMetaMediaFromUrl(imageUrl: string, cfg: any): Promise<string | null> {
+  try {
+    const normalizedUrl = imageUrl.trim();
+    const imageRes = await fetch(normalizedUrl);
+    if (!imageRes.ok) {
+      console.error("Image download error:", imageRes.status, normalizedUrl);
+      return null;
+    }
+
+    const mimeType = (imageRes.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim().toLowerCase();
+    if (!mimeType.startsWith("image/")) {
+      console.error("Invalid image content type:", mimeType, normalizedUrl);
+      return null;
+    }
+
+    const fileBuffer = await imageRes.arrayBuffer();
+    const fileNameFromUrl = normalizedUrl.split("/").pop()?.split("?")[0]?.trim();
+    const fileName = fileNameFromUrl && fileNameFromUrl.includes(".")
+      ? fileNameFromUrl
+      : `product-image.${inferExtensionFromMimeType(mimeType)}`;
+
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mimeType);
+    form.append("file", new Blob([fileBuffer], { type: mimeType }), fileName);
+
+    const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/media`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.access_token}`,
+      },
+      body: form,
+    });
+
+    if (!uploadRes.ok) {
+      const body = await uploadRes.text();
+      console.error("Meta media upload error:", uploadRes.status, "url=", normalizedUrl, body);
+      await recordMetaError(uploadRes.status, body);
+      return null;
+    }
+
+    const uploadData = await uploadRes.json();
+    const mediaId = uploadData?.id;
+    if (!mediaId) {
+      console.error("Meta media upload returned no id:", uploadData);
+      return null;
+    }
+
+    await clearMetaError();
+    return mediaId;
+  } catch (e) {
+    console.error("uploadMetaMediaFromUrl error:", imageUrl, e);
+    return null;
+  }
+}
+
 async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any): Promise<boolean> {
+  const mediaId = await uploadMetaMediaFromUrl(imageUrl, cfg);
+  if (!mediaId) return false;
+
   const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
   const res = await fetch(url, {
     method: "POST",
@@ -191,15 +261,16 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, 
       messaging_product: "whatsapp",
       to,
       type: "image",
-      image: { link: imageUrl, caption: caption.slice(0, 1024) },
+      image: { id: mediaId, caption: caption.slice(0, 1024) },
     }),
   });
   if (!res.ok) {
     const body = await res.text();
-    console.error("Meta image send error:", res.status, "url=", imageUrl, body);
+    console.error("Meta image send error:", res.status, "mediaId=", mediaId, body);
     await recordMetaError(res.status, body);
     return false;
   }
+  await clearMetaError();
   return true;
 }
 
