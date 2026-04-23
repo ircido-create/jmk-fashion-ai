@@ -9,6 +9,7 @@ interface Msg { role: "user" | "assistant"; content: string; }
 
 export function AIAssistant() {
   const [open, setOpen] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([
     { role: "assistant", content: "Olá! 💜 Sou sua assistente do JMK ADM. Posso te ajudar a usar o sistema. Como posso ajudar?" },
   ]);
