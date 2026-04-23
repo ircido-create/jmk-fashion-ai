@@ -3,13 +3,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard } from "lucide-react";
 import { calculateTrust, trustBgClass, type ReceivableLike } from "@/lib/trustScore";
 import { toast } from "sonner";
+import { formatTaxId } from "@/lib/taxId";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
-  address: string | null; notes: string | null; created_at: string;
+  address: string | null; notes: string | null; tax_id: string | null; created_at: string;
 }
 interface SaleItem {
   id: string; product_name: string; variant_label: string | null;
