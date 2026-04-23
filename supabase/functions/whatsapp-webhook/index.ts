@@ -282,7 +282,13 @@ async function uploadMetaMediaFromUrl(imageUrl: string, cfg: any): Promise<strin
   }
 }
 
-async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, cfg: any): Promise<boolean> {
+async function sendWhatsAppImage(
+  to: string,
+  imageUrl: string,
+  caption: string,
+  cfg: any,
+  conversationId?: string,
+): Promise<boolean> {
   const mediaId = await uploadMetaMediaFromUrl(imageUrl, cfg);
   if (!mediaId) return false;
 
@@ -307,6 +313,44 @@ async function sendWhatsAppImage(to: string, imageUrl: string, caption: string, 
     return false;
   }
   await clearMetaError();
+
+  // Registra a imagem enviada como uma mensagem outbound (com media_path)
+  // para que apareça no painel de conversa — assim como as figurinhas/áudios.
+  if (conversationId) {
+    try {
+      const imgRes = await fetch(imageUrl.trim());
+      if (imgRes.ok) {
+        const mime = (imgRes.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim().toLowerCase();
+        const buf = new Uint8Array(await imgRes.arrayBuffer());
+        const ext = (mime.split("/")[1] || "jpg").replace("jpeg", "jpg");
+        const fileNameFromUrl = imageUrl.trim().split("/").pop()?.split("?")[0]?.replace(/[^\w.-]/g, "_") ?? `image.${ext}`;
+        const finalName = fileNameFromUrl.includes(".") ? fileNameFromUrl : `${fileNameFromUrl}.${ext}`;
+        const path = `outbound/${to}/${Date.now()}-image-${finalName}`;
+        const { error: upErr } = await supabase.storage
+          .from("whatsapp-media")
+          .upload(path, buf, { contentType: mime, upsert: false });
+        if (upErr) {
+          console.error("save outbound image upload error:", upErr);
+        } else {
+          const { error: insErr } = await supabase.from("whatsapp_messages").insert({
+            conversation_id: conversationId,
+            direction: "outbound",
+            content: caption?.trim() ? caption : "[📷 Imagem]",
+            media_path: path,
+            media_type: "image",
+            media_mime: mime,
+            media_filename: finalName,
+          });
+          if (insErr) console.error("insert outbound image msg error:", insErr);
+        }
+      } else {
+        console.error("download image for storage failed:", imgRes.status, imageUrl);
+      }
+    } catch (e) {
+      console.error("registerOutboundImage error:", e);
+    }
+  }
+
   return true;
 }
 
@@ -867,7 +911,7 @@ Deno.serve(async (req) => {
       const sent: { caption: string }[] = [];
       const failed: { caption: string }[] = [];
       for (const ph of photos) {
-        const ok = await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+        const ok = await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg, conv.id);
         if (ok) sent.push(ph); else failed.push(ph);
       }
       if (sent.length > 0) {
