@@ -199,6 +199,30 @@ export type Database = {
           },
         ]
       }
+      favorite_stickers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          public_url: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          public_url: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          public_url?: string
+          storage_path?: string
+        }
+        Relationships: []
+      }
       product_variants: {
         Row: {
           color: string | null
