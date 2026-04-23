@@ -21,6 +21,18 @@ const STOPWORDS = new Set([
   "isso","isto","aquilo","já","ainda","só","so","mais","menos","muito","pouco","sim","não","nao"
 ]);
 
+// Reduz diminutivos/aumentativos pt-BR para a raiz, p/ casar "blusinha" com "BLUSA".
+// Só aplica se a raiz resultante tiver >= 4 letras, pra não virar coisa nada-a-ver.
+function stemPtBr(word: string): string {
+  const suffixes = ["zinhas", "zinhos", "zinha", "zinho", "inhas", "inhos", "inha", "inho", "ona", "onas", "ao", "oes"];
+  for (const suf of suffixes) {
+    if (word.endsWith(suf) && word.length - suf.length >= 4) {
+      return word.slice(0, -suf.length);
+    }
+  }
+  return word;
+}
+
 function extractKeywords(text: string): string[] {
   return text
     .toLowerCase()
@@ -28,6 +40,7 @@ function extractKeywords(text: string): string[] {
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+    .map(stemPtBr)
     .slice(0, 8);
 }
 
@@ -391,24 +404,69 @@ async function findPhotoMatches(
 ): Promise<{ url: string; caption: string }[]> {
   const queryText = buildPhotoQueryContext(userMsg, history);
   const keywords = extractKeywords(queryText);
+
+  // 1) Busca por produtos cujo name/description/category/sku case com alguma keyword
   let q = supabase
     .from("products")
-    .select("name, supplier, product_variants(size, color, image_url, quantity)")
+    .select("id, name, supplier, product_variants(size, color, image_url, quantity)")
     .eq("active", true)
     .limit(20);
   if (supplier) q = q.eq("supplier", supplier);
   if (keywords.length > 0) {
     q = q.or(keywords.flatMap((k) => [`name.ilike.%${k}%`, `description.ilike.%${k}%`, `category.ilike.%${k}%`, `sku.ilike.%${k}%`]).join(","));
   }
-  const { data } = await q;
+  const { data: byProduct } = await q;
+
+  // 2) Busca também variantes cuja color/size case com keywords (ex.: "marrom", "preto", "P", "M")
+  const productsById = new Map<string, any>();
+  for (const p of byProduct ?? []) productsById.set((p as any).id, p);
+
+  if (keywords.length > 0) {
+    const variantOr = keywords
+      .flatMap((k) => [`color.ilike.%${k}%`, `size.ilike.%${k}%`])
+      .join(",");
+    const { data: variantHits } = await supabase
+      .from("product_variants")
+      .select("product_id")
+      .or(variantOr)
+      .not("image_url", "is", null)
+      .limit(40);
+    const extraIds = Array.from(
+      new Set((variantHits ?? []).map((v: any) => v.product_id).filter((id: string) => !productsById.has(id)))
+    );
+    if (extraIds.length > 0) {
+      let q2 = supabase
+        .from("products")
+        .select("id, name, supplier, product_variants(size, color, image_url, quantity)")
+        .eq("active", true)
+        .in("id", extraIds);
+      if (supplier) q2 = q2.eq("supplier", supplier);
+      const { data: extraProducts } = await q2;
+      for (const p of extraProducts ?? []) productsById.set((p as any).id, p);
+    }
+  }
+
+  // 3) Para cada produto, ordena variantes priorizando as que casam com keywords (cor/tamanho)
+  const variantMatchesKeyword = (v: any) => {
+    if (keywords.length === 0) return false;
+    const hay = `${v.color ?? ""} ${v.size ?? ""}`
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return keywords.some((k) => hay.includes(k));
+  };
+
   const out: { url: string; caption: string }[] = [];
-  for (const p of data ?? []) {
-    for (const v of (p as any).product_variants ?? []) {
-      if (v.image_url) {
-        const variantLabel = [v.size, v.color].filter(Boolean).join(" / ");
-        out.push({ url: v.image_url, caption: `${(p as any).name}${variantLabel ? ` — ${variantLabel}` : ""}` });
-        if (out.length >= 4) return out;
-      }
+  for (const p of productsById.values()) {
+    const variants = ((p as any).product_variants ?? []).filter((v: any) => v.image_url);
+    variants.sort((a: any, b: any) => {
+      const am = variantMatchesKeyword(a) ? 1 : 0;
+      const bm = variantMatchesKeyword(b) ? 1 : 0;
+      return bm - am;
+    });
+    for (const v of variants) {
+      const variantLabel = [v.size, v.color].filter(Boolean).join(" / ");
+      out.push({ url: v.image_url, caption: `${(p as any).name}${variantLabel ? ` — ${variantLabel}` : ""}` });
+      if (out.length >= 4) return out;
     }
   }
   return out;
