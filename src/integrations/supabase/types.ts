@@ -226,6 +226,42 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_proofs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          file_size: number | null
+          id: string
+          mime_type: string | null
+          original_filename: string | null
+          payment_date: string
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          file_size?: number | null
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          payment_date?: string
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          file_size?: number | null
+          id?: string
+          mime_type?: string | null
+          original_filename?: string | null
+          payment_date?: string
+          storage_path?: string
+        }
+        Relationships: []
+      }
       product_variants: {
         Row: {
           color: string | null
@@ -344,6 +380,45 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      receivable_payments: {
+        Row: {
+          amount_paid: number
+          created_at: string
+          id: string
+          proof_id: string
+          receivable_id: string
+        }
+        Insert: {
+          amount_paid?: number
+          created_at?: string
+          id?: string
+          proof_id: string
+          receivable_id: string
+        }
+        Update: {
+          amount_paid?: number
+          created_at?: string
+          id?: string
+          proof_id?: string
+          receivable_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receivable_payments_proof_id_fkey"
+            columns: ["proof_id"]
+            isOneToOne: false
+            referencedRelation: "payment_proofs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receivable_payments_receivable_id_fkey"
+            columns: ["receivable_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_receivable"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sale_items: {
         Row: {
