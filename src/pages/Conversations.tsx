@@ -758,8 +758,29 @@ export default function Conversations() {
                         <DropdownMenuItem onClick={() => docInputRef.current?.click()}>
                           <FileText className="h-4 w-4 mr-2" />Documento
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => stickerInputRef.current?.click()}>
+                          <StickerIcon className="h-4 w-4 mr-2" />Figurinha
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+
+                    {/* Emoji picker */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" disabled={sending} aria-label="Emoji">
+                          <Smile className="h-5 w-5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="p-0 w-auto border-0 bg-transparent shadow-none">
+                        <EmojiPicker
+                          onEmojiClick={(d) => insertEmoji(d.emoji)}
+                          theme={EmojiTheme.AUTO}
+                          width={320}
+                          height={380}
+                        />
+                      </PopoverContent>
+                    </Popover>
+
                     <input
                       ref={imageInputRef} type="file" accept="image/*"
                       className="hidden" onChange={onPickImage}
