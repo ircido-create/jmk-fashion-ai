@@ -9,6 +9,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -16,9 +17,13 @@ import { cn } from "@/lib/utils";
 import {
   MessageCircle, Send, Plus, Search, User, UserPlus, ArrowLeft, Paperclip,
   Image as ImageIcon, FileText, Mic, X, Square, Play, Pause, Download,
+  Smile, Sticker as StickerIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import EmojiPicker, { Theme as EmojiTheme } from "emoji-picker-react";
+import { convertToMp3 } from "@/lib/audioToMp3";
+import { toStickerWebp } from "@/lib/imageToSticker";
 
 interface Conversation {
   id: string;
