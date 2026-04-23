@@ -79,11 +79,15 @@ function MediaBubble({
 
   if (msg.media_type === "audio") {
     return signedUrl ? (
-      <audio controls preload="metadata" className="max-w-[240px] w-full">
+      <audio
+        controls
+        preload="metadata"
+        className="block w-[260px] sm:w-[300px] h-10"
+      >
         <source src={signedUrl} type={msg.media_mime ?? "audio/mpeg"} />
       </audio>
     ) : (
-      <div className="h-10 w-48 rounded-full bg-muted/50 animate-pulse" />
+      <div className="h-10 w-[260px] rounded-full bg-muted/50 animate-pulse" />
     );
   }
 
@@ -683,7 +687,8 @@ export default function Conversations() {
                 {messages.map((m) => {
                   const isOut = m.direction === "outbound";
                   const url = m.media_path ? mediaUrls[m.media_path] : undefined;
-                  const showText = m.content && !/^\[(📷|🎤|📎|🎥)/.test(m.content);
+                  const placeholderRe = /^\[(📷|🎤|📎|🎥|Figurinha|Sticker|Imagem|Áudio|Audio|Documento|V[ií]deo)/i;
+                  const showText = !!m.content && !placeholderRe.test(m.content);
                   return (
                     <div key={m.id} className={cn("flex", isOut ? "justify-end" : "justify-start")}>
                       <div
