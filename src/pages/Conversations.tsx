@@ -192,7 +192,7 @@ export default function Conversations() {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      c.lastMessage = m?.content;
+      c.lastMessage = isMediaPlaceholder(m?.content) ? "" : m?.content;
     }
     setConversations(list);
   };
