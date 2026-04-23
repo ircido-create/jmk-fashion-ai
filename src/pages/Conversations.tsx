@@ -708,22 +708,131 @@ export default function Conversations() {
                 </Button>
               </div>
 
-              {/* Dialog cadastrar */}
+              {/* Dialog cadastrar / vincular */}
               <Dialog open={regOpen} onOpenChange={setRegOpen}>
                 <DialogContent className="glass-card">
                   <DialogHeader>
-                    <DialogTitle>{active.customer_id ? "Editar cliente" : "Cadastrar cliente"}</DialogTitle>
+                    <DialogTitle>
+                      {active.customer_id
+                        ? "Editar cliente"
+                        : regMode === "link" ? "Vincular cliente" : "Cadastrar cliente"}
+                    </DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-3">
-                    <div><Label>Nome *</Label><Input value={regName} onChange={(e) => setRegName(e.target.value)} /></div>
-                    <div><Label>Telefone</Label><Input value={active.customer_phone} disabled /></div>
-                    <div><Label>Email</Label><Input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} /></div>
-                    <div><Label>Endereço</Label><Textarea rows={2} value={regAddress} onChange={(e) => setRegAddress(e.target.value)} /></div>
-                    <div><Label>Observações</Label><Textarea rows={2} value={regNotes} onChange={(e) => setRegNotes(e.target.value)} /></div>
-                  </div>
+
+                  {/* Alternador novo / vincular — só faz sentido quando ainda não há cliente vinculado */}
+                  {!active.customer_id && (
+                    <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted/40">
+                      <button
+                        type="button"
+                        onClick={() => setRegMode("new")}
+                        className={cn(
+                          "text-xs font-medium py-2 rounded-md transition flex items-center justify-center gap-1.5",
+                          regMode === "new" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                        Cadastrar novo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRegMode("link")}
+                        className={cn(
+                          "text-xs font-medium py-2 rounded-md transition flex items-center justify-center gap-1.5",
+                          regMode === "link" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <Link2 className="h-3.5 w-3.5" />
+                        Vincular existente
+                      </button>
+                    </div>
+                  )}
+
+                  {regMode === "link" && !active.customer_id ? (
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Cliente já cadastrado</Label>
+                        <Popover open={linkPickerOpen} onOpenChange={setLinkPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className="w-full justify-between font-normal"
+                            >
+                              {linkCustomerId
+                                ? (() => {
+                                    const c = allCustomers.find((x) => x.id === linkCustomerId);
+                                    if (!c) return "Selecione um cliente…";
+                                    const tax = c.tax_id ? ` • ${formatTaxId(c.tax_id)}` : "";
+                                    return `${c.name}${tax}`;
+                                  })()
+                                : "Selecione um cliente…"}
+                              <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+                            <Command
+                              filter={(value, search) => {
+                                // value contém "nome|tax|phone" — match em qualquer um, sem pontuação
+                                const v = value.toLowerCase();
+                                const s = search.toLowerCase();
+                                const sDigits = s.replace(/\D/g, "");
+                                if (v.includes(s)) return 1;
+                                if (sDigits && v.replace(/\D/g, "").includes(sDigits)) return 1;
+                                return 0;
+                              }}
+                            >
+                              <CommandInput placeholder="Buscar por nome, CPF ou telefone…" />
+                              <CommandList>
+                                <CommandEmpty>Nenhum cliente encontrado.</CommandEmpty>
+                                <CommandGroup>
+                                  {allCustomers.map((c) => (
+                                    <CommandItem
+                                      key={c.id}
+                                      value={`${c.name}|${c.tax_id ?? ""}|${c.phone ?? ""}`}
+                                      onSelect={() => {
+                                        setLinkCustomerId(c.id);
+                                        setLinkPickerOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "h-4 w-4 mr-2",
+                                          linkCustomerId === c.id ? "opacity-100" : "opacity-0",
+                                        )}
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm truncate">{c.name}</div>
+                                        <div className="text-[11px] text-muted-foreground truncate">
+                                          {[c.tax_id ? formatTaxId(c.tax_id) : null, c.phone].filter(Boolean).join(" • ")}
+                                        </div>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                          O número <span className="font-mono">{active.customer_phone}</span> será associado a este cliente.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div><Label>Nome *</Label><Input value={regName} onChange={(e) => setRegName(e.target.value)} /></div>
+                      <div><Label>Telefone</Label><Input value={active.customer_phone} disabled /></div>
+                      <div><Label>Email</Label><Input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} /></div>
+                      <div><Label>Endereço</Label><Textarea rows={2} value={regAddress} onChange={(e) => setRegAddress(e.target.value)} /></div>
+                      <div><Label>Observações</Label><Textarea rows={2} value={regNotes} onChange={(e) => setRegNotes(e.target.value)} /></div>
+                    </div>
+                  )}
+
                   <DialogFooter>
                     <Button onClick={registerCustomer} disabled={regSaving} className="bg-gradient-primary">
-                      {regSaving ? "Salvando…" : "Salvar"}
+                      {regSaving
+                        ? "Salvando…"
+                        : regMode === "link" && !active.customer_id ? "Vincular" : "Salvar"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
