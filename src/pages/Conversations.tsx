@@ -790,6 +790,10 @@ export default function Conversations() {
                       accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf"
                       className="hidden" onChange={onPickDoc}
                     />
+                    <input
+                      ref={stickerInputRef} type="file" accept="image/*"
+                      className="hidden" onChange={onPickSticker}
+                    />
 
                     <Textarea
                       placeholder="Mensagem"
