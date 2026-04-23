@@ -251,12 +251,14 @@ export default function Conversations() {
     }
   };
 
-  const sendMedia = async (file: File, kind: "image" | "audio" | "document") => {
+  const sendMedia = async (
+    file: File,
+    kind: "image" | "audio" | "document" | "sticker",
+  ) => {
     if (!active) return;
     setSending(true);
 
-    // Preview otimista local: insere uma mensagem temporária com URL local
-    // para que a imagem/áudio/documento apareça imediatamente na conversa.
+    // Preview otimista local
     const tempId = `temp-${Date.now()}`;
     const localUrl = URL.createObjectURL(file);
     const tempPath = `__local__/${tempId}`;
@@ -267,7 +269,7 @@ export default function Conversations() {
       content: draft.trim() || "",
       created_at: new Date().toISOString(),
       media_path: tempPath,
-      media_type: kind === "image" ? "image" : kind === "audio" ? "audio" : "document",
+      media_type: kind,
       media_mime: file.type || null,
       media_filename: file.name,
     };
@@ -277,18 +279,22 @@ export default function Conversations() {
 
     try {
       const base64 = await fileToBase64(file);
+      const fallbackMime =
+        kind === "audio" ? "audio/mpeg"
+        : kind === "sticker" ? "image/webp"
+        : kind === "image" ? "image/jpeg"
+        : "application/octet-stream";
       const { data, error } = await supabase.functions.invoke("whatsapp-send-media", {
         body: {
           to: active.customer_phone,
           kind,
           file_base64: base64,
-          mime_type: file.type || (kind === "audio" ? "audio/ogg" : "application/octet-stream"),
+          mime_type: file.type || fallbackMime,
           filename: file.name,
-          caption: draft.trim() || undefined,
+          caption: kind === "sticker" || kind === "audio" ? undefined : draft.trim() || undefined,
         },
       });
       if (error || (data as any)?.error) {
-        // remove preview otimista em caso de falha
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         URL.revokeObjectURL(localUrl);
         toast({
@@ -297,8 +303,7 @@ export default function Conversations() {
           variant: "destructive",
         });
       } else {
-        setDraft("");
-        // o realtime trará a mensagem real; removemos a temporária após pequeno delay
+        if (kind !== "sticker" && kind !== "audio") setDraft("");
         setTimeout(() => {
           setMessages((prev) => prev.filter((m) => m.id !== tempId));
           URL.revokeObjectURL(localUrl);
@@ -318,6 +323,20 @@ export default function Conversations() {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (f) sendMedia(f, "document");
+  };
+  const onPickSticker = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const sticker = await toStickerWebp(f);
+      await sendMedia(sticker, "sticker");
+    } catch (err: any) {
+      toast({ title: "Falha ao gerar figurinha", description: err?.message ?? "Erro", variant: "destructive" });
+    }
+  };
+  const insertEmoji = (emoji: string) => {
+    setDraft((d) => d + emoji);
   };
 
   const startRecording = async () => {
