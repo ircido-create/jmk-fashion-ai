@@ -452,6 +452,35 @@ export default function Conversations() {
 
   const registerCustomer = async () => {
     if (!active) return;
+
+    // Modo "vincular": apenas associa um cliente já cadastrado a esta conversa
+    if (regMode === "link") {
+      if (!linkCustomerId) {
+        toast({ title: "Selecione um cliente", variant: "destructive" });
+        return;
+      }
+      setRegSaving(true);
+      const picked = allCustomers.find((c) => c.id === linkCustomerId);
+      // Atualiza o telefone do cliente selecionado para o número desta conversa, caso esteja vazio
+      if (picked && !picked.phone) {
+        await supabase.from("customers").update({ phone: active.customer_phone }).eq("id", picked.id);
+      }
+      const { error } = await supabase.from("whatsapp_conversations")
+        .update({ customer_id: linkCustomerId })
+        .eq("id", active.id);
+      setRegSaving(false);
+      if (error) {
+        toast({ title: "Falha ao vincular cliente", description: error.message, variant: "destructive" });
+        return;
+      }
+      setRegOpen(false);
+      toast({ title: "Cliente vinculado 💕" });
+      await loadConversations();
+      setActive({ ...active, customer_id: linkCustomerId, customer: { name: picked?.name ?? "" } });
+      return;
+    }
+
+    // Modo "novo/editar"
     if (!regName.trim()) {
       toast({ title: "Informe o nome do cliente", variant: "destructive" });
       return;
