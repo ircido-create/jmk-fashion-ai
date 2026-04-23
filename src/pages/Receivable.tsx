@@ -289,12 +289,16 @@ export default function Receivable() {
             <Button
               variant="outline"
               className="rounded-xl"
-              onClick={() => {
-                if (filtered.length === 0) { toast.error("Nada para exportar nesse filtro"); return; }
-                exportReceivablePdf(filtered, filterLabels[filter]);
-              }}
+              onClick={() => { setReportPeriod("todos"); setReportOpen(true); }}
             >
-              <FileDown className="h-4 w-4 mr-1" /> PDF
+              <FileDown className="h-4 w-4 mr-1" /> Relatório
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => { setImportFile(null); setImportPreview([]); setImportOpen(true); }}
+            >
+              <Upload className="h-4 w-4 mr-1" /> Importar
             </Button>
             <Button
               variant="outline"
