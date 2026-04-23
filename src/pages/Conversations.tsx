@@ -162,6 +162,7 @@ export default function Conversations() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const stickerInputRef = useRef<HTMLInputElement>(null);
 
   const loadConversations = async () => {
     const { data } = await supabase
