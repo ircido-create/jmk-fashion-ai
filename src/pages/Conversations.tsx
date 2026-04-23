@@ -57,6 +57,9 @@ const fileToBase64 = (file: Blob): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
+const isMediaPlaceholder = (content?: string | null) =>
+  !!content && /^\[(?:(?:📷|🎤|📎|🎥)|(?:.*\b(?:Figurinha|Sticker|Imagem|Áudio|Audio|Documento|V[ií]deo)\b.*))\]$/i.test(content.trim());
+
 function MediaBubble({
   msg, signedUrl,
 }: { msg: Message; signedUrl?: string }) {
