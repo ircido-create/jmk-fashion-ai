@@ -276,16 +276,20 @@ export default function Receivable() {
             <Button
               variant="outline"
               className="rounded-xl"
-              onClick={() => exportReceivablePdf(filtered, filterLabels[filter])}
-              disabled={filtered.length === 0}
+              onClick={() => {
+                if (filtered.length === 0) { toast.error("Nada para exportar nesse filtro"); return; }
+                exportReceivablePdf(filtered, filterLabels[filter]);
+              }}
             >
               <FileDown className="h-4 w-4 mr-1" /> PDF
             </Button>
             <Button
               variant="outline"
               className="rounded-xl"
-              onClick={() => setBulkOpen(true)}
-              disabled={bulkEligible.length === 0}
+              onClick={() => {
+                if (bulkEligible.length === 0) { toast.error("Sem títulos pendentes nesse filtro. Mude para 'A Receber' ou 'Vencido'."); return; }
+                setBulkOpen(true);
+              }}
               title="Baixa em massa dos títulos filtrados"
             >
               <CheckSquare className="h-4 w-4 mr-1" /> Baixa em massa
