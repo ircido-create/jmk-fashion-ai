@@ -342,30 +342,26 @@ export default function Conversations() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Meta WhatsApp aceita: audio/aac, audio/mp4, audio/mpeg, audio/amr, audio/ogg (opus). NÃO aceita audio/webm.
-      const candidates = [
-        "audio/ogg;codecs=opus",
-        "audio/mp4;codecs=mp4a.40.2",
-        "audio/mp4",
-        "audio/aac",
-      ];
-      const supported = candidates.find((t) => (window as any).MediaRecorder?.isTypeSupported?.(t));
-      const mr = supported ? new MediaRecorder(stream, { mimeType: supported }) : new MediaRecorder(stream);
+      // Grava no formato nativo do navegador, depois converte para MP3 (audio/mpeg),
+      // formato aceito universalmente pela Meta WhatsApp Cloud API.
+      const mr = new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const rawType = mr.mimeType || supported || "audio/ogg";
-        // Normaliza para um mime aceito pela Meta (sem parâmetros como ;codecs=...)
-        let cleanType = rawType.split(";")[0].trim().toLowerCase();
-        if (cleanType === "audio/webm") cleanType = "audio/ogg"; // fallback de segurança
-        const ext = cleanType === "audio/ogg" ? "ogg"
-          : cleanType === "audio/mp4" ? "m4a"
-          : cleanType === "audio/aac" ? "aac"
-          : "ogg";
-        const blob = new Blob(chunksRef.current, { type: cleanType });
-        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: cleanType });
-        await sendMedia(file, "audio");
+        const rawType = mr.mimeType || "audio/webm";
+        const raw = new Blob(chunksRef.current, { type: rawType });
+        try {
+          const mp3 = await convertToMp3(raw);
+          const file = new File([mp3], `audio-${Date.now()}.mp3`, { type: "audio/mpeg" });
+          await sendMedia(file, "audio");
+        } catch (err: any) {
+          toast({
+            title: "Falha ao processar áudio",
+            description: err?.message ?? "Não foi possível converter para MP3",
+            variant: "destructive",
+          });
+        }
       };
       mr.start();
       mediaRecorderRef.current = mr;
