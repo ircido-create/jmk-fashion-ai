@@ -484,9 +484,10 @@ export default function Conversations() {
 
   const filtered = useMemo(() => conversations.filter((c) => {
     const q = search.toLowerCase();
+    const name = isPlaceholderName(c.customer?.name) ? "" : (c.customer?.name ?? "");
     return (
       c.customer_phone.toLowerCase().includes(q) ||
-      (c.customer?.name ?? "").toLowerCase().includes(q)
+      name.toLowerCase().includes(q)
     );
   }), [conversations, search]);
 
