@@ -724,9 +724,9 @@ Deno.serve(async (req) => {
     const fromPhone: string = message.from;
     let text: string = message.text?.body ?? message.image?.caption ?? message.document?.caption ?? message.video?.caption ?? "";
 
-    // === MÍDIA RECEBIDA (image, audio, voice, document, video) ===
+    // === MÍDIA RECEBIDA (image, audio, voice, document, video, sticker) ===
     let inboundMedia: {
-      kind: "image" | "audio" | "document" | "video";
+      kind: "image" | "audio" | "document" | "video" | "sticker";
       mediaId: string;
       filename?: string;
     } | null = null;
@@ -743,6 +743,9 @@ Deno.serve(async (req) => {
     } else if (message.type === "video") {
       const mediaId = message.video?.id;
       if (mediaId) inboundMedia = { kind: "video", mediaId };
+    } else if (message.type === "sticker") {
+      const mediaId = message.sticker?.id;
+      if (mediaId) inboundMedia = { kind: "sticker", mediaId };
     }
 
     let savedMediaPath: string | null = null;
@@ -809,6 +812,7 @@ Deno.serve(async (req) => {
       audio: "[🎤 Áudio]",
       document: "[📎 Documento]",
       video: "[🎥 Vídeo]",
+      sticker: "[🌟 Figurinha]",
     };
     const inboundContent = text?.trim() ? text : (inboundMedia ? labelByKind[inboundMedia.kind] : "");
 

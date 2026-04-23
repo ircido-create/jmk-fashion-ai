@@ -9,6 +9,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -16,9 +17,13 @@ import { cn } from "@/lib/utils";
 import {
   MessageCircle, Send, Plus, Search, User, UserPlus, ArrowLeft, Paperclip,
   Image as ImageIcon, FileText, Mic, X, Square, Play, Pause, Download,
+  Smile, Sticker as StickerIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import EmojiPicker, { Theme as EmojiTheme } from "emoji-picker-react";
+import { convertToMp3 } from "@/lib/audioToMp3";
+import { toStickerWebp } from "@/lib/imageToSticker";
 
 interface Conversation {
   id: string;
@@ -36,7 +41,7 @@ interface Message {
   content: string;
   created_at: string;
   media_path: string | null;
-  media_type: "image" | "audio" | "document" | "video" | null;
+  media_type: "image" | "audio" | "document" | "video" | "sticker" | null;
   media_mime: string | null;
   media_filename: string | null;
 }
@@ -75,10 +80,23 @@ function MediaBubble({
   if (msg.media_type === "audio") {
     return signedUrl ? (
       <audio controls preload="metadata" className="max-w-[240px] w-full">
-        <source src={signedUrl} type={msg.media_mime ?? "audio/ogg"} />
+        <source src={signedUrl} type={msg.media_mime ?? "audio/mpeg"} />
       </audio>
     ) : (
       <div className="h-10 w-48 rounded-full bg-muted/50 animate-pulse" />
+    );
+  }
+
+  if (msg.media_type === "sticker") {
+    return signedUrl ? (
+      <img
+        src={signedUrl}
+        alt="figurinha"
+        className="w-32 h-32 object-contain"
+        loading="lazy"
+      />
+    ) : (
+      <div className="h-32 w-32 rounded-lg bg-muted/50 animate-pulse" />
     );
   }
 
@@ -144,6 +162,7 @@ export default function Conversations() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const stickerInputRef = useRef<HTMLInputElement>(null);
 
   const loadConversations = async () => {
     const { data } = await supabase
@@ -233,12 +252,14 @@ export default function Conversations() {
     }
   };
 
-  const sendMedia = async (file: File, kind: "image" | "audio" | "document") => {
+  const sendMedia = async (
+    file: File,
+    kind: "image" | "audio" | "document" | "sticker",
+  ) => {
     if (!active) return;
     setSending(true);
 
-    // Preview otimista local: insere uma mensagem temporária com URL local
-    // para que a imagem/áudio/documento apareça imediatamente na conversa.
+    // Preview otimista local
     const tempId = `temp-${Date.now()}`;
     const localUrl = URL.createObjectURL(file);
     const tempPath = `__local__/${tempId}`;
@@ -249,7 +270,7 @@ export default function Conversations() {
       content: draft.trim() || "",
       created_at: new Date().toISOString(),
       media_path: tempPath,
-      media_type: kind === "image" ? "image" : kind === "audio" ? "audio" : "document",
+      media_type: kind,
       media_mime: file.type || null,
       media_filename: file.name,
     };
@@ -259,18 +280,22 @@ export default function Conversations() {
 
     try {
       const base64 = await fileToBase64(file);
+      const fallbackMime =
+        kind === "audio" ? "audio/mpeg"
+        : kind === "sticker" ? "image/webp"
+        : kind === "image" ? "image/jpeg"
+        : "application/octet-stream";
       const { data, error } = await supabase.functions.invoke("whatsapp-send-media", {
         body: {
           to: active.customer_phone,
           kind,
           file_base64: base64,
-          mime_type: file.type || (kind === "audio" ? "audio/ogg" : "application/octet-stream"),
+          mime_type: file.type || fallbackMime,
           filename: file.name,
-          caption: draft.trim() || undefined,
+          caption: kind === "sticker" || kind === "audio" ? undefined : draft.trim() || undefined,
         },
       });
       if (error || (data as any)?.error) {
-        // remove preview otimista em caso de falha
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         URL.revokeObjectURL(localUrl);
         toast({
@@ -279,8 +304,7 @@ export default function Conversations() {
           variant: "destructive",
         });
       } else {
-        setDraft("");
-        // o realtime trará a mensagem real; removemos a temporária após pequeno delay
+        if (kind !== "sticker" && kind !== "audio") setDraft("");
         setTimeout(() => {
           setMessages((prev) => prev.filter((m) => m.id !== tempId));
           URL.revokeObjectURL(localUrl);
@@ -301,34 +325,44 @@ export default function Conversations() {
     e.target.value = "";
     if (f) sendMedia(f, "document");
   };
+  const onPickSticker = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const sticker = await toStickerWebp(f);
+      await sendMedia(sticker, "sticker");
+    } catch (err: any) {
+      toast({ title: "Falha ao gerar figurinha", description: err?.message ?? "Erro", variant: "destructive" });
+    }
+  };
+  const insertEmoji = (emoji: string) => {
+    setDraft((d) => d + emoji);
+  };
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Meta WhatsApp aceita: audio/aac, audio/mp4, audio/mpeg, audio/amr, audio/ogg (opus). NÃO aceita audio/webm.
-      const candidates = [
-        "audio/ogg;codecs=opus",
-        "audio/mp4;codecs=mp4a.40.2",
-        "audio/mp4",
-        "audio/aac",
-      ];
-      const supported = candidates.find((t) => (window as any).MediaRecorder?.isTypeSupported?.(t));
-      const mr = supported ? new MediaRecorder(stream, { mimeType: supported }) : new MediaRecorder(stream);
+      // Grava no formato nativo do navegador, depois converte para MP3 (audio/mpeg),
+      // formato aceito universalmente pela Meta WhatsApp Cloud API.
+      const mr = new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const rawType = mr.mimeType || supported || "audio/ogg";
-        // Normaliza para um mime aceito pela Meta (sem parâmetros como ;codecs=...)
-        let cleanType = rawType.split(";")[0].trim().toLowerCase();
-        if (cleanType === "audio/webm") cleanType = "audio/ogg"; // fallback de segurança
-        const ext = cleanType === "audio/ogg" ? "ogg"
-          : cleanType === "audio/mp4" ? "m4a"
-          : cleanType === "audio/aac" ? "aac"
-          : "ogg";
-        const blob = new Blob(chunksRef.current, { type: cleanType });
-        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: cleanType });
-        await sendMedia(file, "audio");
+        const rawType = mr.mimeType || "audio/webm";
+        const raw = new Blob(chunksRef.current, { type: rawType });
+        try {
+          const mp3 = await convertToMp3(raw);
+          const file = new File([mp3], `audio-${Date.now()}.mp3`, { type: "audio/mpeg" });
+          await sendMedia(file, "audio");
+        } catch (err: any) {
+          toast({
+            title: "Falha ao processar áudio",
+            description: err?.message ?? "Não foi possível converter para MP3",
+            variant: "destructive",
+          });
+        }
       };
       mr.start();
       mediaRecorderRef.current = mr;
@@ -724,8 +758,29 @@ export default function Conversations() {
                         <DropdownMenuItem onClick={() => docInputRef.current?.click()}>
                           <FileText className="h-4 w-4 mr-2" />Documento
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => stickerInputRef.current?.click()}>
+                          <StickerIcon className="h-4 w-4 mr-2" />Figurinha
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+
+                    {/* Emoji picker */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" disabled={sending} aria-label="Emoji">
+                          <Smile className="h-5 w-5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="p-0 w-auto border-0 bg-transparent shadow-none">
+                        <EmojiPicker
+                          onEmojiClick={(d) => insertEmoji(d.emoji)}
+                          theme={EmojiTheme.AUTO}
+                          width={320}
+                          height={380}
+                        />
+                      </PopoverContent>
+                    </Popover>
+
                     <input
                       ref={imageInputRef} type="file" accept="image/*"
                       className="hidden" onChange={onPickImage}
@@ -734,6 +789,10 @@ export default function Conversations() {
                       ref={docInputRef} type="file"
                       accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf"
                       className="hidden" onChange={onPickDoc}
+                    />
+                    <input
+                      ref={stickerInputRef} type="file" accept="image/*"
+                      className="hidden" onChange={onPickSticker}
                     />
 
                     <Textarea
