@@ -276,13 +276,29 @@ export default function Conversations() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
+      // Meta WhatsApp aceita: audio/aac, audio/mp4, audio/mpeg, audio/amr, audio/ogg (opus). NÃO aceita audio/webm.
+      const candidates = [
+        "audio/ogg;codecs=opus",
+        "audio/mp4;codecs=mp4a.40.2",
+        "audio/mp4",
+        "audio/aac",
+      ];
+      const supported = candidates.find((t) => (window as any).MediaRecorder?.isTypeSupported?.(t));
+      const mr = supported ? new MediaRecorder(stream, { mimeType: supported }) : new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
-        const file = new File([blob], `audio-${Date.now()}.webm`, { type: blob.type });
+        const rawType = mr.mimeType || supported || "audio/ogg";
+        // Normaliza para um mime aceito pela Meta (sem parâmetros como ;codecs=...)
+        let cleanType = rawType.split(";")[0].trim().toLowerCase();
+        if (cleanType === "audio/webm") cleanType = "audio/ogg"; // fallback de segurança
+        const ext = cleanType === "audio/ogg" ? "ogg"
+          : cleanType === "audio/mp4" ? "m4a"
+          : cleanType === "audio/aac" ? "aac"
+          : "ogg";
+        const blob = new Blob(chunksRef.current, { type: cleanType });
+        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: cleanType });
         await sendMedia(file, "audio");
       };
       mr.start();
