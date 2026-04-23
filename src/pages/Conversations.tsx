@@ -687,7 +687,7 @@ export default function Conversations() {
                 {messages.map((m) => {
                   const isOut = m.direction === "outbound";
                   const url = m.media_path ? mediaUrls[m.media_path] : undefined;
-                  const showText = m.content && !/^\[(📷|🎤|📎|🎥)/.test(m.content);
+                  const showText = m.content && !m.media_path && !/^\[(📷|🎤|📎|🎥|Figurinha|Sticker|Imagem|Áudio|Audio|Documento|V[ií]deo)/i.test(m.content);
                   return (
                     <div key={m.id} className={cn("flex", isOut ? "justify-end" : "justify-start")}>
                       <div
