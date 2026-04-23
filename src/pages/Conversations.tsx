@@ -23,7 +23,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import EmojiPicker, { Theme as EmojiTheme } from "emoji-picker-react";
 import { convertToMp3 } from "@/lib/audioToMp3";
-import { toStickerWebp } from "@/lib/imageToSticker";
+import { FavoriteStickers } from "@/components/FavoriteStickers";
 
 interface Conversation {
   id: string;
