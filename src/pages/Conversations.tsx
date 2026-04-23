@@ -236,6 +236,27 @@ export default function Conversations() {
   const sendMedia = async (file: File, kind: "image" | "audio" | "document") => {
     if (!active) return;
     setSending(true);
+
+    // Preview otimista local: insere uma mensagem temporária com URL local
+    // para que a imagem/áudio/documento apareça imediatamente na conversa.
+    const tempId = `temp-${Date.now()}`;
+    const localUrl = URL.createObjectURL(file);
+    const tempPath = `__local__/${tempId}`;
+    const optimistic: Message = {
+      id: tempId,
+      conversation_id: active.id,
+      direction: "outbound",
+      content: draft.trim() || "",
+      created_at: new Date().toISOString(),
+      media_path: tempPath,
+      media_type: kind === "image" ? "image" : kind === "audio" ? "audio" : "document",
+      media_mime: file.type || null,
+      media_filename: file.name,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setMediaUrls((prev) => ({ ...prev, [tempPath]: localUrl }));
+    setTimeout(() => scrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" }), 30);
+
     try {
       const base64 = await fileToBase64(file);
       const { data, error } = await supabase.functions.invoke("whatsapp-send-media", {
@@ -243,12 +264,15 @@ export default function Conversations() {
           to: active.customer_phone,
           kind,
           file_base64: base64,
-          mime_type: file.type || (kind === "audio" ? "audio/webm" : "application/octet-stream"),
+          mime_type: file.type || (kind === "audio" ? "audio/ogg" : "application/octet-stream"),
           filename: file.name,
           caption: draft.trim() || undefined,
         },
       });
       if (error || (data as any)?.error) {
+        // remove preview otimista em caso de falha
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        URL.revokeObjectURL(localUrl);
         toast({
           title: "Falha ao enviar arquivo",
           description: error?.message ?? JSON.stringify((data as any)?.error),
@@ -256,6 +280,11 @@ export default function Conversations() {
         });
       } else {
         setDraft("");
+        // o realtime trará a mensagem real; removemos a temporária após pequeno delay
+        setTimeout(() => {
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          URL.revokeObjectURL(localUrl);
+        }, 1500);
       }
     } finally {
       setSending(false);
