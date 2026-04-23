@@ -107,6 +107,7 @@ export default function Customers() {
               <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-3">
                 <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+                <div><Label>CPF / CNPJ</Label><Input name="tax_id" defaultValue={formatTaxId(editing?.tax_id)} placeholder="000.000.000-00" className="glass-input" /></div>
                 <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
                 <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
                 <div><Label>Endereço</Label><Textarea name="address" defaultValue={editing?.address ?? ""} placeholder="Rua, número, bairro, cidade — UF, CEP" className="glass-input" rows={2} /></div>
@@ -121,7 +122,7 @@ export default function Customers() {
       <GlassCard>
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." className="glass-input pl-10" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome, telefone, e-mail ou CPF/CNPJ..." className="glass-input pl-10" />
         </div>
 
         <div className="space-y-2">
@@ -133,7 +134,7 @@ export default function Customers() {
                   <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
-                  {c.phone || "—"} {c.email ? `• ${c.email}` : ""}
+                  {c.tax_id ? formatTaxId(c.tax_id) : "—"} {c.phone ? `• ${c.phone}` : ""} {c.email ? `• ${c.email}` : ""}
                 </div>
                 {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
               </Link>
