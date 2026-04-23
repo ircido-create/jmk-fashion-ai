@@ -856,7 +856,7 @@ Deno.serve(async (req) => {
     let photosSentLog = "";
     let photoFailed = false;
     if (asksForPhoto(text)) {
-      const photos = await findPhotoMatches(text, ctx.supplierMentioned);
+      const photos = await findPhotoMatches(text, ctx.supplierMentioned, history ?? []);
       const sent: { caption: string }[] = [];
       const failed: { caption: string }[] = [];
       for (const ph of photos) {
