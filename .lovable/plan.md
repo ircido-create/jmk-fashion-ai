@@ -1,65 +1,69 @@
 
-# Importar extrato de contas a receber + cadastrar clientes com CPF/CNPJ
 
-## O que o arquivo contém
+# Dar baixa em massa nas contas a receber + anexar comprovante do extrato
 
-153 lançamentos = parcelas em aberto entre fev/2026 e abr/2026. Agrupados por CPF/CNPJ resultam em ~107 clientes únicos. Algumas pessoas aparecem com nomes ligeiramente diferentes no mesmo CPF — vou consolidar usando o nome mais completo.
+## O que vai acontecer
 
-## Mudanças
+1. **Todas as 155 contas a receber pendentes** (R$ 43.899,90) serão marcadas como `pago`, com `paid_at = data atual`.
+2. **O arquivo do extrato** (`Extrato_Lançamentos_1145_993315_23-04-2026-2.xlsx`) ficará anexado como **comprovante da baixa**, acessível na tela de Contas a Receber.
+3. A partir de agora, **toda baixa individual ou em massa** poderá ter um documento anexado (PDF, foto, planilha) — útil para anexar comprovantes Pix, extratos bancários, recibos.
 
-### 1. Adicionar campo CPF/CNPJ na tabela `customers` (migration)
+## Mudanças no banco
 
-- Coluna `tax_id` (text, nullable, único quando preenchido)
-- Índice único parcial: `CREATE UNIQUE INDEX ON customers (tax_id) WHERE tax_id IS NOT NULL` — garante que o mesmo CPF não vire dois cadastros
-- Armazenar apenas dígitos (sem pontos/traços/barras) para facilitar busca e deduplicação
+### Nova tabela: `payment_proofs`
+Guarda os comprovantes anexados a baixas:
+- `id`, `created_at`, `created_by`
+- `storage_path` — caminho do arquivo no bucket
+- `original_filename`, `mime_type`, `file_size`
+- `description` — texto livre (ex: "Baixa em massa do extrato 23/04/2026")
+- `payment_date` — data da baixa que esse comprovante representa
 
-### 2. Atualizar UI de Clientes (`src/pages/Customers.tsx` e `src/pages/CustomerDetail.tsx`)
+### Nova tabela: `receivable_payments`
+Vincula contas a receber a um comprovante (relação muitos-para-muitos):
+- `receivable_id` → `accounts_receivable.id`
+- `proof_id` → `payment_proofs.id`
+- `amount_paid` — valor efetivamente recebido naquela conta (preparando o terreno para o fluxo de "carteira" com saldo)
 
-- Novo campo "CPF/CNPJ" no formulário, com máscara de exibição (`000.000.000-00` ou `00.000.000/0000-00`)
-- Mostrar CPF/CNPJ na lista e na tela de detalhe
-- Busca passa a aceitar CPF/CNPJ (com ou sem pontuação)
-- Validação: 11 dígitos (CPF) ou 14 dígitos (CNPJ); permite vazio
+### Novo bucket de storage: `payment-proofs` (privado)
+- RLS: staff (admin + vendedor) pode upload e ler; somente admin pode deletar.
 
-### 3. Importar os dados do extrato (script de seed via tool de insert)
+## Fluxo de baixa em massa (executado agora)
 
-**Etapa A — clientes únicos (~107 registros):**
-- Agrupar linhas por CPF/CNPJ (dígitos apenas)
-- Para cada CPF, escolher o nome mais longo/completo como `name`
-- Inserir em `customers` com `tax_id` preenchido. Se CPF já existir no banco, atualizar o nome (não duplicar).
+1. Upload do arquivo `Extrato_Lançamentos_1145_993315_23-04-2026-2.xlsx` no bucket `payment-proofs`.
+2. Cria 1 registro em `payment_proofs` apontando para esse arquivo, com descrição "Baixa em massa — extrato 23/04/2026".
+3. Para cada uma das 155 contas pendentes:
+   - `UPDATE accounts_receivable SET status='pago', paid_at=now()`
+   - `INSERT INTO receivable_payments (receivable_id, proof_id, amount_paid=amount)`
 
-**Etapa B — contas a receber (153 registros):**
-- Para cada linha do extrato:
-  - `customer_id` = id do cliente correspondente (lookup pelo `tax_id`)
-  - `due_date` = data da linha (formato `YYYY-MM-DD`)
-  - `amount` = valor da linha
-  - `status` = `pendente`
-  - `description` = `"Parcela carteira — " + data formatada`
+## Mudanças na UI (`src/pages/Receivable.tsx`)
 
-### 4. Sobre o modelo "carteira" (parcela variável)
+### Botão "Baixa em massa" (novo)
+- Ao lado de "Nova" e "PDF" no header.
+- Abre um modal: seleciona quais contas dar baixa (default: todas as filtradas atualmente em "A Receber"), permite anexar 1 arquivo, e confirma.
 
-O schema atual de `accounts_receivable` já comporta isso sem mudanças. Cada parcela é uma conta independente com seu valor e vencimento. O fluxo operacional fica:
+### Anexar comprovante na baixa individual
+- O botão atual ✓ ("marcar como recebido") passa a abrir um modal pequeno com:
+  - Valor recebido (default = valor da conta)
+  - Anexar comprovante (opcional)
+  - Botão "Confirmar baixa"
 
-- Cliente pagou exatamente o valor → marcar conta como `pago`
-- Cliente pagou **a mais** (ex: parcela 200, pagou 250) → marcar como `pago` + criar conta a receber **negativa** (-50) ou abater a diferença na próxima parcela em aberto
-- Cliente pagou **a menos** (ex: parcela 200, pagou 180) → marcar como `pago` + criar nova conta de R$ 20 com vencimento na próxima data
+### Mostrar comprovantes anexados
+- Cada conta paga ganha um ícone 📎 quando tem comprovante. Ao clicar, abre/baixa o arquivo via signed URL.
 
-Esse fluxo de baixa não está sendo construído agora — só o cadastro/importação. Posso construir a tela de "baixa com saldo" depois se quiser. Para esta tarefa, importo tudo como `pendente`.
+## O que NÃO está nesta tarefa
 
-## Resultado esperado
-
-- ~107 clientes novos cadastrados, cada um com seu CPF/CNPJ
-- 153 contas a receber em aberto vinculadas aos respectivos clientes
-- Tela de Clientes mostra CPF/CNPJ e permite buscar por ele
-- Tela de Contas a Receber lista as 153 parcelas agrupáveis por cliente
+- Tela dedicada de "histórico de comprovantes" (lista todos os arquivos anexados). Pode ser feita depois.
+- Lógica completa de "carteira" (pagou a mais/menos → cria saldo automaticamente). A coluna `amount_paid` em `receivable_payments` já prepara o terreno, mas o fluxo automatizado fica para depois.
 
 ## Arquivos afetados
 
-- `supabase/migrations/` (nova migration: coluna `tax_id` + índice único)
-- `src/pages/Customers.tsx` (campo CPF/CNPJ + busca + máscara)
-- `src/pages/CustomerDetail.tsx` (exibir CPF/CNPJ)
-- Inserts via tool de banco (sem arquivo de script no repo)
+- `supabase/migrations/` (nova migration: 2 tabelas + bucket + RLS)
+- `src/pages/Receivable.tsx` (botão de baixa em massa + modal de baixa individual com upload + ícone de comprovante)
+- Inserts via tool de banco (upload do extrato + baixa das 155 contas)
 
-## Confirmações que preciso antes de executar
+## Resultado esperado
 
-1. **Confirmar a importação em massa** — vou criar 107 clientes e 153 contas a receber. Sem volta fácil (precisa rodar delete em massa de novo).
-2. O extrato tem datas que parecem ser **datas de vencimento** (algumas já passadas, fev/mar/2026). Vou usar como `due_date`. Ok?
+- Tela "Contas a Receber" → aba "A Receber" fica vazia (R$ 0,00).
+- Aba "Pago" mostra as 155 contas com data de hoje, todas com 📎 apontando para o mesmo extrato.
+- Próximas baixas (individuais ou em massa) podem anexar qualquer arquivo como prova.
+
