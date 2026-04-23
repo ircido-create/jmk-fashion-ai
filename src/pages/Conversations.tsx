@@ -746,9 +746,6 @@ export default function Conversations() {
                         <DropdownMenuItem onClick={() => docInputRef.current?.click()}>
                           <FileText className="h-4 w-4 mr-2" />Documento
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => stickerInputRef.current?.click()}>
-                          <StickerIcon className="h-4 w-4 mr-2" />Figurinha
-                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
 
@@ -769,6 +766,12 @@ export default function Conversations() {
                       </PopoverContent>
                     </Popover>
 
+                    {/* Figurinhas favoritas */}
+                    <FavoriteStickers
+                      disabled={sending}
+                      onSend={(file) => sendMedia(file, "sticker")}
+                    />
+
                     <input
                       ref={imageInputRef} type="file" accept="image/*"
                       className="hidden" onChange={onPickImage}
@@ -777,10 +780,6 @@ export default function Conversations() {
                       ref={docInputRef} type="file"
                       accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,application/pdf"
                       className="hidden" onChange={onPickDoc}
-                    />
-                    <input
-                      ref={stickerInputRef} type="file" accept="image/*"
-                      className="hidden" onChange={onPickSticker}
                     />
 
                     <Textarea
