@@ -427,7 +427,7 @@ export default function Conversations() {
 
   const openRegister = () => {
     if (!active) return;
-    setRegName(active.customer?.name ?? "");
+    setRegName(isPlaceholderName(active.customer?.name) ? "" : (active.customer?.name ?? ""));
     setRegEmail("");
     setRegAddress("");
     setRegNotes("");
