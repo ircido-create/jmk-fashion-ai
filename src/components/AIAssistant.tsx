@@ -50,16 +50,27 @@ export function AIAssistant() {
 
   return (
     <>
-      <motion.button
-        onClick={() => setOpen(true)}
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.94 }}
-        className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-gradient-primary text-primary-foreground shadow-glow flex items-center justify-center"
-        aria-label="Abrir assistente"
-      >
-        <Sparkles className="h-6 w-6" />
-        <span className="absolute inset-0 rounded-full bg-gradient-primary animate-ping opacity-20" />
-      </motion.button>
+      {!hidden && (
+        <div className="fixed bottom-6 right-6 z-40">
+          <motion.button
+            onClick={() => setOpen(true)}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.94 }}
+            className="relative h-14 w-14 rounded-full bg-gradient-primary text-primary-foreground shadow-glow flex items-center justify-center"
+            aria-label="Abrir assistente"
+          >
+            <Sparkles className="h-6 w-6" />
+            <span className="absolute inset-0 rounded-full bg-gradient-primary animate-ping opacity-20" />
+          </motion.button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setHidden(true); setOpen(false); }}
+            aria-label="Ocultar assistente"
+            className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-background border border-border text-foreground/70 hover:text-foreground hover:bg-muted shadow-sm flex items-center justify-center transition-colors"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       <AnimatePresence>
         {open && (
