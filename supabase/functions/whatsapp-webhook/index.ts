@@ -911,7 +911,7 @@ Deno.serve(async (req) => {
       const sent: { caption: string }[] = [];
       const failed: { caption: string }[] = [];
       for (const ph of photos) {
-        const ok = await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg);
+        const ok = await sendWhatsAppImage(fromPhone, ph.url, ph.caption, cfg, conv.id);
         if (ok) sent.push(ph); else failed.push(ph);
       }
       if (sent.length > 0) {
