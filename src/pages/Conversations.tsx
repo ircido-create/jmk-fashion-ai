@@ -16,8 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   MessageCircle, Send, Plus, Search, User, UserPlus, ArrowLeft, Paperclip,
-  Image as ImageIcon, FileText, Mic, X, Square, Play, Pause, Download,
-  Smile, Sticker as StickerIcon,
+  Image as ImageIcon, FileText, Mic, X, Download,
+  Smile,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
