@@ -59,6 +59,18 @@ export default function Receivable() {
   const [bulkDesc, setBulkDesc] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
 
+  // Relatório
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState<"todos" | "1m" | "1a" | "custom">("todos");
+  const [reportFrom, setReportFrom] = useState<string>("");
+  const [reportTo, setReportTo] = useState<string>("");
+
+  // Importar
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<{ customer_name: string; description: string; amount: number; due_date: string }[]>([]);
+  const [importSaving, setImportSaving] = useState(false);
+
   const load = async () => {
     try {
       const data = await fetchAll<any>((sb) =>
