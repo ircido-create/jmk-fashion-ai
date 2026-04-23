@@ -23,14 +23,14 @@ export async function convertToMp3(blob: Blob): Promise<Blob> {
     i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
   }
   const enc = new Mp3Encoder(1, decoded.sampleRate, 128);
-  const out: Uint8Array[] = [];
+  const parts: BlobPart[] = [];
   const SAMPLE_BLOCK = 1152;
   for (let i = 0; i < i16.length; i += SAMPLE_BLOCK) {
     const chunk = enc.encodeBuffer(i16.subarray(i, i + SAMPLE_BLOCK));
-    if (chunk.length) out.push(new Uint8Array(chunk));
+    if (chunk.length) parts.push(chunk.buffer.slice(0));
   }
   const tail = enc.flush();
-  if (tail.length) out.push(new Uint8Array(tail));
+  if (tail.length) parts.push(tail.buffer.slice(0));
   await ctx.close();
-  return new Blob(out, { type: "audio/mpeg" });
+  return new Blob(parts, { type: "audio/mpeg" });
 }
