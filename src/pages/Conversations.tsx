@@ -60,6 +60,17 @@ const fileToBase64 = (file: Blob): Promise<string> =>
 const isMediaPlaceholder = (content?: string | null) =>
   !!content && /^\[(?:(?:📷|🎤|📎|🎥)|(?:.*\b(?:Figurinha|Sticker|Imagem|Áudio|Audio|Documento|V[ií]deo)\b.*))\]$/i.test(content.trim());
 
+// Nomes "placeholder" que vieram do auto-cadastro do WhatsApp quando ainda não sabemos o nome real.
+const isPlaceholderName = (name?: string | null) => {
+  const n = (name ?? "").trim();
+  if (!n) return true;
+  if (n === "(sem nome)") return true;
+  if (/^\+?[0-9 ().-]+$/.test(n)) return true; // só dígitos/telefone
+  return false;
+};
+const displayName = (c: { customer?: { name: string } | null; customer_phone: string }) =>
+  isPlaceholderName(c.customer?.name) ? c.customer_phone : (c.customer!.name);
+
 function MediaBubble({
   msg, signedUrl,
 }: { msg: Message; signedUrl?: string }) {
