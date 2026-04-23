@@ -12,11 +12,13 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { Link } from "react-router-dom";
 import { usePagination } from "@/hooks/usePagination";
+import { digitsOnly, formatTaxId, isValidTaxIdLength } from "@/lib/taxId";
 
-interface Customer { id: string; name: string; phone: string | null; email: string | null; address: string | null; notes: string | null; }
+interface Customer { id: string; name: string; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
 
 const schema = z.object({
   name: z.string().trim().min(2, "Nome muito curto").max(100),
+  tax_id: z.string().trim().max(20).optional().or(z.literal("")),
   phone: z.string().trim().max(20).optional().or(z.literal("")),
   email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
   address: z.string().trim().max(300).optional().or(z.literal("")),
@@ -46,11 +48,17 @@ export default function Customers() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const parsed = schema.safeParse({
-      name: f.get("name"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
+      name: f.get("name"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    const taxIdDigits = digitsOnly(parsed.data.tax_id);
+    if (!isValidTaxIdLength(taxIdDigits)) {
+      toast.error("CPF deve ter 11 dígitos ou CNPJ 14 dígitos");
+      return;
+    }
     const payload = {
       name: parsed.data.name,
+      tax_id: taxIdDigits || null,
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
       address: parsed.data.address || null,
@@ -71,11 +79,16 @@ export default function Customers() {
     else { toast.success("Excluído"); load(); }
   };
 
-  const filtered = list.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone ?? "").includes(search) ||
-    (c.email ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const searchDigits = digitsOnly(search);
+  const filtered = list.filter((c) => {
+    const q = search.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.phone ?? "").includes(search) ||
+      (c.email ?? "").toLowerCase().includes(q) ||
+      (searchDigits.length >= 3 && (c.tax_id ?? "").includes(searchDigits))
+    );
+  });
   const { paged, Controls } = usePagination(filtered, 20);
 
   return (
@@ -94,6 +107,7 @@ export default function Customers() {
               <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-3">
                 <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+                <div><Label>CPF / CNPJ</Label><Input name="tax_id" defaultValue={formatTaxId(editing?.tax_id)} placeholder="000.000.000-00" className="glass-input" /></div>
                 <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
                 <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
                 <div><Label>Endereço</Label><Textarea name="address" defaultValue={editing?.address ?? ""} placeholder="Rua, número, bairro, cidade — UF, CEP" className="glass-input" rows={2} /></div>
@@ -108,7 +122,7 @@ export default function Customers() {
       <GlassCard>
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." className="glass-input pl-10" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome, telefone, e-mail ou CPF/CNPJ..." className="glass-input pl-10" />
         </div>
 
         <div className="space-y-2">
@@ -120,7 +134,7 @@ export default function Customers() {
                   <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
-                  {c.phone || "—"} {c.email ? `• ${c.email}` : ""}
+                  {c.tax_id ? formatTaxId(c.tax_id) : "—"} {c.phone ? `• ${c.phone}` : ""} {c.email ? `• ${c.email}` : ""}
                 </div>
                 {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
               </Link>

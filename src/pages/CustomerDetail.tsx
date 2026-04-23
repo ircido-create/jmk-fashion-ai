@@ -3,13 +3,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard } from "lucide-react";
 import { calculateTrust, trustBgClass, type ReceivableLike } from "@/lib/trustScore";
 import { toast } from "sonner";
+import { formatTaxId } from "@/lib/taxId";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
-  address: string | null; notes: string | null; created_at: string;
+  address: string | null; notes: string | null; tax_id: string | null; created_at: string;
 }
 interface SaleItem {
   id: string; product_name: string; variant_label: string | null;
@@ -123,7 +124,8 @@ export default function CustomerDetail() {
 
       {/* Dados de contato */}
       <GlassCard>
-        <div className="grid sm:grid-cols-3 gap-4 text-sm">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+          <div className="flex items-start gap-2"><IdCard className="h-4 w-4 text-muted-foreground mt-0.5" /><div><div className="text-xs text-muted-foreground">CPF / CNPJ</div>{customer.tax_id ? formatTaxId(customer.tax_id) : "—"}</div></div>
           <div className="flex items-start gap-2"><Phone className="h-4 w-4 text-muted-foreground mt-0.5" /><div><div className="text-xs text-muted-foreground">Telefone</div>{customer.phone || "—"}</div></div>
           <div className="flex items-start gap-2"><Mail className="h-4 w-4 text-muted-foreground mt-0.5" /><div className="min-w-0"><div className="text-xs text-muted-foreground">E-mail</div><div className="truncate">{customer.email || "—"}</div></div></div>
           <div className="flex items-start gap-2"><MapPin className="h-4 w-4 text-muted-foreground mt-0.5" /><div><div className="text-xs text-muted-foreground">Endereço</div>{customer.address || "—"}</div></div>
