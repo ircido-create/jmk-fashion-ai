@@ -48,11 +48,17 @@ export default function Customers() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const parsed = schema.safeParse({
-      name: f.get("name"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
+      name: f.get("name"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    const taxIdDigits = digitsOnly(parsed.data.tax_id);
+    if (!isValidTaxIdLength(taxIdDigits)) {
+      toast.error("CPF deve ter 11 dígitos ou CNPJ 14 dígitos");
+      return;
+    }
     const payload = {
       name: parsed.data.name,
+      tax_id: taxIdDigits || null,
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
       address: parsed.data.address || null,
@@ -73,11 +79,16 @@ export default function Customers() {
     else { toast.success("Excluído"); load(); }
   };
 
-  const filtered = list.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone ?? "").includes(search) ||
-    (c.email ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const searchDigits = digitsOnly(search);
+  const filtered = list.filter((c) => {
+    const q = search.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.phone ?? "").includes(search) ||
+      (c.email ?? "").toLowerCase().includes(q) ||
+      (searchDigits.length >= 3 && (c.tax_id ?? "").includes(searchDigits))
+    );
+  });
   const { paged, Controls } = usePagination(filtered, 20);
 
   return (
