@@ -57,6 +57,9 @@ const fileToBase64 = (file: Blob): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
+const isMediaPlaceholder = (content?: string | null) =>
+  !!content && /^\[(?:(?:📷|🎤|📎|🎥)|(?:.*\b(?:Figurinha|Sticker|Imagem|Áudio|Audio|Documento|V[ií]deo)\b.*))\]$/i.test(content.trim());
+
 function MediaBubble({
   msg, signedUrl,
 }: { msg: Message; signedUrl?: string }) {
@@ -189,7 +192,7 @@ export default function Conversations() {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      c.lastMessage = m?.content;
+      c.lastMessage = isMediaPlaceholder(m?.content) ? "" : m?.content;
     }
     setConversations(list);
   };
@@ -687,8 +690,7 @@ export default function Conversations() {
                 {messages.map((m) => {
                   const isOut = m.direction === "outbound";
                   const url = m.media_path ? mediaUrls[m.media_path] : undefined;
-                  const placeholderRe = /^\[(📷|🎤|📎|🎥|Figurinha|Sticker|Imagem|Áudio|Audio|Documento|V[ií]deo)/i;
-                  const showText = !!m.content && !placeholderRe.test(m.content);
+                  const showText = !!m.content && !isMediaPlaceholder(m.content);
                   return (
                     <div key={m.id} className={cn("flex", isOut ? "justify-end" : "justify-start")}>
                       <div
