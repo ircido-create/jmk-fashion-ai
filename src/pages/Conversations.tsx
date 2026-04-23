@@ -583,7 +583,7 @@ export default function Conversations() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline gap-2">
                       <span className="font-medium text-sm truncate">
-                        {c.customer?.name ?? c.customer_phone}
+                        {displayName(c)}
                       </span>
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         {formatDistanceToNow(new Date(c.last_message_at), { locale: ptBR, addSuffix: false })}
@@ -640,7 +640,7 @@ export default function Conversations() {
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate text-sm">{active.customer?.name ?? "Cliente"}</div>
+                  <div className="font-medium truncate text-sm">{isPlaceholderName(active.customer?.name) ? active.customer_phone : active.customer!.name}</div>
                   <div className="text-[11px] text-muted-foreground truncate">{active.customer_phone}</div>
                 </div>
                 <Button
