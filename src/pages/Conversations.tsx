@@ -60,6 +60,17 @@ const fileToBase64 = (file: Blob): Promise<string> =>
 const isMediaPlaceholder = (content?: string | null) =>
   !!content && /^\[(?:(?:📷|🎤|📎|🎥)|(?:.*\b(?:Figurinha|Sticker|Imagem|Áudio|Audio|Documento|V[ií]deo)\b.*))\]$/i.test(content.trim());
 
+// Nomes "placeholder" que vieram do auto-cadastro do WhatsApp quando ainda não sabemos o nome real.
+const isPlaceholderName = (name?: string | null) => {
+  const n = (name ?? "").trim();
+  if (!n) return true;
+  if (n === "(sem nome)") return true;
+  if (/^\+?[0-9 ().-]+$/.test(n)) return true; // só dígitos/telefone
+  return false;
+};
+const displayName = (c: { customer?: { name: string } | null; customer_phone: string }) =>
+  isPlaceholderName(c.customer?.name) ? c.customer_phone : (c.customer!.name);
+
 function MediaBubble({
   msg, signedUrl,
 }: { msg: Message; signedUrl?: string }) {
@@ -416,7 +427,7 @@ export default function Conversations() {
 
   const openRegister = () => {
     if (!active) return;
-    setRegName(active.customer?.name ?? "");
+    setRegName(isPlaceholderName(active.customer?.name) ? "" : (active.customer?.name ?? ""));
     setRegEmail("");
     setRegAddress("");
     setRegNotes("");
@@ -473,9 +484,10 @@ export default function Conversations() {
 
   const filtered = useMemo(() => conversations.filter((c) => {
     const q = search.toLowerCase();
+    const name = isPlaceholderName(c.customer?.name) ? "" : (c.customer?.name ?? "");
     return (
       c.customer_phone.toLowerCase().includes(q) ||
-      (c.customer?.name ?? "").toLowerCase().includes(q)
+      name.toLowerCase().includes(q)
     );
   }), [conversations, search]);
 
@@ -571,7 +583,7 @@ export default function Conversations() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline gap-2">
                       <span className="font-medium text-sm truncate">
-                        {c.customer?.name ?? c.customer_phone}
+                        {displayName(c)}
                       </span>
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         {formatDistanceToNow(new Date(c.last_message_at), { locale: ptBR, addSuffix: false })}
@@ -628,7 +640,7 @@ export default function Conversations() {
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate text-sm">{active.customer?.name ?? "Cliente"}</div>
+                  <div className="font-medium truncate text-sm">{isPlaceholderName(active.customer?.name) ? active.customer_phone : active.customer!.name}</div>
                   <div className="text-[11px] text-muted-foreground truncate">{active.customer_phone}</div>
                 </div>
                 <Button

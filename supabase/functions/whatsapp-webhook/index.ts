@@ -598,7 +598,10 @@ function looksLikeName(text: string): boolean {
 
 function missingFields(c: any | null): string[] {
   const miss: string[] = [];
-  if (!c?.name || c.name.trim() === "" || c.name === c.phone) miss.push("nome");
+  // Considera nome ausente se: vazio, igual ao telefone, ou só dígitos
+  const nameStr = (c?.name ?? "").trim();
+  const looksLikePhone = /^\+?\d[\d\s().-]*$/.test(nameStr);
+  if (!nameStr || nameStr === c?.phone || looksLikePhone) miss.push("nome");
   if (!c?.address || c.address.trim() === "") miss.push("endereço");
   if (!c?.email || c.email.trim() === "") miss.push("email");
   return miss;
@@ -614,17 +617,17 @@ async function autoUpdateCustomer(phone: string, customer: any | null, userMsg: 
     updates.email = email;
   }
 
-  // Se a IA acabou de pedir um campo específico, assume que a resposta é esse campo
-  if (lastAskedField === "nome" && (!customer?.name || customer.name === customer.phone)) {
+  const nameMissing = !customer?.name || customer.name === customer.phone || /^\+?\d[\d\s().-]*$/.test((customer?.name ?? "").trim());
+
+  // Só infere nome quando a IA acabou de pedir o nome — nunca da primeira mensagem espontânea
+  if (lastAskedField === "nome" && nameMissing) {
     if (looksLikeName(text)) updates.name = text;
   } else if (lastAskedField === "endereço" && (!customer?.address || customer.address.trim() === "")) {
     if (text.length >= 10) updates.address = text;
   } else {
-    // Heurística geral
+    // Heurística geral — só endereço (nunca nome) sem ter sido pedido
     if ((!customer?.address || customer.address.trim() === "") && looksLikeAddress(text)) {
       updates.address = text;
-    } else if ((!customer?.name || customer.name === customer.phone) && looksLikeName(text) && !email) {
-      updates.name = text;
     }
   }
 
@@ -635,16 +638,22 @@ async function autoUpdateCustomer(phone: string, customer: any | null, userMsg: 
       .from("customers")
       .update(updates)
       .eq("id", customer.id)
-      .select("id, name, address, email")
+      .select("id, name, phone, address, email")
       .maybeSingle();
     return data ?? customer;
   } else {
+    // IMPORTANTE: nunca usar telefone como nome. Se não temos nome real ainda, deixa null
+    // (a coluna name é NOT NULL no schema — então usamos placeholder vazio "?" para forçar a IA a perguntar).
     const { data } = await supabase
       .from("customers")
-      .insert({ phone, name: updates.name ?? phone, address: updates.address ?? null, email: updates.email ?? null })
-      .select("id, name, address, email")
+      .insert({
+        phone,
+        name: updates.name ?? "(sem nome)",
+        address: updates.address ?? null,
+        email: updates.email ?? null,
+      })
+      .select("id, name, phone, address, email")
       .maybeSingle();
-    // vincula conversa
     if (data) {
       await supabase.from("whatsapp_conversations").update({ customer_id: data.id }).eq("customer_phone", phone);
     }
