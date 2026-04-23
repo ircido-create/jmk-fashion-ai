@@ -36,7 +36,7 @@ interface Message {
   content: string;
   created_at: string;
   media_path: string | null;
-  media_type: "image" | "audio" | "document" | "video" | null;
+  media_type: "image" | "audio" | "document" | "video" | "sticker" | null;
   media_mime: string | null;
   media_filename: string | null;
 }
@@ -75,10 +75,23 @@ function MediaBubble({
   if (msg.media_type === "audio") {
     return signedUrl ? (
       <audio controls preload="metadata" className="max-w-[240px] w-full">
-        <source src={signedUrl} type={msg.media_mime ?? "audio/ogg"} />
+        <source src={signedUrl} type={msg.media_mime ?? "audio/mpeg"} />
       </audio>
     ) : (
       <div className="h-10 w-48 rounded-full bg-muted/50 animate-pulse" />
+    );
+  }
+
+  if (msg.media_type === "sticker") {
+    return signedUrl ? (
+      <img
+        src={signedUrl}
+        alt="figurinha"
+        className="w-32 h-32 object-contain"
+        loading="lazy"
+      />
+    ) : (
+      <div className="h-32 w-32 rounded-lg bg-muted/50 animate-pulse" />
     );
   }
 
