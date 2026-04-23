@@ -409,6 +409,7 @@ export default function Receivable() {
     }
   };
 
+  return (
     <div>
       <PageHeader
         title="Contas a Receber"
