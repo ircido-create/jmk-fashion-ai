@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type MediaKind = "image" | "audio" | "document";
+type MediaKind = "image" | "audio" | "document" | "sticker";
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!["image", "audio", "document"].includes(kind)) {
+    if (!["image", "audio", "document", "sticker"].includes(kind)) {
       return new Response(JSON.stringify({ error: "kind inválido" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -143,6 +143,8 @@ Deno.serve(async (req) => {
     } else if (kind === "document") {
       payload.document = { id: mediaId, filename: safeName };
       if (caption) payload.document.caption = caption.slice(0, 1024);
+    } else if (kind === "sticker") {
+      payload.sticker = { id: mediaId };
     }
 
     const sendRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`, {
@@ -181,6 +183,7 @@ Deno.serve(async (req) => {
         image: "[📷 Imagem]",
         audio: "[🎤 Áudio]",
         document: "[📎 Documento]",
+        sticker: "[🌟 Figurinha]",
       };
       await admin.from("whatsapp_messages").insert({
         conversation_id: conv.id,
