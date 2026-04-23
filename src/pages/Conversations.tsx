@@ -324,17 +324,6 @@ export default function Conversations() {
     e.target.value = "";
     if (f) sendMedia(f, "document");
   };
-  const onPickSticker = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-    try {
-      const sticker = await toStickerWebp(f);
-      await sendMedia(sticker, "sticker");
-    } catch (err: any) {
-      toast({ title: "Falha ao gerar figurinha", description: err?.message ?? "Erro", variant: "destructive" });
-    }
-  };
   const insertEmoji = (emoji: string) => {
     setDraft((d) => d + emoji);
   };
