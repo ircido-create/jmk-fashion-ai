@@ -165,11 +165,15 @@ export default function Conversations() {
   const [newName, setNewName] = useState("");
   const [newMessage, setNewMessage] = useState("");
   const [regOpen, setRegOpen] = useState(false);
+  const [regMode, setRegMode] = useState<"new" | "link">("new");
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regAddress, setRegAddress] = useState("");
   const [regNotes, setRegNotes] = useState("");
   const [regSaving, setRegSaving] = useState(false);
+  const [allCustomers, setAllCustomers] = useState<Array<{ id: string; name: string; phone: string | null; tax_id: string | null }>>([]);
+  const [linkCustomerId, setLinkCustomerId] = useState<string>("");
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
 
   // mídia URLs assinadas (path -> url)
   const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({});
