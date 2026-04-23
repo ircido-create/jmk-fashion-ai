@@ -433,13 +433,21 @@ export default function Conversations() {
     await loadConversations();
   };
 
-  const openRegister = () => {
+  const openRegister = async () => {
     if (!active) return;
+    setRegMode("new");
+    setLinkCustomerId("");
     setRegName(isPlaceholderName(active.customer?.name) ? "" : (active.customer?.name ?? ""));
     setRegEmail("");
     setRegAddress("");
     setRegNotes("");
     setRegOpen(true);
+    // Carrega lista de clientes existentes para o seletor de vínculo
+    const { data } = await supabase
+      .from("customers")
+      .select("id, name, phone, tax_id")
+      .order("name", { ascending: true });
+    setAllCustomers((data ?? []) as any);
   };
 
   const registerCustomer = async () => {
