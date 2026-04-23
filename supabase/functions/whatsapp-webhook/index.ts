@@ -856,8 +856,11 @@ Deno.serve(async (req) => {
       { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name }
     );
 
-    // Se a cliente pediu foto, envia imagens antes da resposta de texto
-    let photosSentLog = "";
+    // Se a cliente pediu foto, envia imagens antes da resposta de texto.
+    // As fotos são gravadas como mensagens próprias (com media_path) pelo
+    // sendWhatsAppImage → registerOutboundMedia, então NÃO precisamos
+    // adicionar texto extra ("[N foto(s) enviada(s): ...]") na mensagem
+    // de resposta — isso só polui o painel.
     let photoFailed = false;
     if (asksForPhoto(text)) {
       const photos = await findPhotoMatches(text, ctx.supplierMentioned, history ?? []);
@@ -868,10 +871,10 @@ Deno.serve(async (req) => {
         if (ok) sent.push(ph); else failed.push(ph);
       }
       if (sent.length > 0) {
-        photosSentLog = `\n[${sent.length} foto(s) enviada(s): ${sent.map((p) => p.caption).join(", ")}]`;
+        console.log(`[webhook] ${sent.length} foto(s) enviada(s):`, sent.map((p) => p.caption).join(", "));
       }
       if (failed.length > 0) {
-        photosSentLog += `\n[⚠️ ${failed.length} foto(s) FALHARAM no envio: ${failed.map((p) => p.caption).join(", ")}]`;
+        console.warn(`[webhook] ${failed.length} foto(s) falharam:`, failed.map((p) => p.caption).join(", "));
       }
       if (photos.length > 0 && sent.length === 0) {
         photoFailed = true;
@@ -886,7 +889,7 @@ Deno.serve(async (req) => {
     const { error: outErr } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
-      content: finalReply + photosSentLog,
+      content: finalReply,
     });
     if (outErr) console.error("insert outbound error:", outErr);
     await supabase
