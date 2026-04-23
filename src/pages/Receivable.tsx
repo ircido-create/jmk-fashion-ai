@@ -279,7 +279,136 @@ export default function Receivable() {
     }
   };
 
-  return (
+  // === Relatório com filtro de período ===
+  const runReport = () => {
+    let from: Date | null = null;
+    const to = new Date();
+    if (reportPeriod === "1m") { from = new Date(); from.setMonth(from.getMonth() - 1); }
+    else if (reportPeriod === "1a") { from = new Date(); from.setFullYear(from.getFullYear() - 1); }
+    else if (reportPeriod === "custom") {
+      if (!reportFrom || !reportTo) { toast.error("Informe o período"); return; }
+      from = new Date(reportFrom + "T00:00:00");
+    }
+    const toIso = reportPeriod === "custom" ? reportTo : to.toISOString().slice(0, 10);
+    const fromIso = from ? from.toISOString().slice(0, 10) : null;
+
+    const rows = filtered.filter((r) => {
+      if (!fromIso) return true;
+      return r.due_date >= fromIso && r.due_date <= toIso;
+    });
+    if (rows.length === 0) { toast.error("Nenhum lançamento no período selecionado"); return; }
+
+    const labelMap: Record<string, string> = {
+      todos: "todos os períodos",
+      "1m": "último mês",
+      "1a": "último ano",
+      custom: `${reportFrom} a ${reportTo}`,
+    };
+    exportReceivablePdf(rows, `${filterLabels[filter]} • ${labelMap[reportPeriod]}`);
+    setReportOpen(false);
+  };
+
+  // === Importação de planilha ===
+  const parseImportFile = async (file: File) => {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+
+    const norm = (s: string) => String(s ?? "").toLowerCase().trim()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    const findKey = (row: any, candidates: string[]) => {
+      const keys = Object.keys(row);
+      for (const c of candidates) {
+        const k = keys.find((k) => norm(k) === norm(c) || norm(k).includes(norm(c)));
+        if (k) return k;
+      }
+      return null;
+    };
+
+    const parseAmount = (v: any): number => {
+      if (typeof v === "number") return v;
+      const s = String(v ?? "").replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+      return Number(s) || 0;
+    };
+
+    const parseDate = (v: any): string => {
+      if (!v) return "";
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      const s = String(v).trim();
+      // dd/mm/yyyy
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        const yy = m[3].length === 2 ? "20" + m[3] : m[3];
+        return `${yy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+      }
+      // yyyy-mm-dd
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+    };
+
+    const out = json.map((row) => {
+      const kCust = findKey(row, ["cliente", "customer", "nome"]);
+      const kDesc = findKey(row, ["descricao", "description", "historico", "memo", "obs"]);
+      const kAmt = findKey(row, ["valor", "amount", "montante"]);
+      const kDue = findKey(row, ["vencimento", "due_date", "data", "vencto"]);
+      return {
+        customer_name: kCust ? String(row[kCust]).trim() : "",
+        description: kDesc ? String(row[kDesc]).trim() : "",
+        amount: kAmt ? parseAmount(row[kAmt]) : 0,
+        due_date: kDue ? parseDate(row[kDue]) : "",
+      };
+    }).filter((r) => r.amount > 0 && r.due_date);
+
+    setImportPreview(out);
+    if (out.length === 0) toast.error("Nenhuma linha válida encontrada (precisa de Valor + Vencimento)");
+    else toast.success(`${out.length} linha(s) prontas para importar`);
+  };
+
+  const confirmImport = async () => {
+    if (importPreview.length === 0) { toast.error("Nada para importar"); return; }
+    setImportSaving(true);
+    try {
+      // Mapear customer_name → customer_id (cria cliente se não existir)
+      const nameToId = new Map<string, string | null>();
+      customers.forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+
+      const newCustomers = Array.from(new Set(
+        importPreview
+          .map((r) => r.customer_name)
+          .filter((n) => n && !nameToId.has(n.toLowerCase()))
+      ));
+      if (newCustomers.length > 0) {
+        const { data: created, error: cErr } = await supabase
+          .from("customers")
+          .insert(newCustomers.map((name) => ({ name })))
+          .select("id, name");
+        if (cErr) throw cErr;
+        (created ?? []).forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+      }
+
+      const rows = importPreview.map((r) => ({
+        customer_id: r.customer_name ? nameToId.get(r.customer_name.toLowerCase()) ?? null : null,
+        description: r.description || null,
+        amount: r.amount,
+        due_date: r.due_date,
+      }));
+
+      const { error } = await supabase.from("accounts_receivable").insert(rows);
+      if (error) throw error;
+
+      toast.success(`${rows.length} conta(s) importadas`);
+      setImportOpen(false); setImportFile(null); setImportPreview([]);
+      load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
     <div>
       <PageHeader
         title="Contas a Receber"
