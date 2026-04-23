@@ -316,9 +316,37 @@ function asksForPhoto(text: string): boolean {
   return /(foto|fotos|imagem|imagens|figura|me manda.*foto|tem foto|tem imagem|posso ver|me mostra|manda.*foto)/.test(t);
 }
 
-// Busca variações com foto que correspondam à mensagem
-async function findPhotoMatches(userMsg: string, supplier: string | null): Promise<{ url: string; caption: string }[]> {
-  const keywords = extractKeywords(userMsg);
+// Frases genéricas de "me manda foto/de novo" — sem produto específico
+function isGenericPhotoRequest(text: string): boolean {
+  const t = norm(text);
+  // Remove os verbos de pedir foto e vê o que sobra
+  const stripped = t
+    .replace(/(foto|fotos|imagem|imagens|figura|figuras)/g, "")
+    .replace(/(me manda|me envia|me mostra|envia|manda|mostra|posso ver|tem|pode|poderia|novamente|de novo|outra vez|tambem|também)/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+  return stripped.length < 3; // sobrou quase nada → é genérico
+}
+
+// Junta a mensagem atual com mensagens anteriores do cliente para inferir o produto pedido
+function buildPhotoQueryContext(userMsg: string, history: any[]): string {
+  if (!isGenericPhotoRequest(userMsg)) return userMsg;
+  // Pega as últimas 6 mensagens do CLIENTE (inbound) — exclui a atual que pode já estar no history
+  const inbounds = history.filter((m: any) => m.direction === "inbound").slice(-6);
+  const ctxText = inbounds.map((m: any) => m.content).join(" ");
+  // Também aproveita a última resposta do bot (pode mencionar o nome do produto que ele já enviou)
+  const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
+  return `${ctxText} ${lastBot?.content ?? ""} ${userMsg}`.trim();
+}
+
+// Busca variações com foto que correspondam à mensagem (com fallback para o contexto da conversa)
+async function findPhotoMatches(
+  userMsg: string,
+  supplier: string | null,
+  history: any[] = [],
+): Promise<{ url: string; caption: string }[]> {
+  const queryText = buildPhotoQueryContext(userMsg, history);
+  const keywords = extractKeywords(queryText);
   let q = supabase
     .from("products")
     .select("name, supplier, product_variants(size, color, image_url, quantity)")
@@ -326,7 +354,7 @@ async function findPhotoMatches(userMsg: string, supplier: string | null): Promi
     .limit(20);
   if (supplier) q = q.eq("supplier", supplier);
   if (keywords.length > 0) {
-    q = q.or(keywords.flatMap((k) => [`name.ilike.%${k}%`, `description.ilike.%${k}%`, `category.ilike.%${k}%`]).join(","));
+    q = q.or(keywords.flatMap((k) => [`name.ilike.%${k}%`, `description.ilike.%${k}%`, `category.ilike.%${k}%`, `sku.ilike.%${k}%`]).join(","));
   }
   const { data } = await q;
   const out: { url: string; caption: string }[] = [];
@@ -828,7 +856,7 @@ Deno.serve(async (req) => {
     let photosSentLog = "";
     let photoFailed = false;
     if (asksForPhoto(text)) {
-      const photos = await findPhotoMatches(text, ctx.supplierMentioned);
+      const photos = await findPhotoMatches(text, ctx.supplierMentioned, history ?? []);
       const sent: { caption: string }[] = [];
       const failed: { caption: string }[] = [];
       for (const ph of photos) {
