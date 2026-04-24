@@ -388,15 +388,19 @@ function isGenericPhotoRequest(text: string): boolean {
   return stripped.length < 3; // sobrou quase nada → é genérico
 }
 
-// Junta a mensagem atual com mensagens anteriores do cliente para inferir o produto pedido
+// Junta a mensagem atual com mensagens anteriores do cliente E a última resposta do bot
+// para inferir o produto pedido quando o pedido de foto é genérico ("me manda uma foto dela").
 function buildPhotoQueryContext(userMsg: string, history: any[]): string {
   if (!isGenericPhotoRequest(userMsg)) return userMsg;
-  // Pega as últimas 6 mensagens do CLIENTE (inbound) — exclui a atual que pode já estar no history
-  const inbounds = history.filter((m: any) => m.direction === "inbound").slice(-6);
+  // Pega as últimas 4 mensagens do CLIENTE (inbound) — provável que mencionem o produto
+  const inbounds = history.filter((m: any) => m.direction === "inbound").slice(-4);
   const ctxText = inbounds.map((m: any) => m.content).join(" ");
-  // Também aproveita a última resposta do bot (pode mencionar o nome do produto que ele já enviou)
+  // A última resposta do bot é CRÍTICA: costuma citar o nome exato do produto recém-mencionado
+  // (ex: "A BLUSA 7196 CAROL TRICO está disponível...") — vale mais que qualquer outra fonte
   const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
-  return `${ctxText} ${lastBot?.content ?? ""} ${userMsg}`.trim();
+  const combined = `${lastBot?.content ?? ""} ${ctxText} ${userMsg}`.trim();
+  console.log("[photo] generic request → combined query:", combined.slice(0, 200));
+  return combined;
 }
 
 // Busca variações com foto que correspondam à mensagem (com fallback para o contexto da conversa)
