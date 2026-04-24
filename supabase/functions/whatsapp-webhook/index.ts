@@ -411,6 +411,7 @@ async function findPhotoMatches(
 ): Promise<{ url: string; caption: string }[]> {
   const queryText = buildPhotoQueryContext(userMsg, history);
   const keywords = extractKeywords(queryText);
+  console.log("[photo] keywords:", keywords, "supplier:", supplier);
 
   // 1) Busca por produtos cujo name/description/category/sku case com alguma keyword
   let q = supabase
