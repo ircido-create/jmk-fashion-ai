@@ -86,6 +86,7 @@ export default function Customers() {
     const q = search.toLowerCase();
     return (
       c.name.toLowerCase().includes(q) ||
+      (c.nickname ?? "").toLowerCase().includes(q) ||
       (c.phone ?? "").includes(search) ||
       (c.email ?? "").toLowerCase().includes(q) ||
       (searchDigits.length >= 3 && (c.tax_id ?? "").includes(searchDigits))
