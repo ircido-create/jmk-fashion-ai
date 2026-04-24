@@ -204,12 +204,12 @@ async function transcribeAudio(base64: string, mimeType: string): Promise<string
   }
 }
 
-// === ElevenLabs TTS — voz clonada da Marina (humanizada PT-BR) ===
-// Voz primária: clone real de PTT do WhatsApp (5YiiQOoUDhrS8coyatTa, eleven_v3, opus 48k)
-// Fallback: eleven_multilingual_v2 (público) — usado se v3 não estiver liberado para a conta
-const ELEVEN_VOICE_ID = "5YiiQOoUDhrS8coyatTa";
-const ELEVEN_MODEL_PRIMARY = "eleven_v3";
-const ELEVEN_MODEL_FALLBACK = "eleven_multilingual_v2";
+// === ElevenLabs TTS — voz humanizada PT-BR ===
+// Voz "Sarah" (EXAVITQu4vr4xnSDxMaL) — disponível nativamente em todas as contas ElevenLabs.
+// Excelente performance em português do Brasil com modelo multilingual_v2.
+const ELEVEN_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+const ELEVEN_MODEL_PRIMARY = "eleven_multilingual_v2";
+const ELEVEN_MODEL_FALLBACK = "eleven_turbo_v2_5";
 
 // Pré-processa texto para soar natural quando falado em voz alta:
 // remove emojis, markdown, tags internas; expande URLs e datas DD/MM.
@@ -1521,11 +1521,18 @@ Deno.serve(async (req) => {
       finalReply = `Ah, desculpa! Tentei te mandar as fotos mas não consegui enviar agora 😅 Mas posso te descrever:\n\n${reply}`;
     }
 
-    // Se a cliente mandou áudio, responde em áudio (voz humana via ElevenLabs).
-    // Também grava a transcrição como texto para o painel.
+    // Responde em áudio quando: (a) cliente enviou áudio OU (b) cliente PEDIU áudio por texto.
+    // Detecta pedidos como: "manda áudio", "responde em audio", "fala por voz", "não sei ler".
     const clientSentAudio = inboundMedia?.kind === "audio";
+    const lowerInbound = (text || "").toLowerCase();
+    const clientAskedForAudio =
+      /\b(a[uú]dio|voz|falando|falada|por v[oó]z)\b/.test(lowerInbound) ||
+      /n[ãa]o\s+(sei|consigo|posso)\s+ler/.test(lowerInbound) ||
+      /n[ãa]o\s+leio/.test(lowerInbound) ||
+      /(me\s+)?(manda|envia|responde|fala)\s+(em|por|de)?\s*(a[uú]dio|voz)/.test(lowerInbound);
+    const shouldReplyWithAudio = clientSentAudio || clientAskedForAudio;
     let audioReplySent = false;
-    if (clientSentAudio) {
+    if (shouldReplyWithAudio) {
       const voice = await synthesizeVoice(finalReply);
       if (voice) {
         audioReplySent = await sendWhatsAppAudio(fromPhone, voice.bytes, voice.mime, finalReply, cfg, conv.id);
