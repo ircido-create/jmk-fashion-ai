@@ -253,29 +253,152 @@ export default function Receivable() {
     pago: "Pago",
   };
 
-  // Itens elegíveis para baixa em massa (todas as filtradas que não estão pagas)
-  const bulkEligible = filtered.filter((r) => r.status !== "pago" && r.status !== "cancelado");
+  // === Baixa em massa por extrato (conciliação) ===
+  // Parser de extrato: aceita xlsx/xls/csv com colunas Cliente, Valor (e opcionalmente Data/CPF/CNPJ)
+  const parseBulkFile = async (file: File) => {
+    setBulkParsing(true);
+    setBulkPayments([]);
+    setBulkResult(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+
+      const norm = (s: string) =>
+        String(s ?? "").toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const findKey = (row: any, candidates: string[]) => {
+        const keys = Object.keys(row);
+        for (const c of candidates) {
+          const k = keys.find((k) => norm(k) === norm(c) || norm(k).includes(norm(c)));
+          if (k) return k;
+        }
+        return null;
+      };
+      const parseAmount = (v: any): number => {
+        if (typeof v === "number") return v;
+        const s = String(v ?? "").replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+        return Number(s) || 0;
+      };
+      const parseDate = (v: any): string => {
+        if (!v) return "";
+        if (v instanceof Date) return v.toISOString().slice(0, 10);
+        const s = String(v).trim();
+        const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+        if (m) {
+          const yy = m[3].length === 2 ? "20" + m[3] : m[3];
+          return `${yy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+        }
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+      };
+
+      const rows: PaymentRow[] = json.map((row, i) => {
+        const kCust = findKey(row, ["cliente", "customer", "nome", "sacado", "pagador", "favorecido", "historico"]);
+        const kTax = findKey(row, ["cpf", "cnpj", "cpf/cnpj", "documento"]);
+        const kAmt = findKey(row, ["valor", "amount", "credito", "crédito", "valor pago"]);
+        const kDate = findKey(row, ["data", "data pagamento", "data credito", "data crédito", "payment_date"]);
+        const kDesc = findKey(row, ["descricao", "description", "memo", "obs", "historico"]);
+        return {
+          customer_name: kCust ? String(row[kCust]).trim() : "",
+          tax_id: kTax ? digitsOnly(String(row[kTax])) : "",
+          amount: kAmt ? parseAmount(row[kAmt]) : 0,
+          payment_date: kDate ? parseDate(row[kDate]) : new Date().toISOString().slice(0, 10),
+          description: kDesc ? String(row[kDesc]).trim() : "",
+          line: i + 2,
+        };
+      }).filter((r) => r.amount > 0 && r.customer_name);
+
+      if (rows.length === 0) {
+        toast.error("Nenhuma linha de pagamento encontrada (precisa de Cliente + Valor).");
+        return;
+      }
+
+      // Constrói lista de receivables com nome de cliente + tax_id resolvido
+      const customerById = new Map(customers.map((c) => [c.id, c]));
+      const lite: ReceivableLite[] = list.map((r) => {
+        const c = r.customer_id ? customerById.get(r.customer_id) : null;
+        return {
+          id: r.id,
+          customer_id: r.customer_id,
+          customer_name: c?.name ?? r.customers?.name ?? "",
+          customer_tax_id: c?.tax_id ?? null,
+          amount: Number(r.amount),
+          due_date: r.due_date,
+          status: r.status,
+        };
+      });
+
+      const result = reconcile(lite, rows);
+      setBulkPayments(rows);
+      setBulkResult(result);
+
+      const t = result.totals;
+      toast.success(
+        `${rows.length} pagamento(s) lido(s) • ${t.fullySettled} quitação(ões) integral(is) • ${t.partiallyReduced} parcial(is) • ${t.unmatched} sem cliente`
+      );
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao ler o extrato");
+    } finally {
+      setBulkParsing(false);
+    }
+  };
 
   const confirmBulk = async () => {
-    if (bulkEligible.length === 0) { toast.error("Sem títulos elegíveis"); return; }
+    if (!bulkResult || bulkResult.actions.length === 0) {
+      toast.error("Nenhuma baixa para aplicar");
+      return;
+    }
     setBulkSaving(true);
     try {
-      const proofId = await uploadProof(bulkFile, bulkDesc || `Baixa em massa — ${format(new Date(), "dd/MM/yyyy")}`);
-      const ids = bulkEligible.map((r) => r.id);
-      const { error } = await supabase
-        .from("accounts_receivable")
-        .update({ status: "pago", paid_at: new Date().toISOString() })
-        .in("id", ids);
-      if (error) throw error;
+      const proofId = await uploadProof(
+        bulkFile,
+        bulkDesc || `Conciliação em massa — ${format(new Date(), "dd/MM/yyyy")}`
+      );
+
+      // Aplica ações
+      const settleIds = bulkResult.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
+      const reduceActions = bulkResult.actions.filter((a) => a.kind === "reduce");
+
+      // 1) Quitações integrais
+      if (settleIds.length > 0) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ status: "pago", paid_at: new Date().toISOString() })
+          .in("id", settleIds);
+        if (error) throw error;
+      }
+
+      // 2) Reduções de parcela (uma por uma — cada uma tem novo amount diferente)
+      for (const a of reduceActions) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ amount: a.new_amount })
+          .eq("id", a.receivable_id);
+        if (error) throw error;
+      }
+
+      // 3) Vincula comprovante (se houver) com o valor abatido em cada receivable
       if (proofId) {
-        const rows = bulkEligible.map((r) => ({
-          receivable_id: r.id, proof_id: proofId, amount_paid: Number(r.amount),
+        const links = bulkResult.actions.map((a) => ({
+          receivable_id: a.receivable_id,
+          proof_id: proofId,
+          amount_paid: a.amount_paid,
         }));
-        const { error: linkErr } = await supabase.from("receivable_payments").insert(rows);
+        const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
         if (linkErr) throw linkErr;
       }
-      toast.success(`${ids.length} título(s) baixados`);
-      setBulkOpen(false); setBulkFile(null); setBulkDesc("");
+
+      const t = bulkResult.totals;
+      toast.success(
+        `Conciliação aplicada: ${t.fullySettled} quitada(s) + ${t.partiallyReduced} parcial(is) • R$ ${t.paidSum.toFixed(2)}`
+      );
+      setBulkOpen(false);
+      setBulkFile(null);
+      setBulkDesc("");
+      setBulkPayments([]);
+      setBulkResult(null);
       load();
     } catch (e: any) {
       toast.error(e.message);
