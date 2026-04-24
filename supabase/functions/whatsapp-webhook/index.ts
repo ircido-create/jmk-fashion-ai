@@ -499,6 +499,82 @@ function norm(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 }
 
+// === Inferência de gênero pelo primeiro nome (heurística pt-BR) ===
+// Retorna "F" | "M" | "U" (desconhecido). Usado para evitar tratar
+// homem como "querida" e vice-versa.
+const MALE_NAMES = new Set([
+  "joao","jose","pedro","paulo","lucas","luis","luiz","marcos","marco","mateus","matheus",
+  "gabriel","rafael","daniel","felipe","filipe","fernando","carlos","andre","antonio","alexandre",
+  "ricardo","rodrigo","roberto","bruno","thiago","tiago","leonardo","leandro","gustavo","guilherme",
+  "diego","douglas","eduardo","edson","emerson","fabio","flavio","henrique","hugo","igor","ivan",
+  "jorge","julio","kevin","marcelo","mario","mauricio","murilo","nathan","otavio","raul","renan",
+  "renato","samuel","sergio","vinicius","vitor","victor","wagner","wesley","william","willian",
+  "yuri","arthur","artur","bernardo","caio","cesar","cristiano","davi","david","enzo","erick","eric",
+  "fabricio","francisco","ismael","israel","ivo","jean","jonas","jonathan","kaio","levi","luan",
+  "miguel","nicolas","noah","ramon","raphael","reinaldo","rian","ryan","saulo","silas","theo",
+  "valter","walter","wallace","washington","welinton","welington","wellington","adriano","alex","alan",
+  "allan","amauri","aldo","aluisio","aluizio","arnaldo","benedito","benjamim","cassio","claudio",
+  "cleber","clovis","danilo","dario","dener","denis","dennis","derek","dirceu","domingos","edmilson",
+  "edmundo","edvaldo","elias","eliel","elizeu","elton","emanuel","ezequiel","fabiano","francinaldo",
+  "geraldo","gilberto","gilmar","heitor","heric","ian","ibere","idelfonso","ildefonso","ilan",
+  "joaquim","jovani","junior","kauan","kaue","laercio","lazaro","lourival","lucio","luciano",
+  "manoel","manuel","mauro","mike","milton","moacir","moises","natanael","nelson","newton","odair",
+  "olavo","orlando","osmar","oswaldo","peterson","plinio","reinan","robson","ronald","ronaldo",
+  "ruan","rui","salomao","sandro","sebastiao","silvio","tadeu","tales","tarcisio","teo","tomas",
+  "ulisses","valdir","valentim","vagner","vando","vladimir","wanderson","weverton","wilson","yago","iago",
+]);
+
+const FEMALE_NAMES = new Set([
+  "maria","ana","julia","juliana","mariana","camila","carla","carolina","caroline","beatriz","bia",
+  "amanda","aline","alice","alessandra","adriana","barbara","bruna","clara","claudia","cristina",
+  "daniela","debora","deborah","elaine","eliane","elisa","eliza","eduarda","fatima","fernanda",
+  "flavia","francisca","gabriela","giovana","giovanna","gisele","helena","heloisa","isabel","isabela",
+  "isabella","isadora","janaina","jaqueline","jessica","joana","josefa","karen","karina","katia",
+  "larissa","laura","leticia","livia","luana","lucia","luciana","luisa","luiza","manuela","marcela",
+  "marcia","margarida","marina","marta","mayara","melissa","milena","monica","natalia","natasha",
+  "nayara","neusa","nicole","olga","paula","patricia","priscila","rafaela","raquel","regina",
+  "renata","roberta","rosa","rosana","rosangela","sabrina","sandra","sara","sarah","silvia","simone",
+  "sofia","solange","sonia","stephanie","suely","tais","tania","tatiana","tatiane","teresa","thais",
+  "valentina","vanessa","vera","veronica","viviane","yara","yasmin","zilda","zoe","alana","aleska",
+  "alexia","alicia","aparecida","ariana","ariane","ariadne","aurea","betina","carmem","carmen",
+  "cassia","catarina","celeste","celia","cibele","cida","cinthia","cintia","conceicao","cris",
+  "dalva","dani","dayane","dayse","denise","diana","diane","divina","doralice","edna","edivania",
+  "elen","ellen","elis","elize","elvira","emilia","emily","eunice","eva","evelyn","fabiana",
+  "geni","georgia","gilda","glaucia","gloria","graca","graziela","gracinha","ines","ingrid","irene",
+  "iris","ivana","ivete","janete","janice","jandira","kamila","karla","keila","kelly","leila",
+  "leonor","liana","lidia","liliana","lilian","lina","lourdes","luana","lucineia","luzia","madalena",
+  "magali","magda","malu","marisa","marlene","marli","marli","marlucia","matilde","mercedes","michele",
+  "michelle","mirela","mirella","miriam","myrian","nadia","nair","nara","nathalia","neide","nilza",
+  "noemi","norma","odete","olivia","penha","perla","poliana","pollyana","raissa","raisa","rebeca",
+  "rejane","rita","rosane","rute","ruth","scarlet","selma","silvana","sirlei","sirlene","sueli",
+  "talita","tamires","tereza","valeria","vania","vilma","vitoria","wanda","wania","wendy","yasmim",
+  "yolanda","zelia","zenaide","querida",
+]);
+
+// Sufixos que indicam gênero quando o nome não está nas listas
+function genderBySuffix(first: string): "F" | "M" | "U" {
+  if (first.length < 4) return "U";
+  // Femininos: -a, -ana, -ina, -elle, -ene, -ice, -ete, -alia
+  if (/(a|ana|ina|elle|ice|ete|alia|inha|ele)$/.test(first)) return "F";
+  // Masculinos: -o, -on, -er, -el, -is, -us, -ar, -or, -in, -son, -ton, -ius, -aldo
+  if (/(o|on|er|el|is|us|ar|or|in|son|ton|ius|aldo|ano|eu|ulo|aro|ero|iro|oro|uro)$/.test(first)) return "M";
+  return "U";
+}
+
+function inferGender(fullName: string | null | undefined): "F" | "M" | "U" {
+  if (!fullName) return "U";
+  const first = norm(fullName).split(/\s+/)[0] ?? "";
+  if (!first) return "U";
+  if (FEMALE_NAMES.has(first)) return "F";
+  if (MALE_NAMES.has(first)) return "M";
+  // Compostos comuns: "maria eduarda", "ana clara" → primeiro já bateu acima.
+  // Se não bateu, tenta o segundo nome (ex.: "Sr. João" → "joao")
+  const second = norm(fullName).split(/\s+/)[1] ?? "";
+  if (FEMALE_NAMES.has(second)) return "F";
+  if (MALE_NAMES.has(second)) return "M";
+  return genderBySuffix(first);
+}
+
 // Detecta se o cliente mencionou um fornecedor específico na mensagem
 async function detectSupplier(userMsg: string): Promise<string | null> {
   const { data } = await supabase
