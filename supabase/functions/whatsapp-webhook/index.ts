@@ -318,11 +318,9 @@ async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime:
   if (!safeText) return null;
   if (safeText.length > 800) safeText = safeText.slice(0, 797) + "...";
 
-  // Adiciona uma respiração suave no início para dar sensação de "PTT real":
-  // o ElevenLabs interpreta tags entre colchetes como instruções de áudio.
-  // Resultado: pequeno som de inspiração antes de falar — como uma pessoa real
-  // pegando o celular e respondendo no WhatsApp.
-  safeText = `[soft breath] ${safeText}`;
+  // OBS: tags como [soft breath] só são interpretadas pelo modelo eleven_v3.
+  // No multilingual_v2/turbo_v2_5 (que usamos), elas seriam LIDAS literalmente
+  // ("soft breath..."), então não adicionamos nenhuma tag aqui.
 
   try {
     // Tenta primeiro o modelo primário (multilingual_v2 — melhor qualidade humana).
