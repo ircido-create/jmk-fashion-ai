@@ -55,11 +55,14 @@ export default function Receivable() {
   const [payFile, setPayFile] = useState<File | null>(null);
   const [paySaving, setPaySaving] = useState(false);
 
-  // Baixa em massa
+  // Baixa em massa (conciliação por extrato)
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkDesc, setBulkDesc] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkParsing, setBulkParsing] = useState(false);
+  const [bulkPayments, setBulkPayments] = useState<PaymentRow[]>([]);
+  const [bulkResult, setBulkResult] = useState<ReconciliationResult | null>(null);
 
   // Relatório
   const [reportOpen, setReportOpen] = useState(false);
