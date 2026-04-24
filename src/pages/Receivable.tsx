@@ -429,7 +429,6 @@ export default function Receivable() {
       // - se tem tax_id e nada bate → cria novo cliente (nome + tax_id)
       // - se NÃO tem tax_id → vincula por nome; se não existir, cria por nome
       const toUpdateTax: { id: string; tax_id: string }[] = [];
-      const toCreate: { name: string; tax_id: string | null }[] = [];
       const planned: (string | null)[] = importPreview.map(() => null);
 
       // Primeira passada: vincular ou marcar para update/create
