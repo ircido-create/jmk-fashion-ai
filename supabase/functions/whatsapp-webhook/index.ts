@@ -267,7 +267,10 @@ async function sendWhatsAppAudio(
     const form = new FormData();
     form.append("messaging_product", "whatsapp");
     form.append("type", mime);
-    form.append("file", new Blob([audioBytes], { type: mime }), `voice.mp3`);
+    // Cria buffer próprio (evita conflito de tipos SharedArrayBuffer no Deno)
+    const ownedBuf = new Uint8Array(audioBytes.byteLength);
+    ownedBuf.set(audioBytes);
+    form.append("file", new Blob([ownedBuf], { type: mime }), `voice.mp3`);
 
     const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/media`, {
       method: "POST",
