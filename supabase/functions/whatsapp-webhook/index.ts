@@ -816,6 +816,14 @@ Tipo: ${pix.type ?? "não informado"}${pix.recipient ? `\nRecebedor: ${pix.recip
    5. NÃO invente outras chaves PIX, contas bancárias ou formas de pagamento.`
     : `→ Nenhuma chave PIX configurada. Se a cliente perguntar sobre pagamento, diga que vai verificar com a equipe e retorna em breve.`;
 
+  const customerGender = inferGender(ctx.customer?.name);
+  const genderBlock =
+    customerGender === "F"
+      ? "→ Cliente é MULHER. Use tratamento feminino: querida, linda, amiga, obrigada. NUNCA use 'querido', 'amigo', 'lindo'."
+      : customerGender === "M"
+      ? "→ Cliente é HOMEM. Use tratamento masculino e NEUTRO: amigo, parceiro, chefe, beleza. NUNCA use 'querida', 'linda', 'amiga', 'gata', 'flor', emojis 💕🥰💖. Tom mais direto, sem diminutivos afetivos. Pode usar 👍✅."
+      : "→ Gênero do cliente DESCONHECIDO. Use tratamento NEUTRO: 'oi', 'tudo bem?', 'obrigado(a)'. NÃO use 'querida' nem 'querido' até descobrir o gênero pelo nome.";
+
   const contextText = `
 === ESTADO DA CONVERSA ===
 PRIMEIRA_MENSAGEM=${isFirstMessage ? "true" : "false"}
@@ -823,8 +831,11 @@ ${isFirstMessage
   ? "→ Esta é a PRIMEIRA mensagem desta conversa. Cumprimente e se apresente UMA vez."
   : "→ Conversa JÁ EM ANDAMENTO. NÃO se apresente, NÃO diga seu nome, NÃO diga 'aqui é da JMK'. Vá direto ao ponto."}
 
+=== TRATAMENTO POR GÊNERO (CRÍTICO) ===
+${genderBlock}
+
 === FOTOS ===
-Se a cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó 💕", "Olha que lindos") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
+Se a cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó", "Olha que lindos") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
 
 === FILTRO POR FORNECEDOR ===
 ${supplierBlock}
@@ -837,7 +848,7 @@ ${matchInfo}
 
 === CLIENTE ===
 ${ctx.customer
-  ? `Nome: ${ctx.customer.name ?? "(faltando)"} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"}`
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
   : "Cliente NÃO cadastrado."}
 CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço → email. NÃO fale de produtos enquanto faltar dados."}
 
