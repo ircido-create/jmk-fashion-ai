@@ -784,9 +784,40 @@ function detectLastAskedField(history: any[]): string | null {
   return null;
 }
 
+// Extrai o "produto em foco" da última mensagem do bot — quando ela acabou de
+// citar/enviar foto de um produto específico (ex.: "CHEMISSIE COLETE — 46 / BRANCO E PRETO"),
+// esse é o produto sobre o qual perguntas referenciais ("qual o valor dele?") se referem.
+async function detectFocusedProduct(history: any[]): Promise<any | null> {
+  const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
+  if (!lastBot?.content) return null;
+  const keywords = extractKeywords(lastBot.content);
+  if (keywords.length === 0) return null;
+  const orFilter = keywords
+    .flatMap((k) => [`name.ilike.%${k}%`, `sku.ilike.%${k}%`])
+    .join(",");
+  const { data } = await supabase
+    .from("products")
+    .select("name, price, category, description, sku, supplier, product_variants(size, color, quantity)")
+    .eq("active", true)
+    .or(orFilter)
+    .limit(5);
+  if (!data || data.length === 0) return null;
+  // Pontua: quanto mais tokens do nome do produto aparecem na última msg do bot, melhor
+  const botText = norm(lastBot.content);
+  let best: any = null;
+  let bestScore = 0;
+  for (const p of data) {
+    const tokens = norm(p.name).split(/\s+/).filter((t: string) => t.length >= 3);
+    const score = tokens.filter((t: string) => botText.includes(t)).length;
+    if (score > bestScore) { bestScore = score; best = p; }
+  }
+  return bestScore >= 2 ? best : null; // exige pelo menos 2 tokens batendo
+}
+
 async function buildContext(phone: string, userMsg: string, history: any[]) {
   const supplierMentioned = await detectSupplier(userMsg);
-  const { matched, all } = await searchProducts(userMsg, supplierMentioned);
+  const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
+  const focused = await detectFocusedProduct(history);
 
   const { data: rawCustomer } = await supabase
     .from("customers")
@@ -809,7 +840,7 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
 
   const missing = missingFields(customer);
 
-  return { matched, all, customer, debts, missing, supplierMentioned };
+  return { matched, all, customer, debts, missing, supplierMentioned, focused };
 }
 
 function formatProducts(list: any[]) {
