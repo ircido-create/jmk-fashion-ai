@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { getDocument } from "https://esm.sh/pdfjs-serverless@0.5.0";
+import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
