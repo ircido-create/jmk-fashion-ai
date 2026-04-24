@@ -308,63 +308,101 @@ export default function Receivable() {
     setReportOpen(false);
   };
 
-  // === Importação de planilha ===
+  // === Importação de planilha/PDF ===
+  const [importParsing, setImportParsing] = useState(false);
+
   const parseImportFile = async (file: File) => {
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array", cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+    setImportParsing(true);
+    try {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
-    const norm = (s: string) => String(s ?? "").toLowerCase().trim()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-    const findKey = (row: any, candidates: string[]) => {
-      const keys = Object.keys(row);
-      for (const c of candidates) {
-        const k = keys.find((k) => norm(k) === norm(c) || norm(k).includes(norm(c)));
-        if (k) return k;
+      if (isPdf) {
+        // PDF: enviar pra edge function que usa IA pra extrair
+        const buf = await file.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as unknown as number[]);
+        }
+        const b64 = btoa(binary);
+        toast.info("Lendo PDF com IA, aguarde...");
+        const { data, error } = await supabase.functions.invoke("parse-receivables-pdf", {
+          body: { file_base64: b64, filename: file.name },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        const items = (data?.items ?? []).filter((r: any) => r.amount > 0 && r.due_date) as any[];
+        setImportPreview(items.map((r: any) => ({
+          customer_name: r.customer_name ?? "",
+          description: r.description ?? "",
+          amount: Number(r.amount),
+          due_date: String(r.due_date).slice(0, 10),
+        })));
+        if (items.length === 0) toast.error("Nenhum lançamento encontrado no PDF");
+        else toast.success(`${items.length} linha(s) extraídas pela IA`);
+        return;
       }
-      return null;
-    };
 
-    const parseAmount = (v: any): number => {
-      if (typeof v === "number") return v;
-      const s = String(v ?? "").replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
-      return Number(s) || 0;
-    };
+      // Planilha (xlsx/xls/csv)
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
 
-    const parseDate = (v: any): string => {
-      if (!v) return "";
-      if (v instanceof Date) return v.toISOString().slice(0, 10);
-      const s = String(v).trim();
-      // dd/mm/yyyy
-      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-      if (m) {
-        const yy = m[3].length === 2 ? "20" + m[3] : m[3];
-        return `${yy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-      }
-      // yyyy-mm-dd
-      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-      const d = new Date(s);
-      return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
-    };
+      const norm = (s: string) => String(s ?? "").toLowerCase().trim()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    const out = json.map((row) => {
-      const kCust = findKey(row, ["cliente", "customer", "nome"]);
-      const kDesc = findKey(row, ["descricao", "description", "historico", "memo", "obs"]);
-      const kAmt = findKey(row, ["valor", "amount", "montante"]);
-      const kDue = findKey(row, ["vencimento", "due_date", "data", "vencto"]);
-      return {
-        customer_name: kCust ? String(row[kCust]).trim() : "",
-        description: kDesc ? String(row[kDesc]).trim() : "",
-        amount: kAmt ? parseAmount(row[kAmt]) : 0,
-        due_date: kDue ? parseDate(row[kDue]) : "",
+      const findKey = (row: any, candidates: string[]) => {
+        const keys = Object.keys(row);
+        for (const c of candidates) {
+          const k = keys.find((k) => norm(k) === norm(c) || norm(k).includes(norm(c)));
+          if (k) return k;
+        }
+        return null;
       };
-    }).filter((r) => r.amount > 0 && r.due_date);
 
-    setImportPreview(out);
-    if (out.length === 0) toast.error("Nenhuma linha válida encontrada (precisa de Valor + Vencimento)");
-    else toast.success(`${out.length} linha(s) prontas para importar`);
+      const parseAmount = (v: any): number => {
+        if (typeof v === "number") return v;
+        const s = String(v ?? "").replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+        return Number(s) || 0;
+      };
+
+      const parseDate = (v: any): string => {
+        if (!v) return "";
+        if (v instanceof Date) return v.toISOString().slice(0, 10);
+        const s = String(v).trim();
+        const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+        if (m) {
+          const yy = m[3].length === 2 ? "20" + m[3] : m[3];
+          return `${yy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+        }
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+      };
+
+      const out = json.map((row) => {
+        const kCust = findKey(row, ["cliente", "customer", "nome"]);
+        const kDesc = findKey(row, ["descricao", "description", "historico", "memo", "obs"]);
+        const kAmt = findKey(row, ["valor", "amount", "montante"]);
+        const kDue = findKey(row, ["vencimento", "due_date", "data", "vencto"]);
+        return {
+          customer_name: kCust ? String(row[kCust]).trim() : "",
+          description: kDesc ? String(row[kDesc]).trim() : "",
+          amount: kAmt ? parseAmount(row[kAmt]) : 0,
+          due_date: kDue ? parseDate(row[kDue]) : "",
+        };
+      }).filter((r) => r.amount > 0 && r.due_date);
+
+      setImportPreview(out);
+      if (out.length === 0) toast.error("Nenhuma linha válida encontrada (precisa de Valor + Vencimento)");
+      else toast.success(`${out.length} linha(s) prontas para importar`);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao ler o arquivo");
+    } finally {
+      setImportParsing(false);
+    }
   };
 
   const confirmImport = async () => {
