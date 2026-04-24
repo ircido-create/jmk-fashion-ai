@@ -17,6 +17,7 @@ import { z } from "zod";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
+import { reconcile, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
 
 interface Customer { id: string; name: string; tax_id: string | null; }
 interface Receivable {
