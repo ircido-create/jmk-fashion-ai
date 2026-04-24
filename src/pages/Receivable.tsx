@@ -16,8 +16,9 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { digitsOnly, formatTaxId } from "@/lib/taxId";
 
-interface Customer { id: string; name: string; }
+interface Customer { id: string; name: string; tax_id: string | null; }
 interface Receivable {
   id: string; customer_id: string | null; description: string | null;
   amount: number; due_date: string; status: string; paid_at: string | null;
@@ -68,7 +69,7 @@ export default function Receivable() {
   // Importar
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importPreview, setImportPreview] = useState<{ customer_name: string; description: string; amount: number; due_date: string }[]>([]);
+  const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string }[]>([]);
   const [importSaving, setImportSaving] = useState(false);
 
   const load = async () => {
@@ -106,7 +107,7 @@ export default function Receivable() {
       setList(items);
 
       const cs = await fetchAll<Customer>((sb) =>
-        sb.from("customers").select("id, name").order("name")
+        sb.from("customers").select("id, name, tax_id").order("name")
       );
       setCustomers(cs);
     } catch (e: any) {
@@ -335,6 +336,7 @@ export default function Receivable() {
         const items = (data?.items ?? []).filter((r: any) => r.amount > 0 && r.due_date) as any[];
         setImportPreview(items.map((r: any) => ({
           customer_name: r.customer_name ?? "",
+          tax_id: digitsOnly(r.tax_id ?? ""),
           description: r.description ?? "",
           amount: Number(r.amount),
           due_date: String(r.due_date).slice(0, 10),
@@ -383,12 +385,14 @@ export default function Receivable() {
       };
 
       const out = json.map((row) => {
-        const kCust = findKey(row, ["cliente", "customer", "nome"]);
+        const kCust = findKey(row, ["cliente", "customer", "nome", "sacado", "pagador"]);
+        const kTax = findKey(row, ["cpf", "cnpj", "cpf/cnpj", "documento", "tax_id"]);
         const kDesc = findKey(row, ["descricao", "description", "historico", "memo", "obs"]);
         const kAmt = findKey(row, ["valor", "amount", "montante"]);
         const kDue = findKey(row, ["vencimento", "due_date", "data", "vencto"]);
         return {
           customer_name: kCust ? String(row[kCust]).trim() : "",
+          tax_id: kTax ? digitsOnly(String(row[kTax])) : "",
           description: kDesc ? String(row[kDesc]).trim() : "",
           amount: kAmt ? parseAmount(row[kAmt]) : 0,
           due_date: kDue ? parseDate(row[kDue]) : "",
@@ -409,26 +413,104 @@ export default function Receivable() {
     if (importPreview.length === 0) { toast.error("Nada para importar"); return; }
     setImportSaving(true);
     try {
-      // Mapear customer_name → customer_id (cria cliente se não existir)
-      const nameToId = new Map<string, string | null>();
-      customers.forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+      // Índices: por CPF/CNPJ e por nome (lowercase)
+      const taxToId = new Map<string, string>();
+      const nameToId = new Map<string, string>();
+      const taxToCustomer = new Map<string, Customer>();
+      customers.forEach((c) => {
+        const t = digitsOnly(c.tax_id ?? "");
+        if (t) { taxToId.set(t, c.id); taxToCustomer.set(t, c); }
+        if (c.name) nameToId.set(c.name.toLowerCase(), c.id);
+      });
 
-      const newCustomers = Array.from(new Set(
-        importPreview
-          .map((r) => r.customer_name)
-          .filter((n) => n && !nameToId.has(n.toLowerCase()))
-      ));
-      if (newCustomers.length > 0) {
-        const { data: created, error: cErr } = await supabase
-          .from("customers")
-          .insert(newCustomers.map((name) => ({ name })))
-          .select("id, name");
-        if (cErr) throw cErr;
-        (created ?? []).forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+      // 1) Para cada linha, decide o customer_id
+      // - se tem tax_id e existe → usa
+      // - se tem tax_id e NÃO existe, mas existe cliente com mesmo nome sem tax_id → atualiza esse cliente com o tax_id
+      // - se tem tax_id e nada bate → cria novo cliente (nome + tax_id)
+      // - se NÃO tem tax_id → vincula por nome; se não existir, cria por nome
+      const toUpdateTax: { id: string; tax_id: string }[] = [];
+      const planned: (string | null)[] = importPreview.map(() => null);
+
+      // Primeira passada: vincular ou marcar para update/create
+      const pendingNewByTax = new Map<string, number[]>(); // tax_id → índices das linhas
+      const pendingNewByName = new Map<string, number[]>(); // nome.lower → índices
+
+      importPreview.forEach((r, idx) => {
+        const tax = digitsOnly(r.tax_id);
+        const nameKey = (r.customer_name || "").trim().toLowerCase();
+
+        if (tax) {
+          if (taxToId.has(tax)) {
+            planned[idx] = taxToId.get(tax)!;
+          } else if (nameKey && nameToId.has(nameKey)) {
+            const existingId = nameToId.get(nameKey)!;
+            const existing = customers.find((c) => c.id === existingId);
+            // Atualiza tax_id desse cliente (se ainda não tinha)
+            if (existing && !digitsOnly(existing.tax_id ?? "")) {
+              toUpdateTax.push({ id: existingId, tax_id: tax });
+              taxToId.set(tax, existingId);
+            }
+            planned[idx] = existingId;
+          } else {
+            // Novo por tax_id
+            const arr = pendingNewByTax.get(tax) ?? [];
+            arr.push(idx);
+            pendingNewByTax.set(tax, arr);
+          }
+        } else if (nameKey) {
+          if (nameToId.has(nameKey)) {
+            planned[idx] = nameToId.get(nameKey)!;
+          } else {
+            const arr = pendingNewByName.get(nameKey) ?? [];
+            arr.push(idx);
+            pendingNewByName.set(nameKey, arr);
+          }
+        }
+      });
+
+      // Atualiza tax_id de clientes existentes encontrados por nome
+      if (toUpdateTax.length > 0) {
+        for (const u of toUpdateTax) {
+          const { error } = await supabase.from("customers").update({ tax_id: u.tax_id }).eq("id", u.id);
+          if (error) throw error;
+        }
       }
 
-      const rows = importPreview.map((r) => ({
-        customer_id: r.customer_name ? nameToId.get(r.customer_name.toLowerCase()) ?? null : null,
+      // Cria os novos clientes (com tax_id e por nome)
+      const newPayload: { name: string; tax_id: string | null }[] = [];
+      const newKeys: { kind: "tax" | "name"; key: string }[] = [];
+
+      for (const [tax, idxs] of pendingNewByTax.entries()) {
+        const sample = importPreview[idxs[0]];
+        newPayload.push({ name: (sample.customer_name || "Cliente sem nome").trim(), tax_id: tax });
+        newKeys.push({ kind: "tax", key: tax });
+      }
+      for (const [nameKey, idxs] of pendingNewByName.entries()) {
+        const sample = importPreview[idxs[0]];
+        newPayload.push({ name: (sample.customer_name || "Cliente sem nome").trim(), tax_id: null });
+        newKeys.push({ kind: "name", key: nameKey });
+      }
+
+      if (newPayload.length > 0) {
+        const { data: created, error: cErr } = await supabase
+          .from("customers")
+          .insert(newPayload)
+          .select("id, name, tax_id");
+        if (cErr) throw cErr;
+        (created ?? []).forEach((c, i) => {
+          const meta = newKeys[i];
+          if (meta.kind === "tax") {
+            const idxs = pendingNewByTax.get(meta.key) ?? [];
+            idxs.forEach((idx) => { planned[idx] = c.id; });
+          } else {
+            const idxs = pendingNewByName.get(meta.key) ?? [];
+            idxs.forEach((idx) => { planned[idx] = c.id; });
+          }
+        });
+      }
+
+      const rows = importPreview.map((r, idx) => ({
+        customer_id: planned[idx],
         description: r.description || null,
         amount: r.amount,
         due_date: r.due_date,
@@ -437,7 +519,12 @@ export default function Receivable() {
       const { error } = await supabase.from("accounts_receivable").insert(rows);
       if (error) throw error;
 
-      toast.success(`${rows.length} conta(s) importadas`);
+      const stats = {
+        total: rows.length,
+        updated: toUpdateTax.length,
+        created: newPayload.length,
+      };
+      toast.success(`${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)`);
       setImportOpen(false); setImportFile(null); setImportPreview([]);
       load();
     } catch (e: any) {
@@ -744,20 +831,38 @@ export default function Receivable() {
                   <thead className="bg-muted/40 sticky top-0">
                     <tr>
                       <th className="text-left p-2">Cliente</th>
+                      <th className="text-left p-2">CPF/CNPJ</th>
+                      <th className="text-left p-2">Vínculo</th>
                       <th className="text-left p-2">Descrição</th>
                       <th className="text-left p-2">Vencimento</th>
                       <th className="text-right p-2">Valor</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {importPreview.slice(0, 50).map((r, i) => (
-                      <tr key={i} className="border-t border-white/20">
-                        <td className="p-2">{r.customer_name || "—"}</td>
-                        <td className="p-2">{r.description || "—"}</td>
-                        <td className="p-2">{r.due_date}</td>
-                        <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
-                      </tr>
-                    ))}
+                    {importPreview.slice(0, 50).map((r, i) => {
+                      const tax = digitsOnly(r.tax_id);
+                      const byTax = tax ? customers.find((c) => digitsOnly(c.tax_id ?? "") === tax) : null;
+                      const byName = !byTax && r.customer_name
+                        ? customers.find((c) => c.name.toLowerCase() === r.customer_name.toLowerCase())
+                        : null;
+                      const matched = byTax || byName;
+                      return (
+                        <tr key={i} className="border-t border-white/20">
+                          <td className="p-2">{r.customer_name || "—"}</td>
+                          <td className="p-2 font-mono text-[11px]">{tax ? formatTaxId(tax) : "—"}</td>
+                          <td className="p-2">
+                            {matched ? (
+                              <span className="text-success text-[11px]">✓ vinculado{byTax ? " (CPF/CNPJ)" : " (nome)"}</span>
+                            ) : (
+                              <span className="text-amber-600 text-[11px]">+ novo cadastro</span>
+                            )}
+                          </td>
+                          <td className="p-2">{r.description || "—"}</td>
+                          <td className="p-2">{r.due_date}</td>
+                          <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {importPreview.length > 50 && (
