@@ -1290,7 +1290,7 @@ Deno.serve(async (req) => {
 
     const { data: history } = await supabase
       .from("whatsapp_messages")
-      .select("direction, content")
+      .select("direction, content, media_type, media_filename, created_at")
       .eq("conversation_id", conv.id)
       .order("created_at", { ascending: true })
       .limit(20);
