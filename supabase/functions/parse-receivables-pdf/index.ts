@@ -10,47 +10,20 @@ const SYSTEM_PROMPT = `Você extrai lançamentos de contas a receber de extratos
 
 REGRAS CRÍTICAS:
 1. Identifique CADA LANÇAMENTO/PARCELA pendente ou em aberto. NÃO PULE NENHUMA LINHA.
-2. Processe o PDF INTEIRO - todas as páginas, do início ao fim. Se houver 200 lançamentos, retorne 200.
+2. Processe o PDF INTEIRO - todas as páginas, do início ao fim.
 3. Para cada lançamento extraia:
-   - customer_name: nome do cliente/sacado/pagador (texto). Se vier no formato "NOME - CPF/CNPJ", separe.
-   - tax_id: CPF (11 dígitos) ou CNPJ (14 dígitos), apenas dígitos. Omita se não houver.
-   - description: histórico/descrição/número do título. Curto (até 80 chars).
-   - amount: valor em reais (use ponto decimal). Sempre positivo.
-   - due_date: data de vencimento no formato ISO YYYY-MM-DD.
-4. Ignore SOMENTE totalizadores, cabeçalhos, saldos, taxas e linhas sem cliente+valor+vencimento.
-5. NUNCA invente dados. Se faltar vencimento OU valor, omita a linha.
+   - customer_name: nome do cliente/sacado/pagador. Se vier "NOME - CPF/CNPJ", separe.
+   - tax_id: CPF (11 dígitos) ou CNPJ (14 dígitos), apenas dígitos. Use "" se não houver.
+   - description: histórico/descrição/título. Curto (até 80 chars). Use "" se não houver.
+   - amount: valor em reais (número, ponto decimal). Sempre positivo.
+   - due_date: vencimento ISO YYYY-MM-DD.
+4. Ignore totalizadores, cabeçalhos, saldos, taxas e linhas sem cliente+valor+vencimento.
+5. NUNCA invente. Se faltar vencimento OU valor, omita a linha.
 
-Retorne via tool call.`;
+RETORNE APENAS JSON VÁLIDO no formato:
+{"items":[{"customer_name":"...","tax_id":"","description":"...","amount":0.00,"due_date":"YYYY-MM-DD"}],"total_count":N,"grand_total":N.NN}
 
-const tool = {
-  type: "function",
-  function: {
-    name: "extract_receivables",
-    description: "Lista COMPLETA de contas a receber extraídas do PDF (todas as linhas, todas as páginas)",
-    parameters: {
-      type: "object",
-      properties: {
-        items: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              customer_name: { type: "string" },
-              tax_id: { type: "string" },
-              description: { type: "string" },
-              amount: { type: "number" },
-              due_date: { type: "string", description: "ISO YYYY-MM-DD" },
-            },
-            required: ["customer_name", "amount", "due_date"],
-          },
-        },
-        total_count: { type: "number", description: "Quantidade total de lançamentos identificados no PDF" },
-        grand_total: { type: "number", description: "Soma total dos valores (R$) de todos os lançamentos" },
-      },
-      required: ["items"],
-    },
-  },
-};
+Nada fora do JSON. Sem markdown, sem comentários.`;
 
 function dedupKey(it: any) {
   return [
@@ -61,10 +34,48 @@ function dedupKey(it: any) {
   ].join("|");
 }
 
+function extractJSON(raw: string): any {
+  let cleaned = (raw || "")
+    .replace(/^```json\s*/im, "")
+    .replace(/^```\s*/im, "")
+    .replace(/```\s*$/im, "")
+    .trim();
+
+  const start = cleaned.indexOf("{");
+  if (start === -1) throw new Error("No JSON object in response");
+  cleaned = cleaned.slice(start);
+
+  // Try direct parse
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  // Try to repair truncated JSON: cut at last complete item
+  const lastClose = cleaned.lastIndexOf("}");
+  if (lastClose > 0) {
+    // Find the items array, then close it
+    const itemsIdx = cleaned.indexOf('"items"');
+    if (itemsIdx !== -1) {
+      const arrStart = cleaned.indexOf("[", itemsIdx);
+      if (arrStart !== -1) {
+        // Walk back from end to find last valid }
+        let candidate = cleaned.slice(0, lastClose + 1);
+        // Append closing for array+object if needed
+        for (const tail of ["", "]}", "}]}"]) {
+          try {
+            return JSON.parse(candidate + tail);
+          } catch {}
+        }
+      }
+    }
+  }
+  throw new Error("Cannot parse JSON");
+}
+
 async function extractPass(file_base64: string, filename: string, exclude: any[]): Promise<{ items: any[]; total_count?: number; grand_total?: number; finishReason?: string }> {
   const userText = exclude.length === 0
-    ? "Extraia TODOS os lançamentos a receber deste PDF (todas as páginas, do início ao fim). Inclua também os campos total_count e grand_total com a contagem total e a soma total esperadas."
-    : `Você já extraiu ${exclude.length} lançamentos anteriormente. Continue extraindo APENAS os lançamentos que ainda não foram retornados (do final da lista anterior em diante). NÃO repita lançamentos já extraídos. Os últimos extraídos foram:\n${exclude.slice(-10).map((e: any) => `- ${e.customer_name} | R$ ${e.amount} | ${e.due_date}`).join("\n")}\n\nRetorne os RESTANTES.`;
+    ? "Extraia TODOS os lançamentos a receber deste PDF (todas as páginas). Inclua total_count e grand_total."
+    : `Já extraí ${exclude.length} lançamentos. Continue do ponto onde parou. NÃO repita. Últimos extraídos:\n${exclude.slice(-8).map((e: any) => `- ${e.customer_name} | R$ ${e.amount} | ${e.due_date}`).join("\n")}\n\nRetorne APENAS os RESTANTES no mesmo formato JSON.`;
 
   const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -75,6 +86,7 @@ async function extractPass(file_base64: string, filename: string, exclude: any[]
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
       max_tokens: 16000,
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {
@@ -91,8 +103,6 @@ async function extractPass(file_base64: string, filename: string, exclude: any[]
           ],
         },
       ],
-      tools: [tool],
-      tool_choice: { type: "function", function: { name: "extract_receivables" } },
     }),
   });
 
@@ -106,26 +116,20 @@ async function extractPass(file_base64: string, filename: string, exclude: any[]
 
   const aiJson = await aiResp.json();
   const choice = aiJson.choices?.[0];
-  const toolCall = choice?.message?.tool_calls?.[0];
   const finishReason = choice?.finish_reason;
-  if (!toolCall) {
-    console.error("No tool call", JSON.stringify(aiJson).slice(0, 500));
-    throw new Error("IA não conseguiu extrair os dados");
+  const content = choice?.message?.content;
+
+  if (!content) {
+    console.error("No content", JSON.stringify(aiJson).slice(0, 800));
+    throw new Error("IA não retornou conteúdo");
   }
+
   let parsed: any = {};
   try {
-    parsed = JSON.parse(toolCall.function.arguments);
+    parsed = extractJSON(content);
   } catch (e) {
-    // Tentar reparar JSON cortado
-    const raw = toolCall.function.arguments || "";
-    const lastBrace = raw.lastIndexOf("}");
-    if (lastBrace > 0) {
-      try {
-        parsed = JSON.parse(raw.slice(0, lastBrace + 1) + "]}");
-      } catch {
-        parsed = { items: [] };
-      }
-    }
+    console.error("Parse failed. Content head:", content.slice(0, 400));
+    throw new Error("IA não conseguiu extrair os dados (JSON inválido)");
   }
   const items = Array.isArray(parsed.items) ? parsed.items : [];
   return { items, total_count: parsed.total_count, grand_total: parsed.grand_total, finishReason };
@@ -147,7 +151,16 @@ Deno.serve(async (req) => {
     const MAX_PASSES = 2;
 
     for (let pass = 0; pass < MAX_PASSES; pass++) {
-      const { items, total_count, grand_total, finishReason } = await extractPass(file_base64, filename, allItems);
+      let passResult;
+      try {
+        passResult = await extractPass(file_base64, filename, allItems);
+      } catch (e) {
+        // Se a primeira tentativa falhar totalmente, propaga; se for continuação, apenas para
+        if (pass === 0) throw e;
+        console.warn("Continuation pass failed, stopping:", (e as Error).message);
+        break;
+      }
+      const { items, total_count, grand_total, finishReason } = passResult;
       if (pass === 0) {
         expectedTotal = total_count;
         expectedGrand = grand_total;
@@ -160,17 +173,15 @@ Deno.serve(async (req) => {
         allItems.push(it);
         added++;
       }
-      console.log(`Pass ${pass + 1}: received ${items.length}, added ${added}, total now ${allItems.length}, finish=${finishReason}, expected=${expectedTotal}`);
+      console.log(`Pass ${pass + 1}: received ${items.length}, added ${added}, total ${allItems.length}, finish=${finishReason}, expected=${expectedTotal}`);
 
-      // Parar se: nada novo foi adicionado, OU bateu/ultrapassou expectedTotal, OU finish_reason normal e nenhum item retornado
       if (added === 0) break;
       if (expectedTotal && allItems.length >= expectedTotal) break;
-      // Se o modelo terminou normalmente E retornou poucos itens novos, provavelmente acabou
-      if (finishReason === "stop" && added < 5 && pass > 0) break;
+      if (finishReason === "stop" && pass > 0) break;
     }
 
     const sum = allItems.reduce((a, b) => a + (Number(b.amount) || 0), 0);
-    console.log(`FINAL: ${allItems.length} items, sum R$ ${sum.toFixed(2)}, expected count ${expectedTotal}, expected sum ${expectedGrand}`);
+    console.log(`FINAL: ${allItems.length} items, sum R$ ${sum.toFixed(2)}, expected ${expectedTotal} / R$ ${expectedGrand}`);
 
     return json({
       ok: true,
