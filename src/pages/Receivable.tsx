@@ -716,15 +716,17 @@ export default function Receivable() {
           <DialogHeader><DialogTitle>Importar contas a receber</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="text-xs text-muted-foreground">
-              Anexe um arquivo <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>.
-              A planilha deve conter colunas: <strong>Cliente</strong>, <strong>Descrição</strong>, <strong>Valor</strong> e <strong>Vencimento</strong>.
+              Anexe um arquivo <strong>.xlsx</strong>, <strong>.xls</strong>, <strong>.csv</strong> ou <strong>.pdf</strong>.
+              Em planilhas, use colunas: <strong>Cliente</strong>, <strong>Descrição</strong>, <strong>Valor</strong> e <strong>Vencimento</strong>.
+              PDFs (extratos bancários) são lidos automaticamente pela IA.
               Clientes novos serão cadastrados automaticamente.
             </div>
             <div>
               <Label>Arquivo</Label>
               <Input
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.xls,.csv,.pdf"
+                disabled={importParsing}
                 onChange={(e) => {
                   const f = e.target.files?.[0] ?? null;
                   setImportFile(f);
@@ -734,6 +736,7 @@ export default function Receivable() {
                 className="glass-input"
               />
               {importFile && <div className="text-xs text-muted-foreground mt-1">{importFile.name}</div>}
+              {importParsing && <div className="text-xs text-primary mt-1">Lendo arquivo...</div>}
             </div>
             {importPreview.length > 0 && (
               <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
