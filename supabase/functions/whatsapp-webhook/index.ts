@@ -204,13 +204,30 @@ async function transcribeAudio(base64: string, mimeType: string): Promise<string
   }
 }
 
-// === ElevenLabs TTS — voz feminina madura, ultra-realista ===
-// Voz "Matilda" (XrExE9yKIg1WjnnlVkGX) — feminina madura, alto pleasing pitch.
-// Voz NATIVA do ElevenLabs (não exige plano Creator), disponível em todas as contas.
-// Excelente performance em PT-BR com modelo multilingual_v2.
-const ELEVEN_VOICE_ID = "XrExE9yKIg1WjnnlVkGX";
+// === ElevenLabs TTS — voz dinâmica (clonada ou padrão) ===
+// Lê voice_id ativo da tabela voice_clones; se nenhuma estiver ativa, usa Matilda como fallback.
+const ELEVEN_FALLBACK_VOICE_ID = "XrExE9yKIg1WjnnlVkGX"; // Matilda (nativa)
 const ELEVEN_MODEL_PRIMARY = "eleven_multilingual_v2";
 const ELEVEN_MODEL_FALLBACK = "eleven_turbo_v2_5";
+
+let _cachedVoiceId: string = ELEVEN_FALLBACK_VOICE_ID;
+let _cachedVoiceAt = 0;
+async function getActiveVoiceId(): Promise<string> {
+  const now = Date.now();
+  if (_cachedVoiceAt && now - _cachedVoiceAt < 60_000) return _cachedVoiceId;
+  try {
+    const { data } = await supabase
+      .from("voice_clones")
+      .select("voice_id")
+      .eq("is_active", true)
+      .maybeSingle();
+    _cachedVoiceId = data?.voice_id || ELEVEN_FALLBACK_VOICE_ID;
+  } catch {
+    _cachedVoiceId = ELEVEN_FALLBACK_VOICE_ID;
+  }
+  _cachedVoiceAt = now;
+  return _cachedVoiceId;
+}
 
 // Pré-processa texto para soar natural quando falado em voz alta:
 // remove emojis, markdown, tags internas; expande URLs e datas DD/MM.
@@ -253,9 +270,10 @@ function preprocessForTts(input: string): string {
 async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
   if (!apiKey) return null;
+  const voiceId = await getActiveVoiceId();
   // MP3 44.1kHz/128kbps — melhor qualidade que opus para voz humana realista no WhatsApp.
   const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=mp3_44100_128`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
     {
       method: "POST",
       headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },

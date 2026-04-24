@@ -577,6 +577,42 @@ export type Database = {
         }
         Relationships: []
       }
+      voice_clones: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          sample_storage_path: string | null
+          updated_at: string
+          voice_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          sample_storage_path?: string | null
+          updated_at?: string
+          voice_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          sample_storage_path?: string | null
+          updated_at?: string
+          voice_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_config: {
         Row: {
           access_token: string | null
