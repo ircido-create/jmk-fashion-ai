@@ -17,6 +17,7 @@ import { z } from "zod";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
+import { reconcile, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
 
 interface Customer { id: string; name: string; tax_id: string | null; }
 interface Receivable {
@@ -54,11 +55,14 @@ export default function Receivable() {
   const [payFile, setPayFile] = useState<File | null>(null);
   const [paySaving, setPaySaving] = useState(false);
 
-  // Baixa em massa
+  // Baixa em massa (conciliação por extrato)
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkDesc, setBulkDesc] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkParsing, setBulkParsing] = useState(false);
+  const [bulkPayments, setBulkPayments] = useState<PaymentRow[]>([]);
+  const [bulkResult, setBulkResult] = useState<ReconciliationResult | null>(null);
 
   // Relatório
   const [reportOpen, setReportOpen] = useState(false);
@@ -249,29 +253,152 @@ export default function Receivable() {
     pago: "Pago",
   };
 
-  // Itens elegíveis para baixa em massa (todas as filtradas que não estão pagas)
-  const bulkEligible = filtered.filter((r) => r.status !== "pago" && r.status !== "cancelado");
+  // === Baixa em massa por extrato (conciliação) ===
+  // Parser de extrato: aceita xlsx/xls/csv com colunas Cliente, Valor (e opcionalmente Data/CPF/CNPJ)
+  const parseBulkFile = async (file: File) => {
+    setBulkParsing(true);
+    setBulkPayments([]);
+    setBulkResult(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+
+      const norm = (s: string) =>
+        String(s ?? "").toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const findKey = (row: any, candidates: string[]) => {
+        const keys = Object.keys(row);
+        for (const c of candidates) {
+          const k = keys.find((k) => norm(k) === norm(c) || norm(k).includes(norm(c)));
+          if (k) return k;
+        }
+        return null;
+      };
+      const parseAmount = (v: any): number => {
+        if (typeof v === "number") return v;
+        const s = String(v ?? "").replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+        return Number(s) || 0;
+      };
+      const parseDate = (v: any): string => {
+        if (!v) return "";
+        if (v instanceof Date) return v.toISOString().slice(0, 10);
+        const s = String(v).trim();
+        const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+        if (m) {
+          const yy = m[3].length === 2 ? "20" + m[3] : m[3];
+          return `${yy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+        }
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+      };
+
+      const rows: PaymentRow[] = json.map((row, i) => {
+        const kCust = findKey(row, ["cliente", "customer", "nome", "sacado", "pagador", "favorecido", "historico"]);
+        const kTax = findKey(row, ["cpf", "cnpj", "cpf/cnpj", "documento"]);
+        const kAmt = findKey(row, ["valor", "amount", "credito", "crédito", "valor pago"]);
+        const kDate = findKey(row, ["data", "data pagamento", "data credito", "data crédito", "payment_date"]);
+        const kDesc = findKey(row, ["descricao", "description", "memo", "obs", "historico"]);
+        return {
+          customer_name: kCust ? String(row[kCust]).trim() : "",
+          tax_id: kTax ? digitsOnly(String(row[kTax])) : "",
+          amount: kAmt ? parseAmount(row[kAmt]) : 0,
+          payment_date: kDate ? parseDate(row[kDate]) : new Date().toISOString().slice(0, 10),
+          description: kDesc ? String(row[kDesc]).trim() : "",
+          line: i + 2,
+        };
+      }).filter((r) => r.amount > 0 && r.customer_name);
+
+      if (rows.length === 0) {
+        toast.error("Nenhuma linha de pagamento encontrada (precisa de Cliente + Valor).");
+        return;
+      }
+
+      // Constrói lista de receivables com nome de cliente + tax_id resolvido
+      const customerById = new Map(customers.map((c) => [c.id, c]));
+      const lite: ReceivableLite[] = list.map((r) => {
+        const c = r.customer_id ? customerById.get(r.customer_id) : null;
+        return {
+          id: r.id,
+          customer_id: r.customer_id,
+          customer_name: c?.name ?? r.customers?.name ?? "",
+          customer_tax_id: c?.tax_id ?? null,
+          amount: Number(r.amount),
+          due_date: r.due_date,
+          status: r.status,
+        };
+      });
+
+      const result = reconcile(lite, rows);
+      setBulkPayments(rows);
+      setBulkResult(result);
+
+      const t = result.totals;
+      toast.success(
+        `${rows.length} pagamento(s) lido(s) • ${t.fullySettled} quitação(ões) integral(is) • ${t.partiallyReduced} parcial(is) • ${t.unmatched} sem cliente`
+      );
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao ler o extrato");
+    } finally {
+      setBulkParsing(false);
+    }
+  };
 
   const confirmBulk = async () => {
-    if (bulkEligible.length === 0) { toast.error("Sem títulos elegíveis"); return; }
+    if (!bulkResult || bulkResult.actions.length === 0) {
+      toast.error("Nenhuma baixa para aplicar");
+      return;
+    }
     setBulkSaving(true);
     try {
-      const proofId = await uploadProof(bulkFile, bulkDesc || `Baixa em massa — ${format(new Date(), "dd/MM/yyyy")}`);
-      const ids = bulkEligible.map((r) => r.id);
-      const { error } = await supabase
-        .from("accounts_receivable")
-        .update({ status: "pago", paid_at: new Date().toISOString() })
-        .in("id", ids);
-      if (error) throw error;
+      const proofId = await uploadProof(
+        bulkFile,
+        bulkDesc || `Conciliação em massa — ${format(new Date(), "dd/MM/yyyy")}`
+      );
+
+      // Aplica ações
+      const settleIds = bulkResult.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
+      const reduceActions = bulkResult.actions.filter((a) => a.kind === "reduce");
+
+      // 1) Quitações integrais
+      if (settleIds.length > 0) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ status: "pago", paid_at: new Date().toISOString() })
+          .in("id", settleIds);
+        if (error) throw error;
+      }
+
+      // 2) Reduções de parcela (uma por uma — cada uma tem novo amount diferente)
+      for (const a of reduceActions) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ amount: a.new_amount })
+          .eq("id", a.receivable_id);
+        if (error) throw error;
+      }
+
+      // 3) Vincula comprovante (se houver) com o valor abatido em cada receivable
       if (proofId) {
-        const rows = bulkEligible.map((r) => ({
-          receivable_id: r.id, proof_id: proofId, amount_paid: Number(r.amount),
+        const links = bulkResult.actions.map((a) => ({
+          receivable_id: a.receivable_id,
+          proof_id: proofId,
+          amount_paid: a.amount_paid,
         }));
-        const { error: linkErr } = await supabase.from("receivable_payments").insert(rows);
+        const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
         if (linkErr) throw linkErr;
       }
-      toast.success(`${ids.length} título(s) baixados`);
-      setBulkOpen(false); setBulkFile(null); setBulkDesc("");
+
+      const t = bulkResult.totals;
+      toast.success(
+        `Conciliação aplicada: ${t.fullySettled} quitada(s) + ${t.partiallyReduced} parcial(is) • R$ ${t.paidSum.toFixed(2)}`
+      );
+      setBulkOpen(false);
+      setBulkFile(null);
+      setBulkDesc("");
+      setBulkPayments([]);
+      setBulkResult(null);
       load();
     } catch (e: any) {
       toast.error(e.message);
@@ -643,10 +770,13 @@ export default function Receivable() {
               variant="outline"
               className="rounded-xl"
               onClick={() => {
-                if (bulkEligible.length === 0) { toast.error("Sem títulos pendentes nesse filtro. Mude para 'A Receber' ou 'Vencido'."); return; }
+                setBulkFile(null);
+                setBulkDesc("");
+                setBulkPayments([]);
+                setBulkResult(null);
                 setBulkOpen(true);
               }}
-              title="Baixa em massa dos títulos filtrados"
+              title="Conciliar extrato com contas a receber"
             >
               <CheckSquare className="h-4 w-4 mr-1" /> Baixa em massa
             </Button>
@@ -799,41 +929,142 @@ export default function Receivable() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: baixa em massa */}
+      {/* Modal: baixa em massa por conciliação de extrato */}
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-        <DialogContent className="glass-card border-white/40">
+        <DialogContent className="glass-card border-white/40 max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Baixa em massa</DialogTitle>
+            <DialogTitle>Baixa em massa — conciliação por extrato</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="text-sm">
-              Serão baixados <strong>{bulkEligible.length}</strong> título(s) filtrados em "{filterLabels[filter]}",
-              totalizando <strong>R$ {sum(bulkEligible).toFixed(2)}</strong>.
+            <div className="text-xs text-muted-foreground">
+              Anexe um extrato (<strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>) com colunas
+              <strong> Cliente</strong> e <strong>Valor</strong> (e opcionalmente <strong>CPF/CNPJ</strong>, <strong>Data</strong>).
+              O sistema soma os pagamentos por cliente e abate as parcelas pendentes da{" "}
+              <strong>mais antiga primeiro</strong>. Se sobrar valor que não cubra a próxima parcela inteira, o valor da
+              parcela é reduzido (e ela permanece em aberto).
             </div>
+
             <div>
-              <Label>Descrição</Label>
+              <Label>Extrato</Label>
+              <Input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                disabled={bulkParsing}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setBulkFile(f);
+                  setBulkPayments([]);
+                  setBulkResult(null);
+                  if (f) parseBulkFile(f);
+                }}
+                className="glass-input"
+              />
+              {bulkFile && <div className="text-xs text-muted-foreground mt-1">{bulkFile.name}</div>}
+              {bulkParsing && <div className="text-xs text-primary mt-1">Lendo extrato e conciliando...</div>}
+            </div>
+
+            <div>
+              <Label>Descrição (opcional)</Label>
               <Input
                 value={bulkDesc}
                 onChange={(e) => setBulkDesc(e.target.value)}
-                placeholder={`Baixa em massa — ${format(new Date(), "dd/MM/yyyy")}`}
+                placeholder={`Conciliação — ${format(new Date(), "dd/MM/yyyy")}`}
                 className="glass-input"
               />
             </div>
-            <div>
-              <Label>Comprovante (opcional)</Label>
-              <Input
-                type="file"
-                onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
-                className="glass-input"
-                accept="image/*,application/pdf,.xlsx,.xls,.csv"
-              />
-              {bulkFile && <div className="text-xs text-muted-foreground mt-1">{bulkFile.name}</div>}
-            </div>
+
+            {bulkResult && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="rounded-lg bg-white/40 p-2">
+                    <div className="text-muted-foreground">Pagamentos lidos</div>
+                    <div className="font-semibold">{bulkResult.totals.payments}</div>
+                    <div className="text-[11px] text-muted-foreground">R$ {bulkResult.totals.paymentsSum.toFixed(2)}</div>
+                  </div>
+                  <div className="rounded-lg bg-success/10 p-2">
+                    <div className="text-muted-foreground">Quitações integrais</div>
+                    <div className="font-semibold text-success">{bulkResult.totals.fullySettled}</div>
+                  </div>
+                  <div className="rounded-lg bg-amber-500/10 p-2">
+                    <div className="text-muted-foreground">Parciais (parcela reduzida)</div>
+                    <div className="font-semibold text-amber-700">{bulkResult.totals.partiallyReduced}</div>
+                  </div>
+                  <div className="rounded-lg bg-destructive/10 p-2">
+                    <div className="text-muted-foreground">Sem cliente / sobra</div>
+                    <div className="font-semibold text-destructive">
+                      {bulkResult.totals.unmatched + bulkResult.leftovers.length}
+                    </div>
+                  </div>
+                </div>
+
+                {bulkResult.actions.length > 0 && (
+                  <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40 sticky top-0">
+                        <tr>
+                          <th className="text-left p-2">Cliente</th>
+                          <th className="text-left p-2">Vencimento</th>
+                          <th className="text-right p-2">Original</th>
+                          <th className="text-right p-2">Recebido</th>
+                          <th className="text-left p-2">Resultado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkResult.actions.slice(0, 200).map((a, i) => (
+                          <tr key={i} className="border-t border-white/20">
+                            <td className="p-2">{a.customer_name || "—"}</td>
+                            <td className="p-2">{format(parseISO(a.due_date), "dd/MM/yyyy")}</td>
+                            <td className="p-2 text-right">R$ {a.original_amount.toFixed(2)}</td>
+                            <td className="p-2 text-right font-medium">R$ {a.amount_paid.toFixed(2)}</td>
+                            <td className="p-2">
+                              {a.kind === "settle" ? (
+                                <span className="text-success">Quitado</span>
+                              ) : (
+                                <span className="text-amber-700">
+                                  Parcial → restará R$ {(a.new_amount ?? 0).toFixed(2)}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {(bulkResult.unmatchedPayments.length > 0 || bulkResult.leftovers.length > 0) && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs">
+                    <div className="font-medium text-destructive mb-1">Não conciliados</div>
+                    <ul className="space-y-1 max-h-32 overflow-auto">
+                      {bulkResult.unmatchedPayments.slice(0, 50).map((u, i) => (
+                        <li key={`u${i}`}>
+                          • {u.payment.customer_name || "—"} • R$ {u.payment.amount.toFixed(2)}{" "}
+                          <span className="text-muted-foreground">({u.reason})</span>
+                        </li>
+                      ))}
+                      {bulkResult.leftovers.slice(0, 50).map((l, i) => (
+                        <li key={`l${i}`}>
+                          • {l.customer_name} • sobra de R$ {l.amount.toFixed(2)} (sem mais parcelas pendentes)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkSaving}>Cancelar</Button>
-            <Button onClick={confirmBulk} disabled={bulkSaving || bulkEligible.length === 0} className="bg-gradient-primary text-primary-foreground">
-              {bulkSaving ? "Salvando..." : `Baixar ${bulkEligible.length}`}
+            <Button
+              onClick={confirmBulk}
+              disabled={bulkSaving || !bulkResult || bulkResult.actions.length === 0}
+              className="bg-gradient-primary text-primary-foreground"
+            >
+              {bulkSaving
+                ? "Aplicando..."
+                : bulkResult
+                ? `Aplicar baixa (${bulkResult.actions.length})`
+                : "Anexe o extrato"}
             </Button>
           </DialogFooter>
         </DialogContent>
