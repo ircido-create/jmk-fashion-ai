@@ -16,8 +16,9 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { digitsOnly, formatTaxId } from "@/lib/taxId";
 
-interface Customer { id: string; name: string; }
+interface Customer { id: string; name: string; tax_id: string | null; }
 interface Receivable {
   id: string; customer_id: string | null; description: string | null;
   amount: number; due_date: string; status: string; paid_at: string | null;
@@ -68,7 +69,7 @@ export default function Receivable() {
   // Importar
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importPreview, setImportPreview] = useState<{ customer_name: string; description: string; amount: number; due_date: string }[]>([]);
+  const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string }[]>([]);
   const [importSaving, setImportSaving] = useState(false);
 
   const load = async () => {
@@ -106,7 +107,7 @@ export default function Receivable() {
       setList(items);
 
       const cs = await fetchAll<Customer>((sb) =>
-        sb.from("customers").select("id, name").order("name")
+        sb.from("customers").select("id, name, tax_id").order("name")
       );
       setCustomers(cs);
     } catch (e: any) {
