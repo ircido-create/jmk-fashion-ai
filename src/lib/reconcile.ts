@@ -93,6 +93,8 @@ export function reconcile(
     if (tax) taxToCustomerId.set(tax, r.customer_id);
     const nm = norm(r.customer_name);
     if (nm) nameToCustomerId.set(nm, r.customer_id);
+    const nick = norm(r.customer_nickname ?? "");
+    if (nick) nameToCustomerId.set(nick, r.customer_id);
   }
 
   // Ordena cada bucket por due_date asc (mais antigo primeiro), depois por amount asc
