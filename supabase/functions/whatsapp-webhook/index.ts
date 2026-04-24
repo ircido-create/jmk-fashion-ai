@@ -204,11 +204,11 @@ async function transcribeAudio(base64: string, mimeType: string): Promise<string
   }
 }
 
-// === ElevenLabs TTS — voz feminina brasileira madura, ultra-realista ===
-// Voz "Dani" — feminina brasileira ~40 anos, sotaque carioca natural, conversacional.
-// Perfil ideal para SDR no WhatsApp (não soa como locutora, soa como pessoa real).
-// Modelo eleven_multilingual_v2 oferece a melhor qualidade humana em PT-BR.
-const ELEVEN_VOICE_ID = "PznTnBc8X6pvixs9UkQm";
+// === ElevenLabs TTS — voz feminina madura, ultra-realista ===
+// Voz "Matilda" (XrExE9yKIg1WjnnlVkGX) — feminina madura, alto pleasing pitch.
+// Voz NATIVA do ElevenLabs (não exige plano Creator), disponível em todas as contas.
+// Excelente performance em PT-BR com modelo multilingual_v2.
+const ELEVEN_VOICE_ID = "XrExE9yKIg1WjnnlVkGX";
 const ELEVEN_MODEL_PRIMARY = "eleven_multilingual_v2";
 const ELEVEN_MODEL_FALLBACK = "eleven_turbo_v2_5";
 
