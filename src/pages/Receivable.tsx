@@ -111,7 +111,7 @@ export default function Receivable() {
       setList(items);
 
       const cs = await fetchAll<Customer>((sb) =>
-        sb.from("customers").select("id, name, tax_id").order("name")
+        sb.from("customers").select("id, name, nickname, tax_id").order("name")
       );
       setCustomers(cs);
     } catch (e: any) {
