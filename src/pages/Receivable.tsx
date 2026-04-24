@@ -770,10 +770,13 @@ export default function Receivable() {
               variant="outline"
               className="rounded-xl"
               onClick={() => {
-                if (bulkEligible.length === 0) { toast.error("Sem títulos pendentes nesse filtro. Mude para 'A Receber' ou 'Vencido'."); return; }
+                setBulkFile(null);
+                setBulkDesc("");
+                setBulkPayments([]);
+                setBulkResult(null);
                 setBulkOpen(true);
               }}
-              title="Baixa em massa dos títulos filtrados"
+              title="Conciliar extrato com contas a receber"
             >
               <CheckSquare className="h-4 w-4 mr-1" /> Baixa em massa
             </Button>
