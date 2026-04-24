@@ -579,12 +579,23 @@ export default function Receivable() {
         });
       }
 
-      const rows = importPreview.map((r, idx) => ({
-        customer_id: planned[idx],
-        description: r.description || null,
-        amount: r.amount,
-        due_date: r.due_date,
-      }));
+      // Filtra duplicatas (skip=true)
+      const rows = importPreview
+        .map((r, idx) => ({ r, idx }))
+        .filter(({ r }) => !r.skip)
+        .map(({ r, idx }) => ({
+          customer_id: planned[idx],
+          description: r.description || null,
+          amount: r.amount,
+          due_date: r.due_date,
+        }));
+
+      const skipped = importPreview.length - rows.length;
+      if (rows.length === 0) {
+        toast.error("Todas as linhas foram identificadas como duplicadas");
+        setImportSaving(false);
+        return;
+      }
 
       const { error } = await supabase.from("accounts_receivable").insert(rows);
       if (error) throw error;
@@ -593,8 +604,11 @@ export default function Receivable() {
         total: rows.length,
         updated: toUpdateTax.length,
         created: newPayload.length,
+        skipped,
       };
-      toast.success(`${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)`);
+      toast.success(
+        `${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)${stats.skipped > 0 ? ` • ${stats.skipped} duplicata(s) ignorada(s)` : ""}`
+      );
       setImportOpen(false); setImportFile(null); setImportPreview([]);
       load();
     } catch (e: any) {
