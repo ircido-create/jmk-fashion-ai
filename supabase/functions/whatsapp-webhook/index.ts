@@ -373,27 +373,34 @@ function asksForPhoto(text: string): boolean {
   return /(foto|fotos|imagem|imagens|figura|me manda.*foto|tem foto|tem imagem|posso ver|me mostra|manda.*foto)/.test(t);
 }
 
-// Frases genéricas de "me manda foto/de novo" — sem produto específico
+// Frases genéricas de "me manda foto/de novo" — sem produto específico.
+// Também considera genérico quando só sobram pronomes ("dela", "dele", "disso"...),
+// porque nesse caso o produto está implícito no histórico da conversa.
 function isGenericPhotoRequest(text: string): boolean {
   const t = norm(text);
-  // Remove os verbos de pedir foto e vê o que sobra
+  // Remove os verbos de pedir foto e pronomes/preposições, e vê o que sobra
   const stripped = t
     .replace(/(foto|fotos|imagem|imagens|figura|figuras)/g, "")
     .replace(/(me manda|me envia|me mostra|envia|manda|mostra|posso ver|tem|pode|poderia|novamente|de novo|outra vez|tambem|também)/g, "")
+    .replace(/\b(dela|dele|delas|deles|disso|dessa|desse|dessas|desses|essa|esse|essas|esses|aquela|aquele|aquelas|aqueles|uma|um|umas|uns|de|do|da|dos|das|para|pra|por|com|favor|por favor)\b/g, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
   return stripped.length < 3; // sobrou quase nada → é genérico
 }
 
-// Junta a mensagem atual com mensagens anteriores do cliente para inferir o produto pedido
+// Junta a mensagem atual com mensagens anteriores do cliente E a última resposta do bot
+// para inferir o produto pedido quando o pedido de foto é genérico ("me manda uma foto dela").
 function buildPhotoQueryContext(userMsg: string, history: any[]): string {
   if (!isGenericPhotoRequest(userMsg)) return userMsg;
-  // Pega as últimas 6 mensagens do CLIENTE (inbound) — exclui a atual que pode já estar no history
-  const inbounds = history.filter((m: any) => m.direction === "inbound").slice(-6);
+  // Pega as últimas 4 mensagens do CLIENTE (inbound) — provável que mencionem o produto
+  const inbounds = history.filter((m: any) => m.direction === "inbound").slice(-4);
   const ctxText = inbounds.map((m: any) => m.content).join(" ");
-  // Também aproveita a última resposta do bot (pode mencionar o nome do produto que ele já enviou)
+  // A última resposta do bot é CRÍTICA: costuma citar o nome exato do produto recém-mencionado
+  // (ex: "A BLUSA 7196 CAROL TRICO está disponível...") — vale mais que qualquer outra fonte
   const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
-  return `${ctxText} ${lastBot?.content ?? ""} ${userMsg}`.trim();
+  const combined = `${lastBot?.content ?? ""} ${ctxText} ${userMsg}`.trim();
+  console.log("[photo] generic request → combined query:", combined.slice(0, 200));
+  return combined;
 }
 
 // Busca variações com foto que correspondam à mensagem (com fallback para o contexto da conversa)
@@ -404,6 +411,7 @@ async function findPhotoMatches(
 ): Promise<{ url: string; caption: string }[]> {
   const queryText = buildPhotoQueryContext(userMsg, history);
   const keywords = extractKeywords(queryText);
+  console.log("[photo] keywords:", keywords, "supplier:", supplier);
 
   // 1) Busca por produtos cujo name/description/category/sku case com alguma keyword
   let q = supabase
