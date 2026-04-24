@@ -210,12 +210,11 @@ const ELEVEN_FALLBACK_VOICE_ID = "XrExE9yKIg1WjnnlVkGX"; // Matilda (nativa)
 const ELEVEN_MODEL_PRIMARY = "eleven_multilingual_v2";
 const ELEVEN_MODEL_FALLBACK = "eleven_turbo_v2_5";
 
-let _cachedVoiceId: string | null = null;
+let _cachedVoiceId: string = ELEVEN_FALLBACK_VOICE_ID;
 let _cachedVoiceAt = 0;
 async function getActiveVoiceId(): Promise<string> {
   const now = Date.now();
-  // Cache de 60s para evitar query a cada mensagem
-  if (_cachedVoiceId && now - _cachedVoiceAt < 60_000) return _cachedVoiceId;
+  if (_cachedVoiceAt && now - _cachedVoiceAt < 60_000) return _cachedVoiceId;
   try {
     const { data } = await supabase
       .from("voice_clones")
