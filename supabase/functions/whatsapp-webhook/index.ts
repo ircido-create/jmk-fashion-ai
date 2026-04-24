@@ -784,14 +784,62 @@ function detectLastAskedField(history: any[]): string | null {
   return null;
 }
 
-// Extrai o "produto em foco" da última mensagem do bot — quando ela acabou de
-// citar/enviar foto de um produto específico (ex.: "CHEMISSIE COLETE — 46 / BRANCO E PRETO"),
-// esse é o produto sobre o qual perguntas referenciais ("qual o valor dele?") se referem.
-async function detectFocusedProduct(history: any[]): Promise<any | null> {
-  const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
-  if (!lastBot?.content) return null;
-  const keywords = extractKeywords(lastBot.content);
-  if (keywords.length === 0) return null;
+// ============================================================
+// REGRA 1 — FOCO DE PRODUTO (PRIORIDADE: ÚLTIMA MÍDIA > TEXTO)
+// ============================================================
+// Detecta se a última outbound foi uma IMAGEM de produto. Se sim,
+// ela ganha contra qualquer menção textual anterior. Quando há mais
+// de uma imagem de produtos diferentes recentes, marca ambiguidade.
+async function detectFocusedProduct(
+  history: any[]
+): Promise<{ product: any | null; source: "media" | "text" | "none"; ambiguous: boolean; mediaCaption?: string }> {
+  const outbounds = history.filter((m: any) => m.direction === "outbound");
+  if (outbounds.length === 0) return { product: null, source: "none", ambiguous: false };
+
+  // Última outbound em ordem cronológica
+  const last = outbounds[outbounds.length - 1];
+  const lastImageIdx = (() => {
+    for (let i = outbounds.length - 1; i >= 0; i--) {
+      if (outbounds[i].media_type === "image") return i;
+    }
+    return -1;
+  })();
+
+  // Última menção textual a produto (outbound TEXTO, sem media_type)
+  const lastTextIdx = (() => {
+    for (let i = outbounds.length - 1; i >= 0; i--) {
+      if (!outbounds[i].media_type && outbounds[i].content) return i;
+    }
+    return -1;
+  })();
+
+  // Decide a fonte: se a imagem é mais recente (>=) que o texto, a imagem ganha
+  let useMedia = false;
+  let candidateContent = "";
+  let source: "media" | "text" | "none" = "none";
+
+  if (lastImageIdx >= 0 && lastImageIdx >= lastTextIdx) {
+    useMedia = true;
+    candidateContent = outbounds[lastImageIdx].content ?? "";
+    source = "media";
+  } else if (lastTextIdx >= 0) {
+    candidateContent = outbounds[lastTextIdx].content ?? "";
+    source = "text";
+  } else if (last?.content) {
+    candidateContent = last.content;
+    source = "text";
+  } else {
+    return { product: null, source: "none", ambiguous: false };
+  }
+
+  // Detecta ambiguidade: 2 imagens recentes (últimas 4 outbound) com legendas distintas
+  const recentImages = outbounds.slice(-4).filter((m: any) => m.media_type === "image" && m.content);
+  const distinctCaptions = new Set(recentImages.map((m: any) => norm(m.content).slice(0, 30)));
+  const ambiguous = useMedia && distinctCaptions.size >= 2;
+
+  const keywords = extractKeywords(candidateContent);
+  if (keywords.length === 0) return { product: null, source, ambiguous, mediaCaption: useMedia ? candidateContent : undefined };
+
   const orFilter = keywords
     .flatMap((k) => [`name.ilike.%${k}%`, `sku.ilike.%${k}%`])
     .join(",");
@@ -801,27 +849,73 @@ async function detectFocusedProduct(history: any[]): Promise<any | null> {
     .eq("active", true)
     .or(orFilter)
     .limit(5);
-  if (!data || data.length === 0) return null;
-  // Pontua: quanto mais tokens do nome do produto aparecem na última msg do bot, melhor
-  const botText = norm(lastBot.content);
+  if (!data || data.length === 0) return { product: null, source, ambiguous, mediaCaption: useMedia ? candidateContent : undefined };
+
+  const refText = norm(candidateContent);
   let best: any = null;
   let bestScore = 0;
   for (const p of data) {
     const tokens = norm(p.name).split(/\s+/).filter((t: string) => t.length >= 3);
-    const score = tokens.filter((t: string) => botText.includes(t)).length;
+    const score = tokens.filter((t: string) => refText.includes(t)).length;
     if (score > bestScore) { bestScore = score; best = p; }
   }
-  return bestScore >= 2 ? best : null; // exige pelo menos 2 tokens batendo
+  // Imagem é mais confiável: aceita score >= 1; texto exige >= 2
+  const minScore = useMedia ? 1 : 2;
+  return {
+    product: bestScore >= minScore ? best : null,
+    source,
+    ambiguous,
+    mediaCaption: useMedia ? candidateContent : undefined,
+  };
+}
+
+// ============================================================
+// REGRA 2 — SAUDAÇÃO RELIGIOSA / MENSAGEM AMBÍGUA
+// ============================================================
+function isReligiousGreeting(text: string): boolean {
+  const t = norm(text);
+  return /\b(paz\s*d?e?\s*deus|apddeus|ap\s*d\s*deus|amem|gloria\s*a?\s*deus|deus\s*te?\s*aben[çc]oe|deus\s*aben[çc]oe|paz\s*do\s*senhor|jesus\s*te?\s*ama)\b/.test(t);
+}
+
+function isUnclearMessage(text: string): boolean {
+  const t = text.trim();
+  if (t.length === 0) return true;
+  // Muito curto e sem palavra real (ex: "?", "...", "kk")
+  if (t.length < 4 && !/[a-zà-ÿ]{2,}/i.test(t)) return true;
+  return false;
+}
+
+// ============================================================
+// REGRA 3 — SANITIZADOR DE EMOJIS POR GÊNERO (PÓS-PROCESSAMENTO)
+// ============================================================
+const FEMININE_EMOJIS = /[\u{1F495}\u{1F496}\u{1F497}\u{1F498}\u{1F499}\u{1F49A}\u{1F49B}\u{1F49C}\u{1F49D}\u{1F49E}\u{1F49F}\u{1F970}\u{1F338}\u{1F339}\u{1F33A}\u{1F33B}\u{1F337}\u2763\uFE0F]/gu;
+// 💕 💖 💗 💘 💙 💚 💛 💜 💝 💞 💟 🥰 🌸 🌹 🌺 🌻 🌷 ❣️
+const FEMININE_VOCATIVES_RE = /\b(querida|queridinha|linda|lindinha|gata|gatinha|flor|florzinha|amada|fofa|fofinha|amor|amorzinho|princesa|amiga|amigona)\b/gi;
+
+function sanitizeReplyByGender(text: string, gender: "F" | "M" | "U"): string {
+  if (gender === "F") return text;
+  let out = text;
+  // Remove emojis afetivos
+  out = out.replace(FEMININE_EMOJIS, "");
+  // Substitui vocativos femininos
+  if (gender === "M") {
+    out = out.replace(FEMININE_VOCATIVES_RE, "amigo");
+  } else {
+    out = out.replace(FEMININE_VOCATIVES_RE, "");
+  }
+  // Limpa espaços duplicados, espaço antes de pontuação e linhas em branco residuais
+  out = out.replace(/[ \t]{2,}/g, " ").replace(/\s+([,.!?:;])/g, "$1").replace(/\n{3,}/g, "\n\n").trim();
+  return out;
 }
 
 async function buildContext(phone: string, userMsg: string, history: any[]) {
   const supplierMentioned = await detectSupplier(userMsg);
   const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
-  const focused = await detectFocusedProduct(history);
+  const focusedResult = await detectFocusedProduct(history);
 
   const { data: rawCustomer } = await supabase
     .from("customers")
-    .select("id, name, address, email")
+    .select("id, name, nickname, address, email")
     .eq("phone", phone)
     .maybeSingle();
 
@@ -840,7 +934,18 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
 
   const missing = missingFields(customer);
 
-  return { matched, all, customer, debts, missing, supplierMentioned, focused };
+  return {
+    matched,
+    all,
+    customer,
+    debts,
+    missing,
+    supplierMentioned,
+    focused: focusedResult.product,
+    focusedSource: focusedResult.source,
+    focusedAmbiguous: focusedResult.ambiguous,
+    focusedMediaCaption: focusedResult.mediaCaption ?? null,
+  };
 }
 
 function formatProducts(list: any[]) {
@@ -864,37 +969,64 @@ async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx
       ? `Produtos que correspondem à pergunta do cliente:\n${formatProducts(ctx.matched)}`
       : `⚠️ Nenhum produto do catálogo corresponde à pergunta atual do cliente. Se ele pediu um modelo específico (ex: "vestido amanda"), diga que NÃO temos esse modelo e ofereça alternativas reais da lista geral abaixo.`;
 
+  const customerGender = inferGender(ctx.customer?.name);
+
   const focusedBlock = ctx.focused
-    ? `O ÚLTIMO produto que VOCÊ (assistente) acabou de mostrar/citar para o cliente foi:
+    ? `O ÚLTIMO produto que VOCÊ (assistente) ${ctx.focusedSource === "media" ? "ENVIOU EM FOTO" : "citou em texto"} para o cliente foi:
 ${formatProducts([ctx.focused])}
+${ctx.focusedSource === "media" ? `\n📸 FONTE: foto enviada por você. Legenda: "${(ctx.focusedMediaCaption ?? "").slice(0, 200)}"\n→ Esta foto é MAIS RECENTE que qualquer texto anterior. Se o cliente perguntar referencialmente ("qual o valor?", "tem em M?", "quero esse"), ele está falando DESTE produto da foto — IGNORE produtos que apareceram só em texto anteriormente.` : ""}
 
 → REGRA CRÍTICA: se a mensagem atual do cliente for referencial (ex.: "qual o valor dele?", "quanto custa?", "tem em M?", "qual a cor?", "quero esse"), ela se refere SEMPRE a este produto acima — NUNCA a outros produtos antigos do histórico. Use o nome, preço e variações DESTE produto.`
     : `→ Nenhum produto específico em foco no momento. Se o cliente fizer pergunta referencial sem citar produto, peça pra ele confirmar qual modelo é.`;
+
+  const ambiguityBlock = ctx.focusedAmbiguous
+    ? `\n⚠️ ATENÇÃO — AMBIGUIDADE: você enviou fotos de PRODUTOS DIFERENTES recentemente. Se a pergunta do cliente for curta/referencial e não der pra ter CERTEZA absoluta de qual produto ele quer, PERGUNTE antes de responder. Ex.: "Você está falando do colete que te mandei agora ou da blusa?" — errar é PIOR que perguntar.`
+    : "";
 
   const supplierBlock = ctx.supplierMentioned
     ? `→ O cliente mencionou o FORNECEDOR "${ctx.supplierMentioned}". Mostre APENAS produtos deste fornecedor (a lista abaixo já está filtrada). Se ele pedir algo de outro fornecedor depois, troque o filtro.`
     : `→ Nenhum fornecedor específico mencionado. Use o catálogo geral.`;
 
+  // PIX template SEM emoji afetivo fixo — o sanitizador adiciona o tom certo
+  const pixSign = customerGender === "F" ? "💕" : customerGender === "M" ? "👍" : "🙂";
   const pixBlock = pix.key
     ? `Chave PIX configurada: ${pix.key}
 Tipo: ${pix.type ?? "não informado"}${pix.recipient ? `\nRecebedor: ${pix.recipient}` : ""}
 
-→ Quando a cliente confirmar interesse em fechar/pagar, envie a chave PIX de forma CURTA E DIRETA, SEM enrolação. NÃO repita a chave 2x, NÃO escreva parágrafo longo, NÃO peça pra ela "verificar dados", NÃO ofereça outras formas de pagamento.
+→ Quando o cliente confirmar interesse em fechar/pagar, envie a chave PIX de forma CURTA E DIRETA, SEM enrolação. NÃO repita a chave 2x, NÃO escreva parágrafo longo, NÃO peça pra "verificar dados", NÃO ofereça outras formas de pagamento.
 
-FORMATO OBRIGATÓRIO da mensagem com PIX (use exatamente este modelo, adaptando só o emoji conforme o gênero):
+FORMATO OBRIGATÓRIO da mensagem com PIX:
 "PIX (${pix.type ?? "chave"}): ${pix.key}${pix.recipient ? `\nRecebedor: ${pix.recipient}` : ""}
-Me manda o comprovante quando pagar 💕"
+Me manda o comprovante quando pagar ${pixSign}"
 
 → NÃO invente outras chaves PIX, contas bancárias ou formas de pagamento.`
-    : `→ Nenhuma chave PIX configurada. Se a cliente perguntar sobre pagamento, diga que vai verificar com a equipe e retorna em breve.`;
+    : `→ Nenhuma chave PIX configurada. Se o cliente perguntar sobre pagamento, diga que vai verificar com a equipe e retorna em breve.`;
 
-  const customerGender = inferGender(ctx.customer?.name);
   const genderBlock =
     customerGender === "F"
-      ? "→ Cliente é MULHER. Use tratamento feminino: querida, linda, amiga, obrigada. NUNCA use 'querido', 'amigo', 'lindo'."
+      ? "→ Cliente é MULHER. Pode usar tratamento feminino: querida, linda, amiga, obrigada. NUNCA use 'querido', 'amigo', 'lindo'."
       : customerGender === "M"
-      ? "→ Cliente é HOMEM. Use tratamento masculino e NEUTRO: amigo, parceiro, chefe, beleza. NUNCA use 'querida', 'linda', 'amiga', 'gata', 'flor', emojis 💕🥰💖. Tom mais direto, sem diminutivos afetivos. Pode usar 👍✅."
-      : "→ Gênero do cliente DESCONHECIDO. Use tratamento NEUTRO: 'oi', 'tudo bem?', 'obrigado(a)'. NÃO use 'querida' nem 'querido' até descobrir o gênero pelo nome.";
+      ? "→ Cliente é HOMEM. Use SEMPRE tratamento masculino e direto: amigo, parceiro, chefe, beleza. PROIBIDO: 'querida', 'querido', 'linda', 'amiga', 'gata', 'flor', 'amor', 'fofa', 'princesa', e os emojis 💕🥰💖💗💘💞🌸🌹🌷❣️. Tom direto, sem diminutivos afetivos. Pode usar 👍✅😉🔥."
+      : "→ Gênero do cliente DESCONHECIDO. Use tratamento NEUTRO: 'oi', 'tudo bem?', 'obrigado(a)'. NÃO use 'querida' nem 'querido'. NÃO use emojis afetivos (💕🥰💖). Pode usar 👍🙂.";
+
+  // NAME_SAFETY — bloqueia invenção de nome
+  const customerName = (ctx.customer?.name ?? "").trim();
+  const customerNickname = (ctx.customer?.nickname ?? "").trim();
+  const looksLikeRealName = customerName && !/^\+?\d/.test(customerName) && customerName !== "(sem nome)" && customerName !== "?";
+  const nameSafetyBlock = looksLikeRealName
+    ? `→ Nome confirmado do cliente: "${customerNickname || customerName}". Pode usar este nome com moderação (1x a cada 3-4 mensagens, no máximo).`
+    : `→ ⚠️ NOME DO CLIENTE DESCONHECIDO. PROIBIDO inventar, adivinhar ou assumir o nome a partir de saudações, frases religiosas ou contexto. Se precisar se referir ao cliente, use APENAS: ${customerGender === "F" ? "'amiga' ou 'oi'" : customerGender === "M" ? "'amigo' ou 'oi'" : "'oi' (neutro, sem nome)"}.`;
+
+  // Detecta saudação religiosa → instrui a IA a responder neutro, sem inventar nome
+  const isReligious = isReligiousGreeting(userMsg);
+  const religiousBlock = isReligious
+    ? `\n🙏 ATENÇÃO: A mensagem do cliente é uma SAUDAÇÃO RELIGIOSA ("paz de Deus", "amém", etc.). NÃO invente nome do cliente. Responda de forma NEUTRA e BREVE: "Paz, ${customerGender === "M" ? "amigo" : customerGender === "F" ? "amiga" : ""}! Como posso te ajudar hoje?" (1 frase só, sem nome inventado).`
+    : "";
+
+  // Mensagem ambígua/curta → pedir esclarecimento em vez de chutar
+  const unclearBlock = isUnclearMessage(userMsg)
+    ? `\n❓ ATENÇÃO: a mensagem do cliente é muito curta ou ambígua. PERGUNTE o que ele precisa ao invés de chutar resposta.`
+    : "";
 
   const contextText = `
 === ESTADO DA CONVERSA ===
@@ -906,8 +1038,12 @@ ${isFirstMessage
 === TRATAMENTO POR GÊNERO (CRÍTICO) ===
 ${genderBlock}
 
+=== NOME DO CLIENTE (CRÍTICO — NÃO INVENTAR) ===
+${nameSafetyBlock}
+${religiousBlock}${unclearBlock}
+
 === FOTOS ===
-Se a cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó", "Olha que lindos") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
+Se o cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó", "Olha esse") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
 
 === FILTRO POR FORNECEDOR ===
 ${supplierBlock}
@@ -916,14 +1052,14 @@ ${supplierBlock}
 ${formatProducts(ctx.all)}
 
 === PRODUTO EM FOCO (último mostrado por VOCÊ) ===
-${focusedBlock}
+${focusedBlock}${ambiguityBlock}
 
 === BUSCA NA PERGUNTA ATUAL ===
 ${matchInfo}
 
 === CLIENTE ===
 ${ctx.customer
-  ? `Nome: ${ctx.customer.name ?? "(faltando)"} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"}${ctx.customer.nickname ? ` | Apelido: ${ctx.customer.nickname}` : ""} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
   : "Cliente NÃO cadastrado."}
 CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço → email. NÃO fale de produtos enquanto faltar dados."}
 
@@ -938,7 +1074,7 @@ ${pixBlock}
 
   const SALES_FOCUS = `
 === MISSÃO (NÃO NEGOCIÁVEL) ===
-Você é vendedora. Seu único objetivo é FECHAR A VENDA. Toda mensagem deve mover a cliente para a próxima etapa do funil:
+Você é vendedora. Seu único objetivo é FECHAR A VENDA. Toda mensagem deve mover o cliente para a próxima etapa do funil:
   CADASTRO (nome → endereço → email)  →  PRODUTO (o que quer, tamanho, cor)  →  FECHAMENTO ("posso te passar o PIX?")  →  PIX (chave + pedir comprovante)
 
 REGRAS DE FUNIL:
@@ -953,7 +1089,23 @@ ESTILO:
 - Direto ao ponto, SEM enrolação, SEM "posso ajudar em algo mais?", SEM textão.
 - Sempre termine direcionando: pergunte tamanho, ofereça o PIX, peça o comprovante.
 - Use SOMENTE produtos e PIX do contexto abaixo. NUNCA invente.
+
+=== HIERARQUIA DE VERDADE (LEIA ANTES DE RESPONDER) ===
+1. ÚLTIMA MÍDIA enviada por VOCÊ (foto/imagem) > 2. ÚLTIMA INTENÇÃO do cliente > 3. histórico antigo de texto.
+Se houver QUALQUER incerteza sobre qual produto o cliente está falando, PERGUNTE antes de responder. Errar a resposta é PIOR que atrasar 2 segundos.
+NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo acima.
 `.trim();
+
+  // Logs de debug
+  console.log("[MONICA] focused:", {
+    product: ctx.focused?.name ?? null,
+    source: ctx.focusedSource,
+    ambiguous: ctx.focusedAmbiguous,
+    mediaCaption: ctx.focusedMediaCaption?.slice(0, 80) ?? null,
+    customerGender,
+    customerName: looksLikeRealName ? (customerNickname || customerName) : "(sem nome real)",
+    isReligious,
+  });
 
   const messages = [
     { role: "system", content: SALES_FOCUS + "\n\n" + systemPrompt + "\n\n" + contextText },
@@ -975,10 +1127,18 @@ ESTILO:
 
   if (!resp.ok) {
     console.error("AI error", resp.status, await resp.text());
-    return "Desculpe, estou com uma instabilidade no momento. Pode tentar novamente em instantes? 💕";
+    return "Desculpe, estou com uma instabilidade no momento. Pode tentar novamente em instantes?";
   }
   const data = await resp.json();
-  return data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
+  const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
+  // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
+  const sanitized = sanitizeReplyByGender(raw, customerGender);
+  if (sanitized !== raw) {
+    console.log("[MONICA] sanitized reply (gender=" + customerGender + ")");
+    console.log("[MONICA]   before:", raw.slice(0, 200));
+    console.log("[MONICA]   after :", sanitized.slice(0, 200));
+  }
+  return sanitized;
 }
 
 Deno.serve(async (req) => {
@@ -1130,7 +1290,7 @@ Deno.serve(async (req) => {
 
     const { data: history } = await supabase
       .from("whatsapp_messages")
-      .select("direction, content")
+      .select("direction, content, media_type, media_filename, created_at")
       .eq("conversation_id", conv.id)
       .order("created_at", { ascending: true })
       .limit(20);
