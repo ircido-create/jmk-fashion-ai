@@ -915,6 +915,9 @@ ${supplierBlock}
 === CATÁLOGO ${ctx.supplierMentioned ? `(filtrado por fornecedor "${ctx.supplierMentioned}")` : "COMPLETO"} — use SOMENTE estes produtos ===
 ${formatProducts(ctx.all)}
 
+=== PRODUTO EM FOCO (último mostrado por VOCÊ) ===
+${focusedBlock}
+
 === BUSCA NA PERGUNTA ATUAL ===
 ${matchInfo}
 
