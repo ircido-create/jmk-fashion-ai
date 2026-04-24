@@ -19,7 +19,7 @@ import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
 import { reconcile, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
 
-interface Customer { id: string; name: string; tax_id: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; }
 interface Receivable {
   id: string; customer_id: string | null; description: string | null;
   amount: number; due_date: string; status: string; paid_at: string | null;
