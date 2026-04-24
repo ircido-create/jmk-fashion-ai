@@ -603,9 +603,37 @@ async function detectSupplier(userMsg: string): Promise<string | null> {
   return null;
 }
 
+// Pergunta referencial: cliente se refere a algo SEM citar o nome do produto
+// (ex.: "qual o valor dele?", "quanto custa?", "tem em M?", "e a cor?", "tem outro tamanho?")
+function isReferentialProductQuestion(text: string): boolean {
+  const t = norm(text);
+  // Pronomes/refs que indicam "o produto que acabamos de falar"
+  const hasReference = /\b(dele|dela|deles|delas|disso|desse|dessa|desses|dessas|esse|essa|esses|essas|aquele|aquela|isso|aquilo)\b/.test(t);
+  // Perguntas curtas sobre preço/tamanho/cor sem nome de produto
+  const shortAttrQuestion =
+    t.length < 60 &&
+    /(quanto|valor|preco|preço|custa|sai por|tem em|tem no|tem outro|tem outra|qual.*tamanho|qual.*cor|qual.*medida|tamanho|cor)/.test(t);
+  // Sem palavras-chave fortes de produto (substantivos típicos do catálogo)
+  const hasProductNoun = /\b(blusa|vestido|calca|calça|saia|short|colete|conjunto|chemissie|camisa|camiseta|macacao|macacão|body|jaqueta|cardigan|legging|regata|tricot|tricô|trico|sapato|sandalia|sandália|tenis|tênis|bolsa|cinto|brinco|colar)\b/.test(t);
+  return (hasReference || shortAttrQuestion) && !hasProductNoun;
+}
+
+// Constrói uma query enriquecida com o produto recém-mencionado pelo bot,
+// quando a pergunta atual do cliente é referencial ("qual o valor dele?").
+function buildProductSearchQuery(userMsg: string, history: any[]): string {
+  if (!isReferentialProductQuestion(userMsg)) return userMsg;
+  const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
+  // Pega também a penúltima inbound do cliente, que é onde ele costuma ter dito o nome do produto
+  const lastInbound = [...history].reverse().find((m: any) => m.direction === "inbound");
+  const combined = `${lastBot?.content ?? ""} ${lastInbound?.content ?? ""} ${userMsg}`.trim();
+  console.log("[search] referential question → combined query:", combined.slice(0, 200));
+  return combined;
+}
+
 // RAG: busca produtos relevantes à mensagem do cliente, opcionalmente restrito a um fornecedor
-async function searchProducts(userMsg: string, supplier: string | null) {
-  const keywords = extractKeywords(userMsg);
+async function searchProducts(userMsg: string, supplier: string | null, history: any[] = []) {
+  const queryText = buildProductSearchQuery(userMsg, history);
+  const keywords = extractKeywords(queryText);
   let matched: any[] = [];
 
   if (keywords.length > 0) {
