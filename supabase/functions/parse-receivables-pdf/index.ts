@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
     const seen = new Set<string>();
     let expectedTotal: number | undefined;
     let expectedGrand: number | undefined;
-    const MAX_PASSES = 4;
+    const MAX_PASSES = 2;
 
     for (let pass = 0; pass < MAX_PASSES; pass++) {
       const { items, total_count, grand_total, finishReason } = await extractPass(file_base64, filename, allItems);
