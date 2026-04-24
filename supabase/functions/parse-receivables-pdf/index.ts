@@ -96,9 +96,10 @@ function deterministicParseBling(text: string): any[] {
   ];
 
   for (const raw of text.split("\n")) {
-    const line = raw.replace(/\s+$/, "");
+    const line = raw.trim();
     if (!line.includes("CARTEIRA")) continue;
     if (/^Total/i.test(line.trim())) continue;
+    if (/^(cliente|hist[oó]rico|relat[oó]rio de contas a receber|per[ií]odo)\b/i.test(line)) continue;
 
     let m: RegExpMatchArray | null = null;
     let groups: { client: string; desc: string; date: string; amount: string } | null = null;
