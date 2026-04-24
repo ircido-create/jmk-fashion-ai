@@ -413,26 +413,105 @@ export default function Receivable() {
     if (importPreview.length === 0) { toast.error("Nada para importar"); return; }
     setImportSaving(true);
     try {
-      // Mapear customer_name → customer_id (cria cliente se não existir)
-      const nameToId = new Map<string, string | null>();
-      customers.forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+      // Índices: por CPF/CNPJ e por nome (lowercase)
+      const taxToId = new Map<string, string>();
+      const nameToId = new Map<string, string>();
+      const taxToCustomer = new Map<string, Customer>();
+      customers.forEach((c) => {
+        const t = digitsOnly(c.tax_id ?? "");
+        if (t) { taxToId.set(t, c.id); taxToCustomer.set(t, c); }
+        if (c.name) nameToId.set(c.name.toLowerCase(), c.id);
+      });
 
-      const newCustomers = Array.from(new Set(
-        importPreview
-          .map((r) => r.customer_name)
-          .filter((n) => n && !nameToId.has(n.toLowerCase()))
-      ));
-      if (newCustomers.length > 0) {
-        const { data: created, error: cErr } = await supabase
-          .from("customers")
-          .insert(newCustomers.map((name) => ({ name })))
-          .select("id, name");
-        if (cErr) throw cErr;
-        (created ?? []).forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+      // 1) Para cada linha, decide o customer_id
+      // - se tem tax_id e existe → usa
+      // - se tem tax_id e NÃO existe, mas existe cliente com mesmo nome sem tax_id → atualiza esse cliente com o tax_id
+      // - se tem tax_id e nada bate → cria novo cliente (nome + tax_id)
+      // - se NÃO tem tax_id → vincula por nome; se não existir, cria por nome
+      const toUpdateTax: { id: string; tax_id: string }[] = [];
+      const toCreate: { name: string; tax_id: string | null }[] = [];
+      const planned: (string | null)[] = importPreview.map(() => null);
+
+      // Primeira passada: vincular ou marcar para update/create
+      const pendingNewByTax = new Map<string, number[]>(); // tax_id → índices das linhas
+      const pendingNewByName = new Map<string, number[]>(); // nome.lower → índices
+
+      importPreview.forEach((r, idx) => {
+        const tax = digitsOnly(r.tax_id);
+        const nameKey = (r.customer_name || "").trim().toLowerCase();
+
+        if (tax) {
+          if (taxToId.has(tax)) {
+            planned[idx] = taxToId.get(tax)!;
+          } else if (nameKey && nameToId.has(nameKey)) {
+            const existingId = nameToId.get(nameKey)!;
+            const existing = customers.find((c) => c.id === existingId);
+            // Atualiza tax_id desse cliente (se ainda não tinha)
+            if (existing && !digitsOnly(existing.tax_id ?? "")) {
+              toUpdateTax.push({ id: existingId, tax_id: tax });
+              taxToId.set(tax, existingId);
+            }
+            planned[idx] = existingId;
+          } else {
+            // Novo por tax_id
+            const arr = pendingNewByTax.get(tax) ?? [];
+            arr.push(idx);
+            pendingNewByTax.set(tax, arr);
+          }
+        } else if (nameKey) {
+          if (nameToId.has(nameKey)) {
+            planned[idx] = nameToId.get(nameKey)!;
+          } else {
+            const arr = pendingNewByName.get(nameKey) ?? [];
+            arr.push(idx);
+            pendingNewByName.set(nameKey, arr);
+          }
+        }
+      });
+
+      // Atualiza tax_id de clientes existentes encontrados por nome
+      if (toUpdateTax.length > 0) {
+        for (const u of toUpdateTax) {
+          const { error } = await supabase.from("customers").update({ tax_id: u.tax_id }).eq("id", u.id);
+          if (error) throw error;
+        }
       }
 
-      const rows = importPreview.map((r) => ({
-        customer_id: r.customer_name ? nameToId.get(r.customer_name.toLowerCase()) ?? null : null,
+      // Cria os novos clientes (com tax_id e por nome)
+      const newPayload: { name: string; tax_id: string | null }[] = [];
+      const newKeys: { kind: "tax" | "name"; key: string }[] = [];
+
+      for (const [tax, idxs] of pendingNewByTax.entries()) {
+        const sample = importPreview[idxs[0]];
+        newPayload.push({ name: (sample.customer_name || "Cliente sem nome").trim(), tax_id: tax });
+        newKeys.push({ kind: "tax", key: tax });
+      }
+      for (const [nameKey, idxs] of pendingNewByName.entries()) {
+        const sample = importPreview[idxs[0]];
+        newPayload.push({ name: (sample.customer_name || "Cliente sem nome").trim(), tax_id: null });
+        newKeys.push({ kind: "name", key: nameKey });
+      }
+
+      if (newPayload.length > 0) {
+        const { data: created, error: cErr } = await supabase
+          .from("customers")
+          .insert(newPayload)
+          .select("id, name, tax_id");
+        if (cErr) throw cErr;
+        (created ?? []).forEach((c, i) => {
+          const meta = newKeys[i];
+          if (meta.kind === "tax") {
+            const idxs = pendingNewByTax.get(meta.key) ?? [];
+            idxs.forEach((idx) => { planned[idx] = c.id; });
+          } else {
+            const idxs = pendingNewByName.get(meta.key) ?? [];
+            idxs.forEach((idx) => { planned[idx] = c.id; });
+          }
+        });
+      }
+
+      const rows = importPreview.map((r, idx) => ({
+        customer_id: planned[idx],
         description: r.description || null,
         amount: r.amount,
         due_date: r.due_date,
@@ -441,7 +520,12 @@ export default function Receivable() {
       const { error } = await supabase.from("accounts_receivable").insert(rows);
       if (error) throw error;
 
-      toast.success(`${rows.length} conta(s) importadas`);
+      const stats = {
+        total: rows.length,
+        updated: toUpdateTax.length,
+        created: newPayload.length,
+      };
+      toast.success(`${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)`);
       setImportOpen(false); setImportFile(null); setImportPreview([]);
       load();
     } catch (e: any) {
