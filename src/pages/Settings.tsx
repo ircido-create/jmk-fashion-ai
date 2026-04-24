@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { VoiceCloneManager } from "@/components/VoiceCloneManager";
 
 const PIX_TYPES = [
   { value: "cpf", label: "CPF" },
@@ -129,6 +130,8 @@ export default function Settings() {
           </div>
         )}
       </GlassCard>
+
+      <VoiceCloneManager />
 
       <Button
         onClick={save}

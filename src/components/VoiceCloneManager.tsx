@@ -204,7 +204,7 @@ export function VoiceCloneManager() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm truncate">{v.name}</span>
                       {v.is_active && (
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/40">
+                        <Badge variant="secondary" className="bg-primary/20 text-primary border-primary/40">
                           <CheckCircle2 className="h-3 w-3 mr-1" /> Ativa
                         </Badge>
                       )}
