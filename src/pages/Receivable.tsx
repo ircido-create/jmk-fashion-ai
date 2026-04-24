@@ -629,6 +629,116 @@ export default function Receivable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal: Relatório com filtro de período */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="glass-card border-white/40">
+          <DialogHeader><DialogTitle>Gerar relatório</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Filtro atual: <strong>{filterLabels[filter]}</strong> ({filtered.length} título(s))
+            </div>
+            <div>
+              <Label>Período</Label>
+              <Select value={reportPeriod} onValueChange={(v) => setReportPeriod(v as any)}>
+                <SelectTrigger className="glass-input"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="1m">Último mês</SelectItem>
+                  <SelectItem value="1a">Último ano</SelectItem>
+                  <SelectItem value="custom">Período personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {reportPeriod === "custom" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>De</Label>
+                  <Input type="date" value={reportFrom} onChange={(e) => setReportFrom(e.target.value)} className="glass-input" />
+                </div>
+                <div>
+                  <Label>Até</Label>
+                  <Input type="date" value={reportTo} onChange={(e) => setReportTo(e.target.value)} className="glass-input" />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportOpen(false)}>Cancelar</Button>
+            <Button onClick={runReport} className="bg-gradient-primary text-primary-foreground">
+              <FileDown className="h-4 w-4 mr-1" /> Gerar PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Importar contas a receber */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="glass-card border-white/40 max-w-2xl">
+          <DialogHeader><DialogTitle>Importar contas a receber</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Anexe um arquivo <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>.
+              A planilha deve conter colunas: <strong>Cliente</strong>, <strong>Descrição</strong>, <strong>Valor</strong> e <strong>Vencimento</strong>.
+              Clientes novos serão cadastrados automaticamente.
+            </div>
+            <div>
+              <Label>Arquivo</Label>
+              <Input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setImportFile(f);
+                  setImportPreview([]);
+                  if (f) parseImportFile(f);
+                }}
+                className="glass-input"
+              />
+              {importFile && <div className="text-xs text-muted-foreground mt-1">{importFile.name}</div>}
+            </div>
+            {importPreview.length > 0 && (
+              <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 sticky top-0">
+                    <tr>
+                      <th className="text-left p-2">Cliente</th>
+                      <th className="text-left p-2">Descrição</th>
+                      <th className="text-left p-2">Vencimento</th>
+                      <th className="text-right p-2">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.slice(0, 50).map((r, i) => (
+                      <tr key={i} className="border-t border-white/20">
+                        <td className="p-2">{r.customer_name || "—"}</td>
+                        <td className="p-2">{r.description || "—"}</td>
+                        <td className="p-2">{r.due_date}</td>
+                        <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {importPreview.length > 50 && (
+                  <div className="p-2 text-center text-xs text-muted-foreground">
+                    ... e mais {importPreview.length - 50} linha(s)
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importSaving}>Cancelar</Button>
+            <Button
+              onClick={confirmImport}
+              disabled={importSaving || importPreview.length === 0}
+              className="bg-gradient-primary text-primary-foreground"
+            >
+              {importSaving ? "Importando..." : `Importar ${importPreview.length}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
