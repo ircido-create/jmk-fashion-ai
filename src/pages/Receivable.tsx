@@ -1002,10 +1002,10 @@ export default function Receivable() {
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importSaving}>Cancelar</Button>
             <Button
               onClick={confirmImport}
-              disabled={importSaving || importPreview.length === 0}
+              disabled={importSaving || importPreview.filter((r) => !r.skip).length === 0}
               className="bg-gradient-primary text-primary-foreground"
             >
-              {importSaving ? "Importando..." : `Importar ${importPreview.length}`}
+              {importSaving ? "Importando..." : `Importar ${importPreview.filter((r) => !r.skip).length}`}
             </Button>
           </DialogFooter>
         </DialogContent>
