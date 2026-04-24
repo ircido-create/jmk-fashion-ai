@@ -312,6 +312,54 @@ export default function Receivable() {
   // === Importação de planilha/PDF ===
   const [importParsing, setImportParsing] = useState(false);
 
+  /** Marca duplicatas: dentro do próprio arquivo e contra contas já existentes no banco */
+  const enrichWithDuplicates = (
+    rows: { customer_name: string; tax_id: string; description: string; amount: number; due_date: string }[]
+  ) => {
+    // Índice de clientes existentes por tax_id e por nome → id
+    const taxToId = new Map<string, string>();
+    const nameToId = new Map<string, string>();
+    customers.forEach((c) => {
+      const t = digitsOnly(c.tax_id ?? "");
+      if (t) taxToId.set(t, c.id);
+      if (c.name) nameToId.set(c.name.trim().toLowerCase(), c.id);
+    });
+
+    // Índice de receivables existentes por chave (customer_id|valor|vencimento)
+    const existingKeys = new Set<string>();
+    list.forEach((r) => {
+      if (r.customer_id) existingKeys.add(`${r.customer_id}|${Number(r.amount).toFixed(2)}|${r.due_date}`);
+    });
+
+    // Resolve customer_id provável de uma linha do preview
+    const resolveCustomerId = (r: { customer_name: string; tax_id: string }): string | null => {
+      const tax = digitsOnly(r.tax_id);
+      if (tax && taxToId.has(tax)) return taxToId.get(tax)!;
+      const nameKey = (r.customer_name || "").trim().toLowerCase();
+      if (nameKey && nameToId.has(nameKey)) return nameToId.get(nameKey)!;
+      return null;
+    };
+
+    const seenInFile = new Set<string>();
+    return rows.map((r) => {
+      const cid = resolveCustomerId(r);
+      const amtKey = Number(r.amount).toFixed(2);
+      // Chave para detectar duplicata interna ao arquivo (cliente + valor + vencimento)
+      const matchKey = cid
+        ? `id:${cid}|${amtKey}|${r.due_date}`
+        : `name:${(r.customer_name || "").trim().toLowerCase()}|${digitsOnly(r.tax_id)}|${amtKey}|${r.due_date}`;
+
+      let dupReason: string | undefined;
+      if (cid && existingKeys.has(`${cid}|${amtKey}|${r.due_date}`)) {
+        dupReason = "já existe no sistema";
+      } else if (seenInFile.has(matchKey)) {
+        dupReason = "duplicado no arquivo";
+      }
+      seenInFile.add(matchKey);
+      return { ...r, skip: !!dupReason, dupReason };
+    });
+  };
+
   const parseImportFile = async (file: File) => {
     setImportParsing(true);
     try {
