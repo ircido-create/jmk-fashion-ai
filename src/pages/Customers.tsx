@@ -135,6 +135,9 @@ export default function Customers() {
               <Link to={`/clientes/${c.id}`} className="min-w-0 flex-1 group">
                 <div className="font-medium truncate flex items-center gap-1 group-hover:text-primary transition-colors">
                   {c.name}
+                  {c.nickname && (
+                    <span className="text-xs text-muted-foreground font-normal">({c.nickname})</span>
+                  )}
                   <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
