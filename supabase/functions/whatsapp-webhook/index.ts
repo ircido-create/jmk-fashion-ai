@@ -603,9 +603,37 @@ async function detectSupplier(userMsg: string): Promise<string | null> {
   return null;
 }
 
+// Pergunta referencial: cliente se refere a algo SEM citar o nome do produto
+// (ex.: "qual o valor dele?", "quanto custa?", "tem em M?", "e a cor?", "tem outro tamanho?")
+function isReferentialProductQuestion(text: string): boolean {
+  const t = norm(text);
+  // Pronomes/refs que indicam "o produto que acabamos de falar"
+  const hasReference = /\b(dele|dela|deles|delas|disso|desse|dessa|desses|dessas|esse|essa|esses|essas|aquele|aquela|isso|aquilo)\b/.test(t);
+  // Perguntas curtas sobre preço/tamanho/cor sem nome de produto
+  const shortAttrQuestion =
+    t.length < 60 &&
+    /(quanto|valor|preco|preço|custa|sai por|tem em|tem no|tem outro|tem outra|qual.*tamanho|qual.*cor|qual.*medida|tamanho|cor)/.test(t);
+  // Sem palavras-chave fortes de produto (substantivos típicos do catálogo)
+  const hasProductNoun = /\b(blusa|vestido|calca|calça|saia|short|colete|conjunto|chemissie|camisa|camiseta|macacao|macacão|body|jaqueta|cardigan|legging|regata|tricot|tricô|trico|sapato|sandalia|sandália|tenis|tênis|bolsa|cinto|brinco|colar)\b/.test(t);
+  return (hasReference || shortAttrQuestion) && !hasProductNoun;
+}
+
+// Constrói uma query enriquecida com o produto recém-mencionado pelo bot,
+// quando a pergunta atual do cliente é referencial ("qual o valor dele?").
+function buildProductSearchQuery(userMsg: string, history: any[]): string {
+  if (!isReferentialProductQuestion(userMsg)) return userMsg;
+  const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
+  // Pega também a penúltima inbound do cliente, que é onde ele costuma ter dito o nome do produto
+  const lastInbound = [...history].reverse().find((m: any) => m.direction === "inbound");
+  const combined = `${lastBot?.content ?? ""} ${lastInbound?.content ?? ""} ${userMsg}`.trim();
+  console.log("[search] referential question → combined query:", combined.slice(0, 200));
+  return combined;
+}
+
 // RAG: busca produtos relevantes à mensagem do cliente, opcionalmente restrito a um fornecedor
-async function searchProducts(userMsg: string, supplier: string | null) {
-  const keywords = extractKeywords(userMsg);
+async function searchProducts(userMsg: string, supplier: string | null, history: any[] = []) {
+  const queryText = buildProductSearchQuery(userMsg, history);
+  const keywords = extractKeywords(queryText);
   let matched: any[] = [];
 
   if (keywords.length > 0) {
@@ -756,9 +784,40 @@ function detectLastAskedField(history: any[]): string | null {
   return null;
 }
 
+// Extrai o "produto em foco" da última mensagem do bot — quando ela acabou de
+// citar/enviar foto de um produto específico (ex.: "CHEMISSIE COLETE — 46 / BRANCO E PRETO"),
+// esse é o produto sobre o qual perguntas referenciais ("qual o valor dele?") se referem.
+async function detectFocusedProduct(history: any[]): Promise<any | null> {
+  const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
+  if (!lastBot?.content) return null;
+  const keywords = extractKeywords(lastBot.content);
+  if (keywords.length === 0) return null;
+  const orFilter = keywords
+    .flatMap((k) => [`name.ilike.%${k}%`, `sku.ilike.%${k}%`])
+    .join(",");
+  const { data } = await supabase
+    .from("products")
+    .select("name, price, category, description, sku, supplier, product_variants(size, color, quantity)")
+    .eq("active", true)
+    .or(orFilter)
+    .limit(5);
+  if (!data || data.length === 0) return null;
+  // Pontua: quanto mais tokens do nome do produto aparecem na última msg do bot, melhor
+  const botText = norm(lastBot.content);
+  let best: any = null;
+  let bestScore = 0;
+  for (const p of data) {
+    const tokens = norm(p.name).split(/\s+/).filter((t: string) => t.length >= 3);
+    const score = tokens.filter((t: string) => botText.includes(t)).length;
+    if (score > bestScore) { bestScore = score; best = p; }
+  }
+  return bestScore >= 2 ? best : null; // exige pelo menos 2 tokens batendo
+}
+
 async function buildContext(phone: string, userMsg: string, history: any[]) {
   const supplierMentioned = await detectSupplier(userMsg);
-  const { matched, all } = await searchProducts(userMsg, supplierMentioned);
+  const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
+  const focused = await detectFocusedProduct(history);
 
   const { data: rawCustomer } = await supabase
     .from("customers")
@@ -781,7 +840,7 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
 
   const missing = missingFields(customer);
 
-  return { matched, all, customer, debts, missing, supplierMentioned };
+  return { matched, all, customer, debts, missing, supplierMentioned, focused };
 }
 
 function formatProducts(list: any[]) {
@@ -804,6 +863,13 @@ async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx
     ctx.matched.length > 0
       ? `Produtos que correspondem à pergunta do cliente:\n${formatProducts(ctx.matched)}`
       : `⚠️ Nenhum produto do catálogo corresponde à pergunta atual do cliente. Se ele pediu um modelo específico (ex: "vestido amanda"), diga que NÃO temos esse modelo e ofereça alternativas reais da lista geral abaixo.`;
+
+  const focusedBlock = ctx.focused
+    ? `O ÚLTIMO produto que VOCÊ (assistente) acabou de mostrar/citar para o cliente foi:
+${formatProducts([ctx.focused])}
+
+→ REGRA CRÍTICA: se a mensagem atual do cliente for referencial (ex.: "qual o valor dele?", "quanto custa?", "tem em M?", "qual a cor?", "quero esse"), ela se refere SEMPRE a este produto acima — NUNCA a outros produtos antigos do histórico. Use o nome, preço e variações DESTE produto.`
+    : `→ Nenhum produto específico em foco no momento. Se o cliente fizer pergunta referencial sem citar produto, peça pra ele confirmar qual modelo é.`;
 
   const supplierBlock = ctx.supplierMentioned
     ? `→ O cliente mencionou o FORNECEDOR "${ctx.supplierMentioned}". Mostre APENAS produtos deste fornecedor (a lista abaixo já está filtrada). Se ele pedir algo de outro fornecedor depois, troque o filtro.`
@@ -848,6 +914,9 @@ ${supplierBlock}
 
 === CATÁLOGO ${ctx.supplierMentioned ? `(filtrado por fornecedor "${ctx.supplierMentioned}")` : "COMPLETO"} — use SOMENTE estes produtos ===
 ${formatProducts(ctx.all)}
+
+=== PRODUTO EM FOCO (último mostrado por VOCÊ) ===
+${focusedBlock}
 
 === BUSCA NA PERGUNTA ATUAL ===
 ${matchInfo}
