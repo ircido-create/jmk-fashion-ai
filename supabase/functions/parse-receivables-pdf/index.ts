@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { getDocument } from "https://esm.sh/pdfjs-serverless@0.5.0";
+import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,29 +52,28 @@ async function pdfToLayoutText(file_base64: string): Promise<string> {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
 
-  const doc = await getDocument({ data: bytes, useSystemFonts: true }).promise;
+  const pdf = await getDocumentProxy(bytes);
   const lines: string[] = [];
 
-  for (let p = 1; p <= doc.numPages; p++) {
-    const page = await doc.getPage(p);
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
     const content = await page.getTextContent();
-    // Group items by their Y position (rounded), then sort by X within each row
-    const rows = new Map<number, { x: number; str: string; w: number }[]>();
+    // Group items by Y position (rounded), then sort by X within each row
+    const rows = new Map<number, { x: number; str: string }[]>();
     for (const item of content.items as any[]) {
+      if (typeof item.str !== "string") continue;
       const tr = item.transform;
       const x = tr[4];
       const y = Math.round(tr[5]);
       if (!rows.has(y)) rows.set(y, []);
-      rows.get(y)!.push({ x, str: item.str, w: item.width || 0 });
+      rows.get(y)!.push({ x, str: item.str });
     }
     const sortedYs = [...rows.keys()].sort((a, b) => b - a); // top to bottom
     for (const y of sortedYs) {
       const row = rows.get(y)!.sort((a, b) => a.x - b.x);
-      // Convert x positions to monospace-style spacing (approx)
       let line = "";
-      let lastEnd = 0;
       for (const r of row) {
-        const colStart = Math.round(r.x / 4); // ~4 units per char
+        const colStart = Math.round(r.x / 4);
         const pad = Math.max(line.length === 0 ? colStart : colStart - line.length, line.length === 0 ? 0 : 1);
         line += " ".repeat(pad) + r.str;
       }
