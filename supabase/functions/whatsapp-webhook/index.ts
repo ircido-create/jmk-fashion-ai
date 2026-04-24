@@ -204,10 +204,11 @@ async function transcribeAudio(base64: string, mimeType: string): Promise<string
   }
 }
 
-// === ElevenLabs TTS — voz humanizada PT-BR ===
-// Voz "Sarah" (EXAVITQu4vr4xnSDxMaL) — disponível nativamente em todas as contas ElevenLabs.
-// Excelente performance em português do Brasil com modelo multilingual_v2.
-const ELEVEN_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+// === ElevenLabs TTS — voz feminina brasileira madura, ultra-realista ===
+// Voz "Dani" — feminina brasileira ~40 anos, sotaque carioca natural, conversacional.
+// Perfil ideal para SDR no WhatsApp (não soa como locutora, soa como pessoa real).
+// Modelo eleven_multilingual_v2 oferece a melhor qualidade humana em PT-BR.
+const ELEVEN_VOICE_ID = "PznTnBc8X6pvixs9UkQm";
 const ELEVEN_MODEL_PRIMARY = "eleven_multilingual_v2";
 const ELEVEN_MODEL_FALLBACK = "eleven_turbo_v2_5";
 
@@ -232,16 +233,29 @@ function preprocessForTts(input: string): string {
   });
   // 5) Emojis e pictogramas (Symbols/Emoticons/Pictographs/Transport/Misc/Dingbats/Flags)
   t = t.replace(/[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{1F1E6}-\u{1F1FF}]|\uFE0F|\u200D/gu, "");
-  // 6) Espaços múltiplos e linhas em branco
+  // 6) Reticências viram pausas naturais (ElevenLabs respeita "..." como pausa)
+  t = t.replace(/\.{3,}/g, "...");
+  // 7) Espaços múltiplos
   t = t.replace(/\s+/g, " ").trim();
+  // 8) Adiciona micro-hesitações humanas no início (1 em cada 3 mensagens)
+  //    para soar mais real — "ah", "então", "olha" — sem exagerar.
+  if (t.length > 30 && Math.random() < 0.33) {
+    const fillers = ["Então, ", "Olha, ", "Ah, ", "Tá, "];
+    const filler = fillers[Math.floor(Math.random() * fillers.length)];
+    // Só adiciona se ainda não começa com palavra de saudação/conector
+    if (!/^(oi|ol[áa]|paz|bom|boa|ent[ãa]o|olha|ah|t[áa])\b/i.test(t)) {
+      t = filler + t.charAt(0).toLowerCase() + t.slice(1);
+    }
+  }
   return t;
 }
 
 async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
   if (!apiKey) return null;
+  // MP3 44.1kHz/128kbps — melhor qualidade que opus para voz humana realista no WhatsApp.
   const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=opus_48000_128`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=mp3_44100_128`,
     {
       method: "POST",
       headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
@@ -249,12 +263,21 @@ async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8
         text,
         model_id: modelId,
         language_code: "pt",
+        // Settings ajustadas para voz feminina madura ULTRA-REALISTA:
+        // - stability baixa (0.35) → mais variação emocional, soa humana e não "robótica"
+        // - similarity_boost alta (0.85) → mantém timbre original, evita drift
+        // - style alto (0.55) → enfatiza expressividade natural, respirações
+        // - speaker_boost → reforça timbre e clareza
+        // - speed 0.95 → levemente mais lenta, ritmo conversacional natural
         voice_settings: {
-          stability: 0.45,
-          similarity_boost: 0.75,
-          style: 0.25,
+          stability: 0.35,
+          similarity_boost: 0.85,
+          style: 0.55,
           use_speaker_boost: true,
+          speed: 0.95,
         },
+        // Normalização de números/abreviações para soar natural ao falar.
+        apply_text_normalization: "on",
       }),
     }
   );
@@ -264,7 +287,7 @@ async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8
     return null;
   }
   const buf = await res.arrayBuffer();
-  return { bytes: new Uint8Array(buf), mime: "audio/ogg" };
+  return { bytes: new Uint8Array(buf), mime: "audio/mpeg" };
 }
 
 async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
