@@ -341,8 +341,23 @@ export default function Receivable() {
           amount: Number(r.amount),
           due_date: String(r.due_date).slice(0, 10),
         })));
-        if (items.length === 0) toast.error("Nenhum lançamento encontrado no PDF");
-        else toast.success(`${items.length} linha(s) extraídas pela IA`);
+        const meta = data?.meta;
+        const sum = items.reduce((a: number, b: any) => a + (Number(b.amount) || 0), 0);
+        if (items.length === 0) {
+          toast.error("Nenhum lançamento encontrado no PDF");
+        } else if (meta?.expected_count && Math.abs(meta.expected_count - items.length) > 2) {
+          toast.warning(
+            `Atenção: extraídas ${items.length} de ~${meta.expected_count} linhas esperadas (R$ ${sum.toFixed(2)} de ~R$ ${(meta.expected_sum ?? 0).toFixed(2)}). Confira o PDF.`,
+            { duration: 10000 }
+          );
+        } else if (meta?.expected_sum && Math.abs(meta.expected_sum - sum) > 1) {
+          toast.warning(
+            `Extraídas ${items.length} linhas (R$ ${sum.toFixed(2)}) — esperado R$ ${meta.expected_sum.toFixed(2)}. Confira antes de confirmar.`,
+            { duration: 10000 }
+          );
+        } else {
+          toast.success(`${items.length} linha(s) extraídas • Total R$ ${sum.toFixed(2)}`);
+        }
         return;
       }
 
