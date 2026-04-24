@@ -1232,7 +1232,7 @@ Me manda o comprovante quando pagar ${pixSign}"
   // Detecta saudação religiosa → instrui a IA a responder neutro, sem inventar nome
   const isReligious = isReligiousGreeting(userMsg);
   const religiousBlock = isReligious
-    ? `\n🙏 ATENÇÃO: A mensagem do cliente é uma SAUDAÇÃO RELIGIOSA ("paz de Deus", "amém", etc.). NÃO invente nome do cliente. Responda de forma NEUTRA e BREVE: "Paz, ${customerGender === "M" ? "amigo" : customerGender === "F" ? "amiga" : ""}! Como posso te ajudar hoje?" (1 frase só, sem nome inventado).`
+    ? `\n🙏 ATENÇÃO: A mensagem do cliente é uma SAUDAÇÃO RELIGIOSA ("paz de Deus", "glória a Deus", "Deus abençoe", etc.). REGRA OBRIGATÓRIA: SEMPRE comece a resposta com "Amém!" — NUNCA use "Paz", "A paz", "Paz de Deus" ou variações ao responder. NÃO invente nome do cliente. Resposta correta e BREVE (1 frase): "Amém${customerGender === "M" ? ", amigo" : customerGender === "F" ? ", amiga" : ""}! Como posso te ajudar hoje?".`
     : "";
 
   // Mensagem ambígua/curta → pedir esclarecimento em vez de chutar
