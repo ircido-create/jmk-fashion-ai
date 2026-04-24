@@ -204,6 +204,146 @@ async function transcribeAudio(base64: string, mimeType: string): Promise<string
   }
 }
 
+// === ElevenLabs TTS — síntese de voz humana em PT-BR ===
+// Voz padrão: "Sarah" (EXAVITQu4vr4xnSDxMaL) — feminina, jovem e amigável.
+// Modelo eleven_multilingual_v2 → melhor qualidade em português.
+const ELEVEN_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+const ELEVEN_MODEL_ID = "eleven_multilingual_v2";
+
+async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
+  if (!apiKey) {
+    console.error("ELEVENLABS_API_KEY ausente — não é possível sintetizar áudio");
+    return null;
+  }
+  // Limita a 800 caracteres para economizar quota e manter áudios curtos/naturais
+  const safeText = text.length > 800 ? text.slice(0, 797) + "..." : text;
+  try {
+    const res = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=mp3_44100_128`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: safeText,
+          model_id: ELEVEN_MODEL_ID,
+          voice_settings: {
+            stability: 0.55,
+            similarity_boost: 0.8,
+            style: 0.35,
+            use_speaker_boost: true,
+            speed: 1.0,
+          },
+        }),
+      }
+    );
+    if (!res.ok) {
+      console.error("ElevenLabs TTS error:", res.status, await res.text());
+      return null;
+    }
+    const buf = await res.arrayBuffer();
+    return { bytes: new Uint8Array(buf), mime: "audio/mpeg" };
+  } catch (e) {
+    console.error("synthesizeVoice error:", e);
+    return null;
+  }
+}
+
+// Faz upload do MP3 para a Meta e envia como mensagem de áudio.
+// Também grava em outbound/ no bucket whatsapp-media para aparecer no painel.
+async function sendWhatsAppAudio(
+  to: string,
+  audioBytes: Uint8Array,
+  mime: string,
+  transcriptText: string,
+  cfg: any,
+  conversationId?: string,
+): Promise<boolean> {
+  try {
+    // 1) Upload do binário para a Meta
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mime);
+    // Cria buffer próprio (evita conflito de tipos SharedArrayBuffer no Deno)
+    const ownedBuf = new Uint8Array(audioBytes.byteLength);
+    ownedBuf.set(audioBytes);
+    form.append("file", new Blob([ownedBuf], { type: mime }), `voice.mp3`);
+
+    const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.access_token}` },
+      body: form,
+    });
+    if (!uploadRes.ok) {
+      const body = await uploadRes.text();
+      console.error("Meta audio upload error:", uploadRes.status, body);
+      await recordMetaError(uploadRes.status, body);
+      return false;
+    }
+    const { id: mediaId } = await uploadRes.json();
+    if (!mediaId) {
+      console.error("Meta audio upload returned no id");
+      return false;
+    }
+
+    // 2) Envia mensagem de áudio
+    const sendRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "audio",
+        audio: { id: mediaId },
+      }),
+    });
+    if (!sendRes.ok) {
+      const body = await sendRes.text();
+      console.error("Meta audio send error:", sendRes.status, body);
+      await recordMetaError(sendRes.status, body);
+      return false;
+    }
+    await clearMetaError();
+
+    // 3) Salva no storage e registra como mensagem outbound
+    if (conversationId) {
+      try {
+        const path = `outbound/${to}/${Date.now()}-voice.mp3`;
+        const { error: upErr } = await supabase.storage
+          .from("whatsapp-media")
+          .upload(path, audioBytes, { contentType: mime, upsert: false });
+        if (upErr) {
+          console.error("save outbound audio upload error:", upErr);
+        } else {
+          const { error: insErr } = await supabase.from("whatsapp_messages").insert({
+            conversation_id: conversationId,
+            direction: "outbound",
+            content: transcriptText || "[🎤 Áudio]",
+            media_path: path,
+            media_type: "audio",
+            media_mime: mime,
+            media_filename: "voice.mp3",
+          });
+          if (insErr) console.error("insert outbound audio msg error:", insErr);
+        }
+      } catch (e) {
+        console.error("registerOutboundAudio error:", e);
+      }
+    }
+
+    return true;
+  } catch (e) {
+    console.error("sendWhatsAppAudio error:", e);
+    return false;
+  }
+}
+
 async function sendWhatsApp(to: string, text: string, cfg: any) {
   const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
   const res = await fetch(url, {
@@ -1337,13 +1477,30 @@ Deno.serve(async (req) => {
     if (photoFailed) {
       finalReply = `Ah, desculpa! Tentei te mandar as fotos mas não consegui enviar agora 😅 Mas posso te descrever:\n\n${reply}`;
     }
-    await sendWhatsApp(fromPhone, finalReply, cfg);
-    const { error: outErr } = await supabase.from("whatsapp_messages").insert({
-      conversation_id: conv.id,
-      direction: "outbound",
-      content: finalReply,
-    });
-    if (outErr) console.error("insert outbound error:", outErr);
+
+    // Se a cliente mandou áudio, responde em áudio (voz humana via ElevenLabs).
+    // Também grava a transcrição como texto para o painel.
+    const clientSentAudio = inboundMedia?.kind === "audio";
+    let audioReplySent = false;
+    if (clientSentAudio) {
+      const voice = await synthesizeVoice(finalReply);
+      if (voice) {
+        audioReplySent = await sendWhatsAppAudio(fromPhone, voice.bytes, voice.mime, finalReply, cfg, conv.id);
+      }
+      if (!audioReplySent) {
+        console.warn("[webhook] Falha ao enviar áudio — fallback para texto");
+      }
+    }
+
+    if (!audioReplySent) {
+      await sendWhatsApp(fromPhone, finalReply, cfg);
+      const { error: outErr } = await supabase.from("whatsapp_messages").insert({
+        conversation_id: conv.id,
+        direction: "outbound",
+        content: finalReply,
+      });
+      if (outErr) console.error("insert outbound error:", outErr);
+    }
     await supabase
       .from("whatsapp_conversations")
       .update({ last_message_at: new Date().toISOString() })
