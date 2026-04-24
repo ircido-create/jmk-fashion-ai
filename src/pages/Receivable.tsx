@@ -832,20 +832,38 @@ export default function Receivable() {
                   <thead className="bg-muted/40 sticky top-0">
                     <tr>
                       <th className="text-left p-2">Cliente</th>
+                      <th className="text-left p-2">CPF/CNPJ</th>
+                      <th className="text-left p-2">Vínculo</th>
                       <th className="text-left p-2">Descrição</th>
                       <th className="text-left p-2">Vencimento</th>
                       <th className="text-right p-2">Valor</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {importPreview.slice(0, 50).map((r, i) => (
-                      <tr key={i} className="border-t border-white/20">
-                        <td className="p-2">{r.customer_name || "—"}</td>
-                        <td className="p-2">{r.description || "—"}</td>
-                        <td className="p-2">{r.due_date}</td>
-                        <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
-                      </tr>
-                    ))}
+                    {importPreview.slice(0, 50).map((r, i) => {
+                      const tax = digitsOnly(r.tax_id);
+                      const byTax = tax ? customers.find((c) => digitsOnly(c.tax_id ?? "") === tax) : null;
+                      const byName = !byTax && r.customer_name
+                        ? customers.find((c) => c.name.toLowerCase() === r.customer_name.toLowerCase())
+                        : null;
+                      const matched = byTax || byName;
+                      return (
+                        <tr key={i} className="border-t border-white/20">
+                          <td className="p-2">{r.customer_name || "—"}</td>
+                          <td className="p-2 font-mono text-[11px]">{tax ? formatTaxId(tax) : "—"}</td>
+                          <td className="p-2">
+                            {matched ? (
+                              <span className="text-success text-[11px]">✓ vinculado{byTax ? " (CPF/CNPJ)" : " (nome)"}</span>
+                            ) : (
+                              <span className="text-amber-600 text-[11px]">+ novo cadastro</span>
+                            )}
+                          </td>
+                          <td className="p-2">{r.description || "—"}</td>
+                          <td className="p-2">{r.due_date}</td>
+                          <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {importPreview.length > 50 && (
