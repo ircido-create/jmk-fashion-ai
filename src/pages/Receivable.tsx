@@ -336,6 +336,7 @@ export default function Receivable() {
         const items = (data?.items ?? []).filter((r: any) => r.amount > 0 && r.due_date) as any[];
         setImportPreview(items.map((r: any) => ({
           customer_name: r.customer_name ?? "",
+          tax_id: digitsOnly(r.tax_id ?? ""),
           description: r.description ?? "",
           amount: Number(r.amount),
           due_date: String(r.due_date).slice(0, 10),
@@ -384,12 +385,14 @@ export default function Receivable() {
       };
 
       const out = json.map((row) => {
-        const kCust = findKey(row, ["cliente", "customer", "nome"]);
+        const kCust = findKey(row, ["cliente", "customer", "nome", "sacado", "pagador"]);
+        const kTax = findKey(row, ["cpf", "cnpj", "cpf/cnpj", "documento", "tax_id"]);
         const kDesc = findKey(row, ["descricao", "description", "historico", "memo", "obs"]);
         const kAmt = findKey(row, ["valor", "amount", "montante"]);
         const kDue = findKey(row, ["vencimento", "due_date", "data", "vencto"]);
         return {
           customer_name: kCust ? String(row[kCust]).trim() : "",
+          tax_id: kTax ? digitsOnly(String(row[kTax])) : "",
           description: kDesc ? String(row[kDesc]).trim() : "",
           amount: kAmt ? parseAmount(row[kAmt]) : 0,
           due_date: kDue ? parseDate(row[kDue]) : "",
