@@ -909,53 +909,94 @@ export default function Receivable() {
               {importFile && <div className="text-xs text-muted-foreground mt-1">{importFile.name}</div>}
               {importParsing && <div className="text-xs text-primary mt-1">Lendo arquivo...</div>}
             </div>
-            {importPreview.length > 0 && (
-              <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/40 sticky top-0">
-                    <tr>
-                      <th className="text-left p-2">Cliente</th>
-                      <th className="text-left p-2">CPF/CNPJ</th>
-                      <th className="text-left p-2">Vínculo</th>
-                      <th className="text-left p-2">Descrição</th>
-                      <th className="text-left p-2">Vencimento</th>
-                      <th className="text-right p-2">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importPreview.slice(0, 50).map((r, i) => {
-                      const tax = digitsOnly(r.tax_id);
-                      const byTax = tax ? customers.find((c) => digitsOnly(c.tax_id ?? "") === tax) : null;
-                      const byName = !byTax && r.customer_name
-                        ? customers.find((c) => c.name.toLowerCase() === r.customer_name.toLowerCase())
-                        : null;
-                      const matched = byTax || byName;
-                      return (
-                        <tr key={i} className="border-t border-white/20">
-                          <td className="p-2">{r.customer_name || "—"}</td>
-                          <td className="p-2 font-mono text-[11px]">{tax ? formatTaxId(tax) : "—"}</td>
-                          <td className="p-2">
-                            {matched ? (
-                              <span className="text-success text-[11px]">✓ vinculado{byTax ? " (CPF/CNPJ)" : " (nome)"}</span>
-                            ) : (
-                              <span className="text-amber-600 text-[11px]">+ novo cadastro</span>
-                            )}
-                          </td>
-                          <td className="p-2">{r.description || "—"}</td>
-                          <td className="p-2">{r.due_date}</td>
-                          <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {importPreview.length > 50 && (
-                  <div className="p-2 text-center text-xs text-muted-foreground">
-                    ... e mais {importPreview.length - 50} linha(s)
+            {importPreview.length > 0 && (() => {
+              const dupCount = importPreview.filter((r) => r.skip).length;
+              const includedCount = importPreview.length - dupCount;
+              const includedSum = importPreview.filter((r) => !r.skip).reduce((a, b) => a + (b.amount || 0), 0);
+              return (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs px-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground">
+                        <strong className="text-foreground">{includedCount}</strong> a importar • <strong className="text-foreground">R$ {includedSum.toFixed(2)}</strong>
+                      </span>
+                      {dupCount > 0 && (
+                        <span className="text-amber-600">
+                          {dupCount} duplicata(s) detectada(s)
+                        </span>
+                      )}
+                    </div>
+                    {dupCount > 0 && (
+                      <button
+                        type="button"
+                        className="text-primary underline"
+                        onClick={() => setImportPreview((prev) => prev.map((r) => ({ ...r, skip: false })))}
+                      >
+                        Importar mesmo assim
+                      </button>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
+                  <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40 sticky top-0">
+                        <tr>
+                          <th className="text-center p-2 w-8">✓</th>
+                          <th className="text-left p-2">Cliente</th>
+                          <th className="text-left p-2">CPF/CNPJ</th>
+                          <th className="text-left p-2">Status</th>
+                          <th className="text-left p-2">Descrição</th>
+                          <th className="text-left p-2">Vencimento</th>
+                          <th className="text-right p-2">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.slice(0, 50).map((r, i) => {
+                          const tax = digitsOnly(r.tax_id);
+                          const byTax = tax ? customers.find((c) => digitsOnly(c.tax_id ?? "") === tax) : null;
+                          const byName = !byTax && r.customer_name
+                            ? customers.find((c) => c.name.toLowerCase() === r.customer_name.toLowerCase())
+                            : null;
+                          const matched = byTax || byName;
+                          return (
+                            <tr key={i} className={`border-t border-white/20 ${r.skip ? "opacity-50" : ""}`}>
+                              <td className="p-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={!r.skip}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setImportPreview((prev) => prev.map((row, idx) => idx === i ? { ...row, skip: !checked } : row));
+                                  }}
+                                />
+                              </td>
+                              <td className="p-2">{r.customer_name || "—"}</td>
+                              <td className="p-2 font-mono text-[11px]">{tax ? formatTaxId(tax) : "—"}</td>
+                              <td className="p-2">
+                                {r.dupReason ? (
+                                  <span className="text-amber-600 text-[11px]">⚠ {r.dupReason}</span>
+                                ) : matched ? (
+                                  <span className="text-success text-[11px]">✓ vinculado{byTax ? " (CPF/CNPJ)" : " (nome)"}</span>
+                                ) : (
+                                  <span className="text-amber-600 text-[11px]">+ novo cadastro</span>
+                                )}
+                              </td>
+                              <td className="p-2">{r.description || "—"}</td>
+                              <td className="p-2">{r.due_date}</td>
+                              <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {importPreview.length > 50 && (
+                      <div className="p-2 text-center text-xs text-muted-foreground">
+                        ... e mais {importPreview.length - 50} linha(s)
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importSaving}>Cancelar</Button>
