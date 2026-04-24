@@ -300,9 +300,15 @@ async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime:
   if (!safeText) return null;
   if (safeText.length > 800) safeText = safeText.slice(0, 797) + "...";
 
+  // Adiciona uma respiração suave no início para dar sensação de "PTT real":
+  // o ElevenLabs interpreta tags entre colchetes como instruções de áudio.
+  // Resultado: pequeno som de inspiração antes de falar — como uma pessoa real
+  // pegando o celular e respondendo no WhatsApp.
+  safeText = `[soft breath] ${safeText}`;
+
   try {
-    // Tenta primeiro o eleven_v3 (voz clonada). Se falhar (ex: 403/404 sem acesso),
-    // cai automaticamente para multilingual_v2 com a mesma voz.
+    // Tenta primeiro o modelo primário (multilingual_v2 — melhor qualidade humana).
+    // Fallback: turbo_v2_5 (mais rápido, ainda excelente).
     let result = await callEleven(safeText, ELEVEN_MODEL_PRIMARY);
     if (!result) {
       console.warn(`[tts] Fallback para ${ELEVEN_MODEL_FALLBACK}`);
