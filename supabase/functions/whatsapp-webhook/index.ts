@@ -784,14 +784,62 @@ function detectLastAskedField(history: any[]): string | null {
   return null;
 }
 
-// Extrai o "produto em foco" da última mensagem do bot — quando ela acabou de
-// citar/enviar foto de um produto específico (ex.: "CHEMISSIE COLETE — 46 / BRANCO E PRETO"),
-// esse é o produto sobre o qual perguntas referenciais ("qual o valor dele?") se referem.
-async function detectFocusedProduct(history: any[]): Promise<any | null> {
-  const lastBot = [...history].reverse().find((m: any) => m.direction === "outbound");
-  if (!lastBot?.content) return null;
-  const keywords = extractKeywords(lastBot.content);
-  if (keywords.length === 0) return null;
+// ============================================================
+// REGRA 1 — FOCO DE PRODUTO (PRIORIDADE: ÚLTIMA MÍDIA > TEXTO)
+// ============================================================
+// Detecta se a última outbound foi uma IMAGEM de produto. Se sim,
+// ela ganha contra qualquer menção textual anterior. Quando há mais
+// de uma imagem de produtos diferentes recentes, marca ambiguidade.
+async function detectFocusedProduct(
+  history: any[]
+): Promise<{ product: any | null; source: "media" | "text" | "none"; ambiguous: boolean; mediaCaption?: string }> {
+  const outbounds = history.filter((m: any) => m.direction === "outbound");
+  if (outbounds.length === 0) return { product: null, source: "none", ambiguous: false };
+
+  // Última outbound em ordem cronológica
+  const last = outbounds[outbounds.length - 1];
+  const lastImageIdx = (() => {
+    for (let i = outbounds.length - 1; i >= 0; i--) {
+      if (outbounds[i].media_type === "image") return i;
+    }
+    return -1;
+  })();
+
+  // Última menção textual a produto (outbound TEXTO, sem media_type)
+  const lastTextIdx = (() => {
+    for (let i = outbounds.length - 1; i >= 0; i--) {
+      if (!outbounds[i].media_type && outbounds[i].content) return i;
+    }
+    return -1;
+  })();
+
+  // Decide a fonte: se a imagem é mais recente (>=) que o texto, a imagem ganha
+  let useMedia = false;
+  let candidateContent = "";
+  let source: "media" | "text" | "none" = "none";
+
+  if (lastImageIdx >= 0 && lastImageIdx >= lastTextIdx) {
+    useMedia = true;
+    candidateContent = outbounds[lastImageIdx].content ?? "";
+    source = "media";
+  } else if (lastTextIdx >= 0) {
+    candidateContent = outbounds[lastTextIdx].content ?? "";
+    source = "text";
+  } else if (last?.content) {
+    candidateContent = last.content;
+    source = "text";
+  } else {
+    return { product: null, source: "none", ambiguous: false };
+  }
+
+  // Detecta ambiguidade: 2 imagens recentes (últimas 4 outbound) com legendas distintas
+  const recentImages = outbounds.slice(-4).filter((m: any) => m.media_type === "image" && m.content);
+  const distinctCaptions = new Set(recentImages.map((m: any) => norm(m.content).slice(0, 30)));
+  const ambiguous = useMedia && distinctCaptions.size >= 2;
+
+  const keywords = extractKeywords(candidateContent);
+  if (keywords.length === 0) return { product: null, source, ambiguous, mediaCaption: useMedia ? candidateContent : undefined };
+
   const orFilter = keywords
     .flatMap((k) => [`name.ilike.%${k}%`, `sku.ilike.%${k}%`])
     .join(",");
@@ -801,17 +849,63 @@ async function detectFocusedProduct(history: any[]): Promise<any | null> {
     .eq("active", true)
     .or(orFilter)
     .limit(5);
-  if (!data || data.length === 0) return null;
-  // Pontua: quanto mais tokens do nome do produto aparecem na última msg do bot, melhor
-  const botText = norm(lastBot.content);
+  if (!data || data.length === 0) return { product: null, source, ambiguous, mediaCaption: useMedia ? candidateContent : undefined };
+
+  const refText = norm(candidateContent);
   let best: any = null;
   let bestScore = 0;
   for (const p of data) {
     const tokens = norm(p.name).split(/\s+/).filter((t: string) => t.length >= 3);
-    const score = tokens.filter((t: string) => botText.includes(t)).length;
+    const score = tokens.filter((t: string) => refText.includes(t)).length;
     if (score > bestScore) { bestScore = score; best = p; }
   }
-  return bestScore >= 2 ? best : null; // exige pelo menos 2 tokens batendo
+  // Imagem é mais confiável: aceita score >= 1; texto exige >= 2
+  const minScore = useMedia ? 1 : 2;
+  return {
+    product: bestScore >= minScore ? best : null,
+    source,
+    ambiguous,
+    mediaCaption: useMedia ? candidateContent : undefined,
+  };
+}
+
+// ============================================================
+// REGRA 2 — SAUDAÇÃO RELIGIOSA / MENSAGEM AMBÍGUA
+// ============================================================
+function isReligiousGreeting(text: string): boolean {
+  const t = norm(text);
+  return /\b(paz\s*d?e?\s*deus|apddeus|ap\s*d\s*deus|amem|gloria\s*a?\s*deus|deus\s*te?\s*aben[çc]oe|deus\s*aben[çc]oe|paz\s*do\s*senhor|jesus\s*te?\s*ama)\b/.test(t);
+}
+
+function isUnclearMessage(text: string): boolean {
+  const t = text.trim();
+  if (t.length === 0) return true;
+  // Muito curto e sem palavra real (ex: "?", "...", "kk")
+  if (t.length < 4 && !/[a-zà-ÿ]{2,}/i.test(t)) return true;
+  return false;
+}
+
+// ============================================================
+// REGRA 3 — SANITIZADOR DE EMOJIS POR GÊNERO (PÓS-PROCESSAMENTO)
+// ============================================================
+const FEMININE_EMOJIS = /[\u{1F495}\u{1F496}\u{1F497}\u{1F498}\u{1F499}\u{1F49A}\u{1F49B}\u{1F49C}\u{1F49D}\u{1F49E}\u{1F49F}\u{1F970}\u{1F338}\u{1F339}\u{1F33A}\u{1F33B}\u{1F337}\u2763\uFE0F]/gu;
+// 💕 💖 💗 💘 💙 💚 💛 💜 💝 💞 💟 🥰 🌸 🌹 🌺 🌻 🌷 ❣️
+const FEMININE_VOCATIVES_RE = /\b(querida|queridinha|linda|lindinha|gata|gatinha|flor|florzinha|amada|fofa|fofinha|amor|amorzinho|princesa|amiga|amigona)\b/gi;
+
+function sanitizeReplyByGender(text: string, gender: "F" | "M" | "U"): string {
+  if (gender === "F") return text;
+  let out = text;
+  // Remove emojis afetivos
+  out = out.replace(FEMININE_EMOJIS, "");
+  // Substitui vocativos femininos
+  if (gender === "M") {
+    out = out.replace(FEMININE_VOCATIVES_RE, "amigo");
+  } else {
+    out = out.replace(FEMININE_VOCATIVES_RE, "");
+  }
+  // Limpa espaços duplicados, espaço antes de pontuação e linhas em branco residuais
+  out = out.replace(/[ \t]{2,}/g, " ").replace(/\s+([,.!?:;])/g, "$1").replace(/\n{3,}/g, "\n\n").trim();
+  return out;
 }
 
 async function buildContext(phone: string, userMsg: string, history: any[]) {
