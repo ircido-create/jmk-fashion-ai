@@ -805,15 +805,13 @@ async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx
     ? `Chave PIX configurada: ${pix.key}
 Tipo: ${pix.type ?? "não informado"}${pix.recipient ? `\nRecebedor: ${pix.recipient}` : ""}
 
-→ Quando a cliente disser que QUER PAGAR, FECHAR PEDIDO, FINALIZAR COMPRA, perguntar "como pago?", "qual a forma de pagamento?", "como faço o pagamento?", ou similar:
-   1. Sugira pagamento via PIX de forma natural e calorosa.
-   2. Envie a chave PIX EXATAMENTE como está acima (sem alterar dígitos), informando o tipo e o recebedor (se houver).
-   3. Peça que ela envie o comprovante após o pagamento.
-   4. Formato sugerido (adapte o tom):
-      "Pode pagar via PIX 💕
-      Chave (${pix.type ?? "PIX"}): ${pix.key}${pix.recipient ? `\n      Recebedor: ${pix.recipient}` : ""}
-      Me manda o comprovante quando pagar, por favor 🥰"
-   5. NÃO invente outras chaves PIX, contas bancárias ou formas de pagamento.`
+→ Quando a cliente confirmar interesse em fechar/pagar, envie a chave PIX de forma CURTA E DIRETA, SEM enrolação. NÃO repita a chave 2x, NÃO escreva parágrafo longo, NÃO peça pra ela "verificar dados", NÃO ofereça outras formas de pagamento.
+
+FORMATO OBRIGATÓRIO da mensagem com PIX (use exatamente este modelo, adaptando só o emoji conforme o gênero):
+"PIX (${pix.type ?? "chave"}): ${pix.key}${pix.recipient ? `\nRecebedor: ${pix.recipient}` : ""}
+Me manda o comprovante quando pagar 💕"
+
+→ NÃO invente outras chaves PIX, contas bancárias ou formas de pagamento.`
     : `→ Nenhuma chave PIX configurada. Se a cliente perguntar sobre pagamento, diga que vai verificar com a equipe e retorna em breve.`;
 
   const customerGender = inferGender(ctx.customer?.name);
