@@ -929,41 +929,142 @@ export default function Receivable() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: baixa em massa */}
+      {/* Modal: baixa em massa por conciliação de extrato */}
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-        <DialogContent className="glass-card border-white/40">
+        <DialogContent className="glass-card border-white/40 max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Baixa em massa</DialogTitle>
+            <DialogTitle>Baixa em massa — conciliação por extrato</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="text-sm">
-              Serão baixados <strong>{bulkEligible.length}</strong> título(s) filtrados em "{filterLabels[filter]}",
-              totalizando <strong>R$ {sum(bulkEligible).toFixed(2)}</strong>.
+            <div className="text-xs text-muted-foreground">
+              Anexe um extrato (<strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>) com colunas
+              <strong> Cliente</strong> e <strong>Valor</strong> (e opcionalmente <strong>CPF/CNPJ</strong>, <strong>Data</strong>).
+              O sistema soma os pagamentos por cliente e abate as parcelas pendentes da{" "}
+              <strong>mais antiga primeiro</strong>. Se sobrar valor que não cubra a próxima parcela inteira, o valor da
+              parcela é reduzido (e ela permanece em aberto).
             </div>
+
             <div>
-              <Label>Descrição</Label>
+              <Label>Extrato</Label>
+              <Input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                disabled={bulkParsing}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setBulkFile(f);
+                  setBulkPayments([]);
+                  setBulkResult(null);
+                  if (f) parseBulkFile(f);
+                }}
+                className="glass-input"
+              />
+              {bulkFile && <div className="text-xs text-muted-foreground mt-1">{bulkFile.name}</div>}
+              {bulkParsing && <div className="text-xs text-primary mt-1">Lendo extrato e conciliando...</div>}
+            </div>
+
+            <div>
+              <Label>Descrição (opcional)</Label>
               <Input
                 value={bulkDesc}
                 onChange={(e) => setBulkDesc(e.target.value)}
-                placeholder={`Baixa em massa — ${format(new Date(), "dd/MM/yyyy")}`}
+                placeholder={`Conciliação — ${format(new Date(), "dd/MM/yyyy")}`}
                 className="glass-input"
               />
             </div>
-            <div>
-              <Label>Comprovante (opcional)</Label>
-              <Input
-                type="file"
-                onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
-                className="glass-input"
-                accept="image/*,application/pdf,.xlsx,.xls,.csv"
-              />
-              {bulkFile && <div className="text-xs text-muted-foreground mt-1">{bulkFile.name}</div>}
-            </div>
+
+            {bulkResult && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="rounded-lg bg-white/40 p-2">
+                    <div className="text-muted-foreground">Pagamentos lidos</div>
+                    <div className="font-semibold">{bulkResult.totals.payments}</div>
+                    <div className="text-[11px] text-muted-foreground">R$ {bulkResult.totals.paymentsSum.toFixed(2)}</div>
+                  </div>
+                  <div className="rounded-lg bg-success/10 p-2">
+                    <div className="text-muted-foreground">Quitações integrais</div>
+                    <div className="font-semibold text-success">{bulkResult.totals.fullySettled}</div>
+                  </div>
+                  <div className="rounded-lg bg-amber-500/10 p-2">
+                    <div className="text-muted-foreground">Parciais (parcela reduzida)</div>
+                    <div className="font-semibold text-amber-700">{bulkResult.totals.partiallyReduced}</div>
+                  </div>
+                  <div className="rounded-lg bg-destructive/10 p-2">
+                    <div className="text-muted-foreground">Sem cliente / sobra</div>
+                    <div className="font-semibold text-destructive">
+                      {bulkResult.totals.unmatched + bulkResult.leftovers.length}
+                    </div>
+                  </div>
+                </div>
+
+                {bulkResult.actions.length > 0 && (
+                  <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40 sticky top-0">
+                        <tr>
+                          <th className="text-left p-2">Cliente</th>
+                          <th className="text-left p-2">Vencimento</th>
+                          <th className="text-right p-2">Original</th>
+                          <th className="text-right p-2">Recebido</th>
+                          <th className="text-left p-2">Resultado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkResult.actions.slice(0, 200).map((a, i) => (
+                          <tr key={i} className="border-t border-white/20">
+                            <td className="p-2">{a.customer_name || "—"}</td>
+                            <td className="p-2">{format(parseISO(a.due_date), "dd/MM/yyyy")}</td>
+                            <td className="p-2 text-right">R$ {a.original_amount.toFixed(2)}</td>
+                            <td className="p-2 text-right font-medium">R$ {a.amount_paid.toFixed(2)}</td>
+                            <td className="p-2">
+                              {a.kind === "settle" ? (
+                                <span className="text-success">Quitado</span>
+                              ) : (
+                                <span className="text-amber-700">
+                                  Parcial → restará R$ {(a.new_amount ?? 0).toFixed(2)}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {(bulkResult.unmatchedPayments.length > 0 || bulkResult.leftovers.length > 0) && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs">
+                    <div className="font-medium text-destructive mb-1">Não conciliados</div>
+                    <ul className="space-y-1 max-h-32 overflow-auto">
+                      {bulkResult.unmatchedPayments.slice(0, 50).map((u, i) => (
+                        <li key={`u${i}`}>
+                          • {u.payment.customer_name || "—"} • R$ {u.payment.amount.toFixed(2)}{" "}
+                          <span className="text-muted-foreground">({u.reason})</span>
+                        </li>
+                      ))}
+                      {bulkResult.leftovers.slice(0, 50).map((l, i) => (
+                        <li key={`l${i}`}>
+                          • {l.customer_name} • sobra de R$ {l.amount.toFixed(2)} (sem mais parcelas pendentes)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkSaving}>Cancelar</Button>
-            <Button onClick={confirmBulk} disabled={bulkSaving || bulkEligible.length === 0} className="bg-gradient-primary text-primary-foreground">
-              {bulkSaving ? "Salvando..." : `Baixar ${bulkEligible.length}`}
+            <Button
+              onClick={confirmBulk}
+              disabled={bulkSaving || !bulkResult || bulkResult.actions.length === 0}
+              className="bg-gradient-primary text-primary-foreground"
+            >
+              {bulkSaving
+                ? "Aplicando..."
+                : bulkResult
+                ? `Aplicar baixa (${bulkResult.actions.length})`
+                : "Anexe o extrato"}
             </Button>
           </DialogFooter>
         </DialogContent>
