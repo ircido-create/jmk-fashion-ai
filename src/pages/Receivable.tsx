@@ -69,7 +69,7 @@ export default function Receivable() {
   // Importar
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string }[]>([]);
+  const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string; skip?: boolean; dupReason?: string }[]>([]);
   const [importSaving, setImportSaving] = useState(false);
 
   const load = async () => {
