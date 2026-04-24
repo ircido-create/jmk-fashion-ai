@@ -19,7 +19,7 @@ import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
 import { reconcile, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
 
-interface Customer { id: string; name: string; tax_id: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; }
 interface Receivable {
   id: string; customer_id: string | null; description: string | null;
   amount: number; due_date: string; status: string; paid_at: string | null;
@@ -111,7 +111,7 @@ export default function Receivable() {
       setList(items);
 
       const cs = await fetchAll<Customer>((sb) =>
-        sb.from("customers").select("id, name, tax_id").order("name")
+        sb.from("customers").select("id, name, nickname, tax_id").order("name")
       );
       setCustomers(cs);
     } catch (e: any) {
@@ -323,6 +323,7 @@ export default function Receivable() {
           id: r.id,
           customer_id: r.customer_id,
           customer_name: c?.name ?? r.customers?.name ?? "",
+          customer_nickname: c?.nickname ?? null,
           customer_tax_id: c?.tax_id ?? null,
           amount: Number(r.amount),
           due_date: r.due_date,

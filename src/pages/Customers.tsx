@@ -14,10 +14,11 @@ import { Link } from "react-router-dom";
 import { usePagination } from "@/hooks/usePagination";
 import { digitsOnly, formatTaxId, isValidTaxIdLength } from "@/lib/taxId";
 
-interface Customer { id: string; name: string; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
 
 const schema = z.object({
   name: z.string().trim().min(2, "Nome muito curto").max(100),
+  nickname: z.string().trim().max(60).optional().or(z.literal("")),
   tax_id: z.string().trim().max(20).optional().or(z.literal("")),
   phone: z.string().trim().max(20).optional().or(z.literal("")),
   email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
@@ -48,7 +49,7 @@ export default function Customers() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const parsed = schema.safeParse({
-      name: f.get("name"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
+      name: f.get("name"), nickname: f.get("nickname"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
     const taxIdDigits = digitsOnly(parsed.data.tax_id);
@@ -58,6 +59,7 @@ export default function Customers() {
     }
     const payload = {
       name: parsed.data.name,
+      nickname: parsed.data.nickname || null,
       tax_id: taxIdDigits || null,
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
@@ -84,6 +86,7 @@ export default function Customers() {
     const q = search.toLowerCase();
     return (
       c.name.toLowerCase().includes(q) ||
+      (c.nickname ?? "").toLowerCase().includes(q) ||
       (c.phone ?? "").includes(search) ||
       (c.email ?? "").toLowerCase().includes(q) ||
       (searchDigits.length >= 3 && (c.tax_id ?? "").includes(searchDigits))
@@ -106,7 +109,8 @@ export default function Customers() {
             <DialogContent className="glass-card border-white/40">
               <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-3">
-                <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+                <div><Label>Nome completo</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+                <div><Label>Apelido (usado na conciliação do extrato)</Label><Input name="nickname" defaultValue={editing?.nickname ?? ""} placeholder="Ex.: Maria do Bairro" className="glass-input" /></div>
                 <div><Label>CPF / CNPJ</Label><Input name="tax_id" defaultValue={formatTaxId(editing?.tax_id)} placeholder="000.000.000-00" className="glass-input" /></div>
                 <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
                 <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
@@ -131,6 +135,9 @@ export default function Customers() {
               <Link to={`/clientes/${c.id}`} className="min-w-0 flex-1 group">
                 <div className="font-medium truncate flex items-center gap-1 group-hover:text-primary transition-colors">
                   {c.name}
+                  {c.nickname && (
+                    <span className="text-xs text-muted-foreground font-normal">({c.nickname})</span>
+                  )}
                   <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
