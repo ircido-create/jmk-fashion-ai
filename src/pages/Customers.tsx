@@ -109,7 +109,8 @@ export default function Customers() {
             <DialogContent className="glass-card border-white/40">
               <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-3">
-                <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+                <div><Label>Nome completo</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+                <div><Label>Apelido (usado na conciliação do extrato)</Label><Input name="nickname" defaultValue={editing?.nickname ?? ""} placeholder="Ex.: Maria do Bairro" className="glass-input" /></div>
                 <div><Label>CPF / CNPJ</Label><Input name="tax_id" defaultValue={formatTaxId(editing?.tax_id)} placeholder="000.000.000-00" className="glass-input" /></div>
                 <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
                 <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
