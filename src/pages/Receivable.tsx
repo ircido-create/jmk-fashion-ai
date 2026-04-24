@@ -295,11 +295,11 @@ export default function Receivable() {
       };
 
       const rows: PaymentRow[] = json.map((row, i) => {
-        const kCust = findKey(row, ["cliente", "customer", "nome", "sacado", "pagador", "favorecido", "historico"]);
-        const kTax = findKey(row, ["cpf", "cnpj", "cpf/cnpj", "documento"]);
-        const kAmt = findKey(row, ["valor", "amount", "credito", "crédito", "valor pago"]);
+        const kCust = findKey(row, ["razao social", "razão social", "cliente", "customer", "nome", "sacado", "pagador", "favorecido", "historico"]);
+        const kTax = findKey(row, ["cpf/cnpj", "cpf", "cnpj", "documento"]);
+        const kAmt = findKey(row, ["valor (r$)", "valor", "amount", "credito", "crédito", "valor pago"]);
         const kDate = findKey(row, ["data", "data pagamento", "data credito", "data crédito", "payment_date"]);
-        const kDesc = findKey(row, ["descricao", "description", "memo", "obs", "historico"]);
+        const kDesc = findKey(row, ["descricao", "description", "memo", "obs"]);
         return {
           customer_name: kCust ? String(row[kCust]).trim() : "",
           tax_id: kTax ? digitsOnly(String(row[kTax])) : "",
