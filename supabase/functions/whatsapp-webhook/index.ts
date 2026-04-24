@@ -357,7 +357,7 @@ async function sendWhatsAppAudio(
     // 3) Salva no storage e registra como mensagem outbound
     if (conversationId) {
       try {
-        const path = `outbound/${to}/${Date.now()}-voice.mp3`;
+        const path = `outbound/${to}/${Date.now()}-${fileName}`;
         const { error: upErr } = await supabase.storage
           .from("whatsapp-media")
           .upload(path, audioBytes, { contentType: mime, upsert: false });
@@ -371,7 +371,7 @@ async function sendWhatsAppAudio(
             media_path: path,
             media_type: "audio",
             media_mime: mime,
-            media_filename: "voice.mp3",
+            media_filename: fileName,
           });
           if (insErr) console.error("insert outbound audio msg error:", insErr);
         }
