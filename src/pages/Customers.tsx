@@ -49,7 +49,7 @@ export default function Customers() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const parsed = schema.safeParse({
-      name: f.get("name"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
+      name: f.get("name"), nickname: f.get("nickname"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
     const taxIdDigits = digitsOnly(parsed.data.tax_id);
@@ -59,6 +59,7 @@ export default function Customers() {
     }
     const payload = {
       name: parsed.data.name,
+      nickname: parsed.data.nickname || null,
       tax_id: taxIdDigits || null,
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
