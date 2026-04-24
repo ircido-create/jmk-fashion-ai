@@ -323,6 +323,7 @@ export default function Receivable() {
           id: r.id,
           customer_id: r.customer_id,
           customer_name: c?.name ?? r.customers?.name ?? "",
+          customer_nickname: c?.nickname ?? null,
           customer_tax_id: c?.tax_id ?? null,
           amount: Number(r.amount),
           due_date: r.due_date,
