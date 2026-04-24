@@ -14,10 +14,11 @@ import { Link } from "react-router-dom";
 import { usePagination } from "@/hooks/usePagination";
 import { digitsOnly, formatTaxId, isValidTaxIdLength } from "@/lib/taxId";
 
-interface Customer { id: string; name: string; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
 
 const schema = z.object({
   name: z.string().trim().min(2, "Nome muito curto").max(100),
+  nickname: z.string().trim().max(60).optional().or(z.literal("")),
   tax_id: z.string().trim().max(20).optional().or(z.literal("")),
   phone: z.string().trim().max(20).optional().or(z.literal("")),
   email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
