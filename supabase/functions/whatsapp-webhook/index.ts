@@ -864,6 +864,13 @@ async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx
       ? `Produtos que correspondem à pergunta do cliente:\n${formatProducts(ctx.matched)}`
       : `⚠️ Nenhum produto do catálogo corresponde à pergunta atual do cliente. Se ele pediu um modelo específico (ex: "vestido amanda"), diga que NÃO temos esse modelo e ofereça alternativas reais da lista geral abaixo.`;
 
+  const focusedBlock = ctx.focused
+    ? `O ÚLTIMO produto que VOCÊ (assistente) acabou de mostrar/citar para o cliente foi:
+${formatProducts([ctx.focused])}
+
+→ REGRA CRÍTICA: se a mensagem atual do cliente for referencial (ex.: "qual o valor dele?", "quanto custa?", "tem em M?", "qual a cor?", "quero esse"), ela se refere SEMPRE a este produto acima — NUNCA a outros produtos antigos do histórico. Use o nome, preço e variações DESTE produto.`
+    : `→ Nenhum produto específico em foco no momento. Se o cliente fizer pergunta referencial sem citar produto, peça pra ele confirmar qual modelo é.`;
+
   const supplierBlock = ctx.supplierMentioned
     ? `→ O cliente mencionou o FORNECEDOR "${ctx.supplierMentioned}". Mostre APENAS produtos deste fornecedor (a lista abaixo já está filtrada). Se ele pedir algo de outro fornecedor depois, troque o filtro.`
     : `→ Nenhum fornecedor específico mencionado. Use o catálogo geral.`;
