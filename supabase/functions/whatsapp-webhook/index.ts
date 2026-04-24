@@ -292,7 +292,7 @@ async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime:
   }
 }
 
-// Faz upload do MP3 para a Meta e envia como mensagem de áudio.
+// Faz upload do áudio para a Meta e envia como mensagem de voz.
 // Também grava em outbound/ no bucket whatsapp-media para aparecer no painel.
 async function sendWhatsAppAudio(
   to: string,
@@ -302,6 +302,9 @@ async function sendWhatsAppAudio(
   cfg: any,
   conversationId?: string,
 ): Promise<boolean> {
+  // Extensão coerente com o mime (ogg/opus do ElevenLabs ou mp3 de fallback)
+  const ext = mime.includes("ogg") ? "ogg" : (mime.includes("mpeg") ? "mp3" : "ogg");
+  const fileName = `voice.${ext}`;
   try {
     // 1) Upload do binário para a Meta
     const form = new FormData();
@@ -310,7 +313,7 @@ async function sendWhatsAppAudio(
     // Cria buffer próprio (evita conflito de tipos SharedArrayBuffer no Deno)
     const ownedBuf = new Uint8Array(audioBytes.byteLength);
     ownedBuf.set(audioBytes);
-    form.append("file", new Blob([ownedBuf], { type: mime }), `voice.mp3`);
+    form.append("file", new Blob([ownedBuf], { type: mime }), fileName);
 
     const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/media`, {
       method: "POST",
