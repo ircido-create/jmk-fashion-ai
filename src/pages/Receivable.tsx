@@ -382,29 +382,33 @@ export default function Receivable() {
         if (error) throw error;
         if (data?.error) throw new Error(data.error);
         const items = (data?.items ?? []).filter((r: any) => r.amount > 0 && r.due_date) as any[];
-        setImportPreview(items.map((r: any) => ({
+        const mapped = items.map((r: any) => ({
           customer_name: r.customer_name ?? "",
           tax_id: digitsOnly(r.tax_id ?? ""),
           description: r.description ?? "",
           amount: Number(r.amount),
           due_date: String(r.due_date).slice(0, 10),
-        })));
+        }));
+        const enriched = enrichWithDuplicates(mapped);
+        setImportPreview(enriched);
         const meta = data?.meta;
         const sum = items.reduce((a: number, b: any) => a + (Number(b.amount) || 0), 0);
+        const dupCount = enriched.filter((r) => r.skip).length;
+        const dupMsg = dupCount > 0 ? ` • ${dupCount} duplicata(s) desmarcada(s)` : "";
         if (items.length === 0) {
           toast.error("Nenhum lançamento encontrado no PDF");
         } else if (meta?.expected_count && Math.abs(meta.expected_count - items.length) > 2) {
           toast.warning(
-            `Atenção: extraídas ${items.length} de ~${meta.expected_count} linhas esperadas (R$ ${sum.toFixed(2)} de ~R$ ${(meta.expected_sum ?? 0).toFixed(2)}). Confira o PDF.`,
+            `Atenção: extraídas ${items.length} de ~${meta.expected_count} linhas (R$ ${sum.toFixed(2)} de ~R$ ${(meta.expected_sum ?? 0).toFixed(2)})${dupMsg}.`,
             { duration: 10000 }
           );
         } else if (meta?.expected_sum && Math.abs(meta.expected_sum - sum) > 1) {
           toast.warning(
-            `Extraídas ${items.length} linhas (R$ ${sum.toFixed(2)}) — esperado R$ ${meta.expected_sum.toFixed(2)}. Confira antes de confirmar.`,
+            `Extraídas ${items.length} linhas (R$ ${sum.toFixed(2)}) — esperado R$ ${meta.expected_sum.toFixed(2)}${dupMsg}.`,
             { duration: 10000 }
           );
         } else {
-          toast.success(`${items.length} linha(s) extraídas • Total R$ ${sum.toFixed(2)}`);
+          toast.success(`${items.length} linha(s) • Total R$ ${sum.toFixed(2)}${dupMsg}`);
         }
         return;
       }
