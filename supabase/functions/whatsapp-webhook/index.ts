@@ -373,13 +373,16 @@ function asksForPhoto(text: string): boolean {
   return /(foto|fotos|imagem|imagens|figura|me manda.*foto|tem foto|tem imagem|posso ver|me mostra|manda.*foto)/.test(t);
 }
 
-// Frases genéricas de "me manda foto/de novo" — sem produto específico
+// Frases genéricas de "me manda foto/de novo" — sem produto específico.
+// Também considera genérico quando só sobram pronomes ("dela", "dele", "disso"...),
+// porque nesse caso o produto está implícito no histórico da conversa.
 function isGenericPhotoRequest(text: string): boolean {
   const t = norm(text);
-  // Remove os verbos de pedir foto e vê o que sobra
+  // Remove os verbos de pedir foto e pronomes/preposições, e vê o que sobra
   const stripped = t
     .replace(/(foto|fotos|imagem|imagens|figura|figuras)/g, "")
     .replace(/(me manda|me envia|me mostra|envia|manda|mostra|posso ver|tem|pode|poderia|novamente|de novo|outra vez|tambem|também)/g, "")
+    .replace(/\b(dela|dele|delas|deles|disso|dessa|desse|dessas|desses|essa|esse|essas|esses|aquela|aquele|aquelas|aqueles|uma|um|umas|uns|de|do|da|dos|das|para|pra|por|com|favor|por favor)\b/g, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
   return stripped.length < 3; // sobrou quase nada → é genérico
