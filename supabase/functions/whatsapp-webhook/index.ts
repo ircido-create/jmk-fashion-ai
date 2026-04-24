@@ -1477,13 +1477,30 @@ Deno.serve(async (req) => {
     if (photoFailed) {
       finalReply = `Ah, desculpa! Tentei te mandar as fotos mas não consegui enviar agora 😅 Mas posso te descrever:\n\n${reply}`;
     }
-    await sendWhatsApp(fromPhone, finalReply, cfg);
-    const { error: outErr } = await supabase.from("whatsapp_messages").insert({
-      conversation_id: conv.id,
-      direction: "outbound",
-      content: finalReply,
-    });
-    if (outErr) console.error("insert outbound error:", outErr);
+
+    // Se a cliente mandou áudio, responde em áudio (voz humana via ElevenLabs).
+    // Também grava a transcrição como texto para o painel.
+    const clientSentAudio = inboundMedia?.kind === "audio";
+    let audioReplySent = false;
+    if (clientSentAudio) {
+      const voice = await synthesizeVoice(finalReply);
+      if (voice) {
+        audioReplySent = await sendWhatsAppAudio(fromPhone, voice.bytes, voice.mime, finalReply, cfg, conv.id);
+      }
+      if (!audioReplySent) {
+        console.warn("[webhook] Falha ao enviar áudio — fallback para texto");
+      }
+    }
+
+    if (!audioReplySent) {
+      await sendWhatsApp(fromPhone, finalReply, cfg);
+      const { error: outErr } = await supabase.from("whatsapp_messages").insert({
+        conversation_id: conv.id,
+        direction: "outbound",
+        content: finalReply,
+      });
+      if (outErr) console.error("insert outbound error:", outErr);
+    }
     await supabase
       .from("whatsapp_conversations")
       .update({ last_message_at: new Date().toISOString() })
