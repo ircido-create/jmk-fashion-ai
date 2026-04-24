@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, CheckCircle2, FileDown, Paperclip, CheckSquare } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, FileDown, Paperclip, CheckSquare, Upload } from "lucide-react";
+import * as XLSX from "xlsx";
 import { usePagination } from "@/hooks/usePagination";
 import { exportReceivablePdf } from "@/lib/financePdf";
 import { toast } from "sonner";
@@ -57,6 +58,18 @@ export default function Receivable() {
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkDesc, setBulkDesc] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+
+  // Relatório
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState<"todos" | "1m" | "1a" | "custom">("todos");
+  const [reportFrom, setReportFrom] = useState<string>("");
+  const [reportTo, setReportTo] = useState<string>("");
+
+  // Importar
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<{ customer_name: string; description: string; amount: number; due_date: string }[]>([]);
+  const [importSaving, setImportSaving] = useState(false);
 
   const load = async () => {
     try {
@@ -266,6 +279,136 @@ export default function Receivable() {
     }
   };
 
+  // === Relatório com filtro de período ===
+  const runReport = () => {
+    let from: Date | null = null;
+    const to = new Date();
+    if (reportPeriod === "1m") { from = new Date(); from.setMonth(from.getMonth() - 1); }
+    else if (reportPeriod === "1a") { from = new Date(); from.setFullYear(from.getFullYear() - 1); }
+    else if (reportPeriod === "custom") {
+      if (!reportFrom || !reportTo) { toast.error("Informe o período"); return; }
+      from = new Date(reportFrom + "T00:00:00");
+    }
+    const toIso = reportPeriod === "custom" ? reportTo : to.toISOString().slice(0, 10);
+    const fromIso = from ? from.toISOString().slice(0, 10) : null;
+
+    const rows = filtered.filter((r) => {
+      if (!fromIso) return true;
+      return r.due_date >= fromIso && r.due_date <= toIso;
+    });
+    if (rows.length === 0) { toast.error("Nenhum lançamento no período selecionado"); return; }
+
+    const labelMap: Record<string, string> = {
+      todos: "todos os períodos",
+      "1m": "último mês",
+      "1a": "último ano",
+      custom: `${reportFrom} a ${reportTo}`,
+    };
+    exportReceivablePdf(rows, `${filterLabels[filter]} • ${labelMap[reportPeriod]}`);
+    setReportOpen(false);
+  };
+
+  // === Importação de planilha ===
+  const parseImportFile = async (file: File) => {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+
+    const norm = (s: string) => String(s ?? "").toLowerCase().trim()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    const findKey = (row: any, candidates: string[]) => {
+      const keys = Object.keys(row);
+      for (const c of candidates) {
+        const k = keys.find((k) => norm(k) === norm(c) || norm(k).includes(norm(c)));
+        if (k) return k;
+      }
+      return null;
+    };
+
+    const parseAmount = (v: any): number => {
+      if (typeof v === "number") return v;
+      const s = String(v ?? "").replace(/[^\d,.\-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+      return Number(s) || 0;
+    };
+
+    const parseDate = (v: any): string => {
+      if (!v) return "";
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      const s = String(v).trim();
+      // dd/mm/yyyy
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        const yy = m[3].length === 2 ? "20" + m[3] : m[3];
+        return `${yy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+      }
+      // yyyy-mm-dd
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+    };
+
+    const out = json.map((row) => {
+      const kCust = findKey(row, ["cliente", "customer", "nome"]);
+      const kDesc = findKey(row, ["descricao", "description", "historico", "memo", "obs"]);
+      const kAmt = findKey(row, ["valor", "amount", "montante"]);
+      const kDue = findKey(row, ["vencimento", "due_date", "data", "vencto"]);
+      return {
+        customer_name: kCust ? String(row[kCust]).trim() : "",
+        description: kDesc ? String(row[kDesc]).trim() : "",
+        amount: kAmt ? parseAmount(row[kAmt]) : 0,
+        due_date: kDue ? parseDate(row[kDue]) : "",
+      };
+    }).filter((r) => r.amount > 0 && r.due_date);
+
+    setImportPreview(out);
+    if (out.length === 0) toast.error("Nenhuma linha válida encontrada (precisa de Valor + Vencimento)");
+    else toast.success(`${out.length} linha(s) prontas para importar`);
+  };
+
+  const confirmImport = async () => {
+    if (importPreview.length === 0) { toast.error("Nada para importar"); return; }
+    setImportSaving(true);
+    try {
+      // Mapear customer_name → customer_id (cria cliente se não existir)
+      const nameToId = new Map<string, string | null>();
+      customers.forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+
+      const newCustomers = Array.from(new Set(
+        importPreview
+          .map((r) => r.customer_name)
+          .filter((n) => n && !nameToId.has(n.toLowerCase()))
+      ));
+      if (newCustomers.length > 0) {
+        const { data: created, error: cErr } = await supabase
+          .from("customers")
+          .insert(newCustomers.map((name) => ({ name })))
+          .select("id, name");
+        if (cErr) throw cErr;
+        (created ?? []).forEach((c) => nameToId.set(c.name.toLowerCase(), c.id));
+      }
+
+      const rows = importPreview.map((r) => ({
+        customer_id: r.customer_name ? nameToId.get(r.customer_name.toLowerCase()) ?? null : null,
+        description: r.description || null,
+        amount: r.amount,
+        due_date: r.due_date,
+      }));
+
+      const { error } = await supabase.from("accounts_receivable").insert(rows);
+      if (error) throw error;
+
+      toast.success(`${rows.length} conta(s) importadas`);
+      setImportOpen(false); setImportFile(null); setImportPreview([]);
+      load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -276,12 +419,16 @@ export default function Receivable() {
             <Button
               variant="outline"
               className="rounded-xl"
-              onClick={() => {
-                if (filtered.length === 0) { toast.error("Nada para exportar nesse filtro"); return; }
-                exportReceivablePdf(filtered, filterLabels[filter]);
-              }}
+              onClick={() => { setReportPeriod("todos"); setReportOpen(true); }}
             >
-              <FileDown className="h-4 w-4 mr-1" /> PDF
+              <FileDown className="h-4 w-4 mr-1" /> Relatório
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => { setImportFile(null); setImportPreview([]); setImportOpen(true); }}
+            >
+              <Upload className="h-4 w-4 mr-1" /> Importar
             </Button>
             <Button
               variant="outline"
@@ -478,6 +625,116 @@ export default function Receivable() {
             <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkSaving}>Cancelar</Button>
             <Button onClick={confirmBulk} disabled={bulkSaving || bulkEligible.length === 0} className="bg-gradient-primary text-primary-foreground">
               {bulkSaving ? "Salvando..." : `Baixar ${bulkEligible.length}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Relatório com filtro de período */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="glass-card border-white/40">
+          <DialogHeader><DialogTitle>Gerar relatório</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Filtro atual: <strong>{filterLabels[filter]}</strong> ({filtered.length} título(s))
+            </div>
+            <div>
+              <Label>Período</Label>
+              <Select value={reportPeriod} onValueChange={(v) => setReportPeriod(v as any)}>
+                <SelectTrigger className="glass-input"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="1m">Último mês</SelectItem>
+                  <SelectItem value="1a">Último ano</SelectItem>
+                  <SelectItem value="custom">Período personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {reportPeriod === "custom" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>De</Label>
+                  <Input type="date" value={reportFrom} onChange={(e) => setReportFrom(e.target.value)} className="glass-input" />
+                </div>
+                <div>
+                  <Label>Até</Label>
+                  <Input type="date" value={reportTo} onChange={(e) => setReportTo(e.target.value)} className="glass-input" />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReportOpen(false)}>Cancelar</Button>
+            <Button onClick={runReport} className="bg-gradient-primary text-primary-foreground">
+              <FileDown className="h-4 w-4 mr-1" /> Gerar PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Importar contas a receber */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="glass-card border-white/40 max-w-2xl">
+          <DialogHeader><DialogTitle>Importar contas a receber</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Anexe um arquivo <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong>.
+              A planilha deve conter colunas: <strong>Cliente</strong>, <strong>Descrição</strong>, <strong>Valor</strong> e <strong>Vencimento</strong>.
+              Clientes novos serão cadastrados automaticamente.
+            </div>
+            <div>
+              <Label>Arquivo</Label>
+              <Input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setImportFile(f);
+                  setImportPreview([]);
+                  if (f) parseImportFile(f);
+                }}
+                className="glass-input"
+              />
+              {importFile && <div className="text-xs text-muted-foreground mt-1">{importFile.name}</div>}
+            </div>
+            {importPreview.length > 0 && (
+              <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 sticky top-0">
+                    <tr>
+                      <th className="text-left p-2">Cliente</th>
+                      <th className="text-left p-2">Descrição</th>
+                      <th className="text-left p-2">Vencimento</th>
+                      <th className="text-right p-2">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.slice(0, 50).map((r, i) => (
+                      <tr key={i} className="border-t border-white/20">
+                        <td className="p-2">{r.customer_name || "—"}</td>
+                        <td className="p-2">{r.description || "—"}</td>
+                        <td className="p-2">{r.due_date}</td>
+                        <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {importPreview.length > 50 && (
+                  <div className="p-2 text-center text-xs text-muted-foreground">
+                    ... e mais {importPreview.length - 50} linha(s)
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importSaving}>Cancelar</Button>
+            <Button
+              onClick={confirmImport}
+              disabled={importSaving || importPreview.length === 0}
+              className="bg-gradient-primary text-primary-foreground"
+            >
+              {importSaving ? "Importando..." : `Importar ${importPreview.length}`}
             </Button>
           </DialogFooter>
         </DialogContent>
