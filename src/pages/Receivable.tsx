@@ -69,7 +69,7 @@ export default function Receivable() {
   // Importar
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string }[]>([]);
+  const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string; skip?: boolean; dupReason?: string }[]>([]);
   const [importSaving, setImportSaving] = useState(false);
 
   const load = async () => {
@@ -312,6 +312,54 @@ export default function Receivable() {
   // === Importação de planilha/PDF ===
   const [importParsing, setImportParsing] = useState(false);
 
+  /** Marca duplicatas: dentro do próprio arquivo e contra contas já existentes no banco */
+  const enrichWithDuplicates = (
+    rows: { customer_name: string; tax_id: string; description: string; amount: number; due_date: string }[]
+  ) => {
+    // Índice de clientes existentes por tax_id e por nome → id
+    const taxToId = new Map<string, string>();
+    const nameToId = new Map<string, string>();
+    customers.forEach((c) => {
+      const t = digitsOnly(c.tax_id ?? "");
+      if (t) taxToId.set(t, c.id);
+      if (c.name) nameToId.set(c.name.trim().toLowerCase(), c.id);
+    });
+
+    // Índice de receivables existentes por chave (customer_id|valor|vencimento)
+    const existingKeys = new Set<string>();
+    list.forEach((r) => {
+      if (r.customer_id) existingKeys.add(`${r.customer_id}|${Number(r.amount).toFixed(2)}|${r.due_date}`);
+    });
+
+    // Resolve customer_id provável de uma linha do preview
+    const resolveCustomerId = (r: { customer_name: string; tax_id: string }): string | null => {
+      const tax = digitsOnly(r.tax_id);
+      if (tax && taxToId.has(tax)) return taxToId.get(tax)!;
+      const nameKey = (r.customer_name || "").trim().toLowerCase();
+      if (nameKey && nameToId.has(nameKey)) return nameToId.get(nameKey)!;
+      return null;
+    };
+
+    const seenInFile = new Set<string>();
+    return rows.map((r) => {
+      const cid = resolveCustomerId(r);
+      const amtKey = Number(r.amount).toFixed(2);
+      // Chave para detectar duplicata interna ao arquivo (cliente + valor + vencimento)
+      const matchKey = cid
+        ? `id:${cid}|${amtKey}|${r.due_date}`
+        : `name:${(r.customer_name || "").trim().toLowerCase()}|${digitsOnly(r.tax_id)}|${amtKey}|${r.due_date}`;
+
+      let dupReason: string | undefined;
+      if (cid && existingKeys.has(`${cid}|${amtKey}|${r.due_date}`)) {
+        dupReason = "já existe no sistema";
+      } else if (seenInFile.has(matchKey)) {
+        dupReason = "duplicado no arquivo";
+      }
+      seenInFile.add(matchKey);
+      return { ...r, skip: !!dupReason, dupReason };
+    });
+  };
+
   const parseImportFile = async (file: File) => {
     setImportParsing(true);
     try {
@@ -334,29 +382,33 @@ export default function Receivable() {
         if (error) throw error;
         if (data?.error) throw new Error(data.error);
         const items = (data?.items ?? []).filter((r: any) => r.amount > 0 && r.due_date) as any[];
-        setImportPreview(items.map((r: any) => ({
+        const mapped = items.map((r: any) => ({
           customer_name: r.customer_name ?? "",
           tax_id: digitsOnly(r.tax_id ?? ""),
           description: r.description ?? "",
           amount: Number(r.amount),
           due_date: String(r.due_date).slice(0, 10),
-        })));
+        }));
+        const enriched = enrichWithDuplicates(mapped);
+        setImportPreview(enriched);
         const meta = data?.meta;
         const sum = items.reduce((a: number, b: any) => a + (Number(b.amount) || 0), 0);
+        const dupCount = enriched.filter((r) => r.skip).length;
+        const dupMsg = dupCount > 0 ? ` • ${dupCount} duplicata(s) desmarcada(s)` : "";
         if (items.length === 0) {
           toast.error("Nenhum lançamento encontrado no PDF");
         } else if (meta?.expected_count && Math.abs(meta.expected_count - items.length) > 2) {
           toast.warning(
-            `Atenção: extraídas ${items.length} de ~${meta.expected_count} linhas esperadas (R$ ${sum.toFixed(2)} de ~R$ ${(meta.expected_sum ?? 0).toFixed(2)}). Confira o PDF.`,
+            `Atenção: extraídas ${items.length} de ~${meta.expected_count} linhas (R$ ${sum.toFixed(2)} de ~R$ ${(meta.expected_sum ?? 0).toFixed(2)})${dupMsg}.`,
             { duration: 10000 }
           );
         } else if (meta?.expected_sum && Math.abs(meta.expected_sum - sum) > 1) {
           toast.warning(
-            `Extraídas ${items.length} linhas (R$ ${sum.toFixed(2)}) — esperado R$ ${meta.expected_sum.toFixed(2)}. Confira antes de confirmar.`,
+            `Extraídas ${items.length} linhas (R$ ${sum.toFixed(2)}) — esperado R$ ${meta.expected_sum.toFixed(2)}${dupMsg}.`,
             { duration: 10000 }
           );
         } else {
-          toast.success(`${items.length} linha(s) extraídas • Total R$ ${sum.toFixed(2)}`);
+          toast.success(`${items.length} linha(s) • Total R$ ${sum.toFixed(2)}${dupMsg}`);
         }
         return;
       }
@@ -414,9 +466,12 @@ export default function Receivable() {
         };
       }).filter((r) => r.amount > 0 && r.due_date);
 
-      setImportPreview(out);
+      const enriched = enrichWithDuplicates(out);
+      setImportPreview(enriched);
+      const dupCount = enriched.filter((r) => r.skip).length;
+      const dupMsg = dupCount > 0 ? ` • ${dupCount} duplicata(s) desmarcada(s)` : "";
       if (out.length === 0) toast.error("Nenhuma linha válida encontrada (precisa de Valor + Vencimento)");
-      else toast.success(`${out.length} linha(s) prontas para importar`);
+      else toast.success(`${out.length} linha(s) prontas para importar${dupMsg}`);
     } catch (e: any) {
       toast.error(e.message || "Erro ao ler o arquivo");
     } finally {
@@ -524,12 +579,23 @@ export default function Receivable() {
         });
       }
 
-      const rows = importPreview.map((r, idx) => ({
-        customer_id: planned[idx],
-        description: r.description || null,
-        amount: r.amount,
-        due_date: r.due_date,
-      }));
+      // Filtra duplicatas (skip=true)
+      const rows = importPreview
+        .map((r, idx) => ({ r, idx }))
+        .filter(({ r }) => !r.skip)
+        .map(({ r, idx }) => ({
+          customer_id: planned[idx],
+          description: r.description || null,
+          amount: r.amount,
+          due_date: r.due_date,
+        }));
+
+      const skipped = importPreview.length - rows.length;
+      if (rows.length === 0) {
+        toast.error("Todas as linhas foram identificadas como duplicadas");
+        setImportSaving(false);
+        return;
+      }
 
       const { error } = await supabase.from("accounts_receivable").insert(rows);
       if (error) throw error;
@@ -538,8 +604,11 @@ export default function Receivable() {
         total: rows.length,
         updated: toUpdateTax.length,
         created: newPayload.length,
+        skipped,
       };
-      toast.success(`${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)`);
+      toast.success(
+        `${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)${stats.skipped > 0 ? ` • ${stats.skipped} duplicata(s) ignorada(s)` : ""}`
+      );
       setImportOpen(false); setImportFile(null); setImportPreview([]);
       load();
     } catch (e: any) {
@@ -840,62 +909,103 @@ export default function Receivable() {
               {importFile && <div className="text-xs text-muted-foreground mt-1">{importFile.name}</div>}
               {importParsing && <div className="text-xs text-primary mt-1">Lendo arquivo...</div>}
             </div>
-            {importPreview.length > 0 && (
-              <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/40 sticky top-0">
-                    <tr>
-                      <th className="text-left p-2">Cliente</th>
-                      <th className="text-left p-2">CPF/CNPJ</th>
-                      <th className="text-left p-2">Vínculo</th>
-                      <th className="text-left p-2">Descrição</th>
-                      <th className="text-left p-2">Vencimento</th>
-                      <th className="text-right p-2">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importPreview.slice(0, 50).map((r, i) => {
-                      const tax = digitsOnly(r.tax_id);
-                      const byTax = tax ? customers.find((c) => digitsOnly(c.tax_id ?? "") === tax) : null;
-                      const byName = !byTax && r.customer_name
-                        ? customers.find((c) => c.name.toLowerCase() === r.customer_name.toLowerCase())
-                        : null;
-                      const matched = byTax || byName;
-                      return (
-                        <tr key={i} className="border-t border-white/20">
-                          <td className="p-2">{r.customer_name || "—"}</td>
-                          <td className="p-2 font-mono text-[11px]">{tax ? formatTaxId(tax) : "—"}</td>
-                          <td className="p-2">
-                            {matched ? (
-                              <span className="text-success text-[11px]">✓ vinculado{byTax ? " (CPF/CNPJ)" : " (nome)"}</span>
-                            ) : (
-                              <span className="text-amber-600 text-[11px]">+ novo cadastro</span>
-                            )}
-                          </td>
-                          <td className="p-2">{r.description || "—"}</td>
-                          <td className="p-2">{r.due_date}</td>
-                          <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {importPreview.length > 50 && (
-                  <div className="p-2 text-center text-xs text-muted-foreground">
-                    ... e mais {importPreview.length - 50} linha(s)
+            {importPreview.length > 0 && (() => {
+              const dupCount = importPreview.filter((r) => r.skip).length;
+              const includedCount = importPreview.length - dupCount;
+              const includedSum = importPreview.filter((r) => !r.skip).reduce((a, b) => a + (b.amount || 0), 0);
+              return (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs px-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground">
+                        <strong className="text-foreground">{includedCount}</strong> a importar • <strong className="text-foreground">R$ {includedSum.toFixed(2)}</strong>
+                      </span>
+                      {dupCount > 0 && (
+                        <span className="text-amber-600">
+                          {dupCount} duplicata(s) detectada(s)
+                        </span>
+                      )}
+                    </div>
+                    {dupCount > 0 && (
+                      <button
+                        type="button"
+                        className="text-primary underline"
+                        onClick={() => setImportPreview((prev) => prev.map((r) => ({ ...r, skip: false })))}
+                      >
+                        Importar mesmo assim
+                      </button>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
+                  <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40 sticky top-0">
+                        <tr>
+                          <th className="text-center p-2 w-8">✓</th>
+                          <th className="text-left p-2">Cliente</th>
+                          <th className="text-left p-2">CPF/CNPJ</th>
+                          <th className="text-left p-2">Status</th>
+                          <th className="text-left p-2">Descrição</th>
+                          <th className="text-left p-2">Vencimento</th>
+                          <th className="text-right p-2">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.slice(0, 50).map((r, i) => {
+                          const tax = digitsOnly(r.tax_id);
+                          const byTax = tax ? customers.find((c) => digitsOnly(c.tax_id ?? "") === tax) : null;
+                          const byName = !byTax && r.customer_name
+                            ? customers.find((c) => c.name.toLowerCase() === r.customer_name.toLowerCase())
+                            : null;
+                          const matched = byTax || byName;
+                          return (
+                            <tr key={i} className={`border-t border-white/20 ${r.skip ? "opacity-50" : ""}`}>
+                              <td className="p-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={!r.skip}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setImportPreview((prev) => prev.map((row, idx) => idx === i ? { ...row, skip: !checked } : row));
+                                  }}
+                                />
+                              </td>
+                              <td className="p-2">{r.customer_name || "—"}</td>
+                              <td className="p-2 font-mono text-[11px]">{tax ? formatTaxId(tax) : "—"}</td>
+                              <td className="p-2">
+                                {r.dupReason ? (
+                                  <span className="text-amber-600 text-[11px]">⚠ {r.dupReason}</span>
+                                ) : matched ? (
+                                  <span className="text-success text-[11px]">✓ vinculado{byTax ? " (CPF/CNPJ)" : " (nome)"}</span>
+                                ) : (
+                                  <span className="text-amber-600 text-[11px]">+ novo cadastro</span>
+                                )}
+                              </td>
+                              <td className="p-2">{r.description || "—"}</td>
+                              <td className="p-2">{r.due_date}</td>
+                              <td className="p-2 text-right">R$ {r.amount.toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {importPreview.length > 50 && (
+                      <div className="p-2 text-center text-xs text-muted-foreground">
+                        ... e mais {importPreview.length - 50} linha(s)
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importSaving}>Cancelar</Button>
             <Button
               onClick={confirmImport}
-              disabled={importSaving || importPreview.length === 0}
+              disabled={importSaving || importPreview.filter((r) => !r.skip).length === 0}
               className="bg-gradient-primary text-primary-foreground"
             >
-              {importSaving ? "Importando..." : `Importar ${importPreview.length}`}
+              {importSaving ? "Importando..." : `Importar ${importPreview.filter((r) => !r.skip).length}`}
             </Button>
           </DialogFooter>
         </DialogContent>
