@@ -466,9 +466,12 @@ export default function Receivable() {
         };
       }).filter((r) => r.amount > 0 && r.due_date);
 
-      setImportPreview(out);
+      const enriched = enrichWithDuplicates(out);
+      setImportPreview(enriched);
+      const dupCount = enriched.filter((r) => r.skip).length;
+      const dupMsg = dupCount > 0 ? ` • ${dupCount} duplicata(s) desmarcada(s)` : "";
       if (out.length === 0) toast.error("Nenhuma linha válida encontrada (precisa de Valor + Vencimento)");
-      else toast.success(`${out.length} linha(s) prontas para importar`);
+      else toast.success(`${out.length} linha(s) prontas para importar${dupMsg}`);
     } catch (e: any) {
       toast.error(e.message || "Erro ao ler o arquivo");
     } finally {
