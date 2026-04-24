@@ -204,55 +204,95 @@ async function transcribeAudio(base64: string, mimeType: string): Promise<string
   }
 }
 
-// === ElevenLabs TTS — síntese de voz humana em PT-BR ===
-// Voz padrão: "Sarah" (EXAVITQu4vr4xnSDxMaL) — feminina, jovem e amigável.
-// Modelo eleven_multilingual_v2 → melhor qualidade em português.
-const ELEVEN_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
-const ELEVEN_MODEL_ID = "eleven_multilingual_v2";
+// === ElevenLabs TTS — voz clonada da Marina (humanizada PT-BR) ===
+// Voz primária: clone real de PTT do WhatsApp (5YiiQOoUDhrS8coyatTa, eleven_v3, opus 48k)
+// Fallback: eleven_multilingual_v2 (público) — usado se v3 não estiver liberado para a conta
+const ELEVEN_VOICE_ID = "5YiiQOoUDhrS8coyatTa";
+const ELEVEN_MODEL_PRIMARY = "eleven_v3";
+const ELEVEN_MODEL_FALLBACK = "eleven_multilingual_v2";
+
+// Pré-processa texto para soar natural quando falado em voz alta:
+// remove emojis, markdown, tags internas; expande URLs e datas DD/MM.
+function preprocessForTts(input: string): string {
+  let t = input;
+  // 1) Tags internas tipo [LEAD_QUALIFIED], [CONTEXTO:...]
+  t = t.replace(/\[[A-Z_]+(?::[^\]]*)?\]/g, " ");
+  // 2) Markdown: **negrito**, *itálico*, _underline_
+  t = t.replace(/\*\*(.*?)\*\*/g, "$1").replace(/(?<!\w)[*_](.+?)[*_](?!\w)/g, "$1");
+  // 3) URLs → fala natural (https://loja.com.br → "loja ponto com ponto br")
+  t = t.replace(/https?:\/\/(\S+)/gi, (_m, url: string) =>
+    url.replace(/\./g, " ponto ").replace(/\//g, " barra ")
+  );
+  t = t.replace(/\b([a-z0-9-]+)\.(com|br|net|org|io|app)\b/gi, (_m, name, tld) => `${name} ponto ${tld}`);
+  // 4) Datas DD/MM ou DD/MM/YYYY → "dia DD do mês MM"
+  const meses = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  t = t.replace(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/g, (_m, d, m, _y) => {
+    const mi = parseInt(m, 10) - 1;
+    return mi >= 0 && mi < 12 ? `dia ${parseInt(d, 10)} de ${meses[mi]}` : `${d} de ${m}`;
+  });
+  // 5) Emojis e pictogramas (Symbols/Emoticons/Pictographs/Transport/Misc/Dingbats/Flags)
+  t = t.replace(/[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{1F1E6}-\u{1F1FF}]|\uFE0F|\u200D/gu, "");
+  // 6) Espaços múltiplos e linhas em branco
+  t = t.replace(/\s+/g, " ").trim();
+  return t;
+}
+
+async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
+  if (!apiKey) return null;
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=opus_48000_128`,
+    {
+      method: "POST",
+      headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        model_id: modelId,
+        language_code: "pt",
+        voice_settings: {
+          stability: 0.45,
+          similarity_boost: 0.75,
+          style: 0.25,
+          use_speaker_boost: true,
+        },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(`ElevenLabs TTS [${modelId}] error:`, res.status, body);
+    return null;
+  }
+  const buf = await res.arrayBuffer();
+  return { bytes: new Uint8Array(buf), mime: "audio/ogg" };
+}
 
 async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
-  const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
-  if (!apiKey) {
+  if (!Deno.env.get("ELEVENLABS_API_KEY")) {
     console.error("ELEVENLABS_API_KEY ausente — não é possível sintetizar áudio");
     return null;
   }
-  // Limita a 800 caracteres para economizar quota e manter áudios curtos/naturais
-  const safeText = text.length > 800 ? text.slice(0, 797) + "..." : text;
+  // Limita a 800 chars (economia de quota + áudios curtos e naturais)
+  let safeText = preprocessForTts(text);
+  if (!safeText) return null;
+  if (safeText.length > 800) safeText = safeText.slice(0, 797) + "...";
+
   try {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}?output_format=mp3_44100_128`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: safeText,
-          model_id: ELEVEN_MODEL_ID,
-          voice_settings: {
-            stability: 0.55,
-            similarity_boost: 0.8,
-            style: 0.35,
-            use_speaker_boost: true,
-            speed: 1.0,
-          },
-        }),
-      }
-    );
-    if (!res.ok) {
-      console.error("ElevenLabs TTS error:", res.status, await res.text());
-      return null;
+    // Tenta primeiro o eleven_v3 (voz clonada). Se falhar (ex: 403/404 sem acesso),
+    // cai automaticamente para multilingual_v2 com a mesma voz.
+    let result = await callEleven(safeText, ELEVEN_MODEL_PRIMARY);
+    if (!result) {
+      console.warn(`[tts] Fallback para ${ELEVEN_MODEL_FALLBACK}`);
+      result = await callEleven(safeText, ELEVEN_MODEL_FALLBACK);
     }
-    const buf = await res.arrayBuffer();
-    return { bytes: new Uint8Array(buf), mime: "audio/mpeg" };
+    return result;
   } catch (e) {
     console.error("synthesizeVoice error:", e);
     return null;
   }
 }
 
-// Faz upload do MP3 para a Meta e envia como mensagem de áudio.
+// Faz upload do áudio para a Meta e envia como mensagem de voz.
 // Também grava em outbound/ no bucket whatsapp-media para aparecer no painel.
 async function sendWhatsAppAudio(
   to: string,
@@ -262,6 +302,9 @@ async function sendWhatsAppAudio(
   cfg: any,
   conversationId?: string,
 ): Promise<boolean> {
+  // Extensão coerente com o mime (ogg/opus do ElevenLabs ou mp3 de fallback)
+  const ext = mime.includes("ogg") ? "ogg" : (mime.includes("mpeg") ? "mp3" : "ogg");
+  const fileName = `voice.${ext}`;
   try {
     // 1) Upload do binário para a Meta
     const form = new FormData();
@@ -270,7 +313,7 @@ async function sendWhatsAppAudio(
     // Cria buffer próprio (evita conflito de tipos SharedArrayBuffer no Deno)
     const ownedBuf = new Uint8Array(audioBytes.byteLength);
     ownedBuf.set(audioBytes);
-    form.append("file", new Blob([ownedBuf], { type: mime }), `voice.mp3`);
+    form.append("file", new Blob([ownedBuf], { type: mime }), fileName);
 
     const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/media`, {
       method: "POST",
@@ -314,7 +357,7 @@ async function sendWhatsAppAudio(
     // 3) Salva no storage e registra como mensagem outbound
     if (conversationId) {
       try {
-        const path = `outbound/${to}/${Date.now()}-voice.mp3`;
+        const path = `outbound/${to}/${Date.now()}-${fileName}`;
         const { error: upErr } = await supabase.storage
           .from("whatsapp-media")
           .upload(path, audioBytes, { contentType: mime, upsert: false });
@@ -328,7 +371,7 @@ async function sendWhatsAppAudio(
             media_path: path,
             media_type: "audio",
             media_mime: mime,
-            media_filename: "voice.mp3",
+            media_filename: fileName,
           });
           if (insErr) console.error("insert outbound audio msg error:", insErr);
         }
