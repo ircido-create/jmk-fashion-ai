@@ -1524,7 +1524,7 @@ Deno.serve(async (req) => {
     // Responde em áudio quando: (a) cliente enviou áudio OU (b) cliente PEDIU áudio por texto.
     // Detecta pedidos como: "manda áudio", "responde em audio", "fala por voz", "não sei ler".
     const clientSentAudio = inboundMedia?.kind === "audio";
-    const lowerInbound = (inboundText || "").toLowerCase();
+    const lowerInbound = (text || "").toLowerCase();
     const clientAskedForAudio =
       /\b(a[uú]dio|voz|falando|falada|por v[oó]z)\b/.test(lowerInbound) ||
       /n[ãa]o\s+(sei|consigo|posso)\s+ler/.test(lowerInbound) ||
