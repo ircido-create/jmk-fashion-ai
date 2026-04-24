@@ -73,7 +73,8 @@ async function extractPass(file_base64: string, filename: string, exclude: any[]
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-pro",
+      model: "google/gemini-2.5-flash",
+      max_tokens: 16000,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {
@@ -143,7 +144,7 @@ Deno.serve(async (req) => {
     const seen = new Set<string>();
     let expectedTotal: number | undefined;
     let expectedGrand: number | undefined;
-    const MAX_PASSES = 4;
+    const MAX_PASSES = 2;
 
     for (let pass = 0; pass < MAX_PASSES; pass++) {
       const { items, total_count, grand_total, finishReason } = await extractPass(file_base64, filename, allItems);
