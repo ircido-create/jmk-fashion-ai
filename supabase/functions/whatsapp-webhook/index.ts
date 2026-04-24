@@ -911,11 +911,11 @@ function sanitizeReplyByGender(text: string, gender: "F" | "M" | "U"): string {
 async function buildContext(phone: string, userMsg: string, history: any[]) {
   const supplierMentioned = await detectSupplier(userMsg);
   const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
-  const focused = await detectFocusedProduct(history);
+  const focusedResult = await detectFocusedProduct(history);
 
   const { data: rawCustomer } = await supabase
     .from("customers")
-    .select("id, name, address, email")
+    .select("id, name, nickname, address, email")
     .eq("phone", phone)
     .maybeSingle();
 
@@ -934,7 +934,18 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
 
   const missing = missingFields(customer);
 
-  return { matched, all, customer, debts, missing, supplierMentioned, focused };
+  return {
+    matched,
+    all,
+    customer,
+    debts,
+    missing,
+    supplierMentioned,
+    focused: focusedResult.product,
+    focusedSource: focusedResult.source,
+    focusedAmbiguous: focusedResult.ambiguous,
+    focusedMediaCaption: focusedResult.mediaCaption ?? null,
+  };
 }
 
 function formatProducts(list: any[]) {
