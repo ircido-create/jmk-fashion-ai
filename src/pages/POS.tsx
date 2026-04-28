@@ -270,22 +270,26 @@ export default function POS() {
 
     const isCredit = paymentMethod === "credito";
     const isFiado = paymentMethod === "fiado";
-    const numInstallments = isCredit ? Math.max(1, installments) : 1;
+    const numInstallments =
+      isCredit || isFiado ? Math.max(1, installments) : 1;
     const willCreateReceivables = isFiado || (isCredit && generateReceivables);
 
     setSaving(true);
     try {
       let firstReceivableId: string | null = null;
 
-      // 1) Contas a receber (uma por parcela, ou única para fiado)
+      // 1) Contas a receber (uma por parcela)
       if (willCreateReceivables) {
         const baseDate = new Date();
-        const totalParts = isFiado ? 1 : numInstallments;
+        const totalParts = numInstallments;
         const parcelaValor = Math.round((total / totalParts) * 100) / 100;
         const records: any[] = [];
         for (let i = 0; i < totalParts; i++) {
-          // Fiado: vence hoje. Crédito parcelado: 1ª parcela em 30d, depois mensal
-          const due = isFiado ? new Date() : addMonths(baseDate, i + 1);
+          // 1ª parcela: fiado vence hoje, crédito em 30d. Demais: mensal
+          const due =
+            isFiado && i === 0
+              ? new Date()
+              : addMonths(baseDate, isFiado ? i : i + 1);
           // Ajusta centavos da última parcela
           const valor =
             i === totalParts - 1
@@ -295,9 +299,10 @@ export default function POS() {
             customer_id: customerId,
             amount: valor,
             due_date: due.toISOString().slice(0, 10),
-            description: isFiado
-              ? `Fiado — ${cart.length} item(ns)`
-              : `Venda parcelada (${i + 1}/${totalParts}) — ${PAYMENT_LABELS[paymentMethod]}`,
+            description:
+              totalParts === 1
+                ? `${PAYMENT_LABELS[paymentMethod]} — ${cart.length} item(ns)`
+                : `${PAYMENT_LABELS[paymentMethod]} (${i + 1}/${totalParts}) — ${cart.length} item(ns)`,
             status: "pendente",
           });
         }
