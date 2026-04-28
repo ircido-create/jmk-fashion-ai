@@ -73,6 +73,11 @@ export default function POS() {
   const [generateReceivables, setGenerateReceivables] = useState<boolean>(true);
   const [cashReceived, setCashReceived] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [firstDueDate, setFirstDueDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  });
 
   // Saving + receipt
   const [saving, setSaving] = useState(false);
