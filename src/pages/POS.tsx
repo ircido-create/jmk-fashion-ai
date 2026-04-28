@@ -632,17 +632,29 @@ export default function POS() {
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
                           <SelectItem key={n} value={String(n)}>
                             {n === 1
-                              ? `À vista — ${fmtBRL(total)} (vence hoje)`
+                              ? `À vista — ${fmtBRL(total)}`
                               : `${n}x de ${fmtBRL(total / n)} (mensal)`}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label>Vencimento da 1ª parcela</Label>
+                    <Input
+                      type="date"
+                      value={firstDueDate}
+                      onChange={(e) => setFirstDueDate(e.target.value)}
+                      className="glass-input mt-1"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Padrão: 30 dias após a compra. Você pode alterar conforme combinado com o cliente.
+                    </p>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {installments === 1
-                      ? "Será criada 1 conta a receber vencendo hoje, na carteira do cliente."
-                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª vence hoje).`}
+                      ? `Será criada 1 conta a receber vencendo em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")} na carteira do cliente.`
+                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
                   </p>
                 </TabsContent>
               </Tabs>
