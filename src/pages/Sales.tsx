@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 
@@ -40,12 +40,16 @@ const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "curren
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+type PeriodFilter = "week" | "today" | "month" | "all";
+
 export default function Sales() {
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [period, setPeriod] = useState<PeriodFilter>("week");
+  const [query, setQuery] = useState("");
 
   // Form state
   const [customerId, setCustomerId] = useState<string>("");
@@ -96,6 +100,35 @@ export default function Sales() {
   };
 
   const total = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
+
+  const filteredSales = useMemo(() => {
+    const now = new Date();
+    let from: Date | null = null;
+    if (period === "today") {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (period === "week") {
+      from = new Date(now);
+      from.setDate(now.getDate() - 7);
+    } else if (period === "month") {
+      from = new Date(now);
+      from.setDate(now.getDate() - 30);
+    }
+    const q = query.trim().toLowerCase();
+    return sales.filter((s) => {
+      if (from && new Date(s.sale_date) < from) return false;
+      if (!q) return true;
+      const inCustomer = (s.customers?.name ?? "").toLowerCase().includes(q);
+      const inItems = s.sale_items.some((it) =>
+        it.product_name.toLowerCase().includes(q),
+      );
+      return inCustomer || inItems;
+    });
+  }, [sales, period, query]);
+
+  const periodTotal = useMemo(
+    () => filteredSales.reduce((s, x) => s + Number(x.total || 0), 0),
+    [filteredSales],
+  );
 
   const reset = () => {
     setCustomerId(""); setDueDate(todayISO()); setNotes(""); setCart([]);
@@ -269,9 +302,44 @@ export default function Sales() {
         }
       />
 
+      <GlassCard className="mb-3 p-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="flex gap-1 flex-wrap">
+            {([
+              { v: "today", label: "Hoje" },
+              { v: "week", label: "Últimos 7 dias" },
+              { v: "month", label: "Últimos 30 dias" },
+              { v: "all", label: "Todas" },
+            ] as { v: PeriodFilter; label: string }[]).map((opt) => (
+              <Button
+                key={opt.v}
+                size="sm"
+                variant={period === opt.v ? "default" : "outline"}
+                onClick={() => setPeriod(opt.v)}
+                className={period === opt.v ? "bg-gradient-primary text-primary-foreground" : ""}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por cliente ou produto…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="glass-input pl-9"
+            />
+          </div>
+          <div className="text-sm text-muted-foreground sm:ml-auto whitespace-nowrap">
+            {filteredSales.length} venda(s) · <span className="font-semibold text-primary">{fmtBRL(periodTotal)}</span>
+          </div>
+        </div>
+      </GlassCard>
+
       <GlassCard>
         <div className="space-y-3">
-          {sales.map((s) => (
+          {filteredSales.map((s) => (
             <div key={s.id} className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
@@ -293,7 +361,11 @@ export default function Sales() {
               </div>
             </div>
           ))}
-          {sales.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nenhuma venda</div>}
+          {filteredSales.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              Nenhuma venda encontrada
+            </div>
+          )}
         </div>
       </GlassCard>
     </div>
