@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 
@@ -40,12 +40,16 @@ const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "curren
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+type PeriodFilter = "week" | "today" | "month" | "all";
+
 export default function Sales() {
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [period, setPeriod] = useState<PeriodFilter>("week");
+  const [query, setQuery] = useState("");
 
   // Form state
   const [customerId, setCustomerId] = useState<string>("");
