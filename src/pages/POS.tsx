@@ -73,6 +73,11 @@ export default function POS() {
   const [generateReceivables, setGenerateReceivables] = useState<boolean>(true);
   const [cashReceived, setCashReceived] = useState<string>("");
   const [notes, setNotes] = useState("");
+  const [firstDueDate, setFirstDueDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  });
 
   // Saving + receipt
   const [saving, setSaving] = useState(false);
@@ -236,6 +241,9 @@ export default function POS() {
     setGenerateReceivables(true);
     setCashReceived("");
     setNotes("");
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    setFirstDueDate(d.toISOString().slice(0, 10));
   };
 
   // ---------- Step navigation ----------
@@ -280,16 +288,14 @@ export default function POS() {
 
       // 1) Contas a receber (uma por parcela)
       if (willCreateReceivables) {
-        const baseDate = new Date();
+        // Base = data da 1ª parcela escolhida (default 30 dias para fiado/crédito)
+        const baseDate = new Date(firstDueDate + "T00:00:00");
         const totalParts = numInstallments;
         const parcelaValor = Math.round((total / totalParts) * 100) / 100;
         const records: any[] = [];
         for (let i = 0; i < totalParts; i++) {
-          // 1ª parcela: fiado vence hoje, crédito em 30d. Demais: mensal
-          const due =
-            isFiado && i === 0
-              ? new Date()
-              : addMonths(baseDate, isFiado ? i : i + 1);
+          // 1ª parcela na data escolhida; demais somam meses a partir dela
+          const due = i === 0 ? baseDate : addMonths(baseDate, i);
           // Ajusta centavos da última parcela
           const valor =
             i === totalParts - 1
@@ -626,17 +632,29 @@ export default function POS() {
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
                           <SelectItem key={n} value={String(n)}>
                             {n === 1
-                              ? `À vista — ${fmtBRL(total)} (vence hoje)`
+                              ? `À vista — ${fmtBRL(total)}`
                               : `${n}x de ${fmtBRL(total / n)} (mensal)`}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label>Vencimento da 1ª parcela</Label>
+                    <Input
+                      type="date"
+                      value={firstDueDate}
+                      onChange={(e) => setFirstDueDate(e.target.value)}
+                      className="glass-input mt-1"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Padrão: 30 dias após a compra. Você pode alterar conforme combinado com o cliente.
+                    </p>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {installments === 1
-                      ? "Será criada 1 conta a receber vencendo hoje, na carteira do cliente."
-                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª vence hoje).`}
+                      ? `Será criada 1 conta a receber vencendo em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")} na carteira do cliente.`
+                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
                   </p>
                 </TabsContent>
               </Tabs>
