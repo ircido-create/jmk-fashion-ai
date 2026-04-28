@@ -46,7 +46,7 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   debito: "Cartão de Débito",
   credito: "Cartão de Crédito",
   pix: "PIX",
-  fiado: "Fiado (Carteira)",
+  fiado: "Carteira",
 };
 
 type Step = 1 | 2 | 3;
@@ -248,7 +248,7 @@ export default function POS() {
       setStep(2);
     } else if (step === 2) {
       if (!customerId && paymentMethod === "fiado") {
-        toast.error("Cliente obrigatório para venda fiado");
+        toast.error("Cliente obrigatório para venda na carteira");
         return;
       }
       // Cliente é opcional para outras formas, mas vamos exigir para o cupom ficar mais completo
