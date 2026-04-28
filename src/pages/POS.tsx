@@ -867,7 +867,14 @@ export default function POS() {
                 </>
               )}
               {receipt.payment === "fiado" && (
-                <div>Lançado em Contas a Receber.</div>
+                <>
+                  {receipt.installments > 1 && (
+                    <div>
+                      {receipt.installments}x de {fmtBRL(receipt.subtotal / receipt.installments)}
+                    </div>
+                  )}
+                  <div>Lançado na carteira do cliente.</div>
+                </>
               )}
               <div className="sep" />
               <div className="center">Obrigado pela preferência!</div>
