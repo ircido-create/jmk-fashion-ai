@@ -537,13 +537,19 @@ export default function POS() {
           {step === 3 && (
             <GlassCard className="p-4">
               <Label className="mb-3 block">Forma de pagamento</Label>
-              <Tabs value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+              <Tabs
+                value={paymentMethod}
+                onValueChange={(v) => {
+                  setPaymentMethod(v as PaymentMethod);
+                  setInstallments(1);
+                }}
+              >
                 <TabsList className="grid grid-cols-5 w-full">
                   <TabsTrigger value="dinheiro">Dinheiro</TabsTrigger>
                   <TabsTrigger value="debito">Débito</TabsTrigger>
                   <TabsTrigger value="credito">Crédito</TabsTrigger>
                   <TabsTrigger value="pix">PIX</TabsTrigger>
-                  <TabsTrigger value="fiado">Fiado</TabsTrigger>
+                  <TabsTrigger value="fiado">Carteira</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="dinheiro" className="mt-4 space-y-3">
@@ -606,9 +612,31 @@ export default function POS() {
                   <p className="text-sm text-muted-foreground">Pagamento à vista via PIX.</p>
                 </TabsContent>
 
-                <TabsContent value="fiado" className="mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Será criada uma conta a receber em nome do cliente.
+                <TabsContent value="fiado" className="mt-4 space-y-3">
+                  <div>
+                    <Label>Parcelas</Label>
+                    <Select
+                      value={String(installments)}
+                      onValueChange={(v) => setInstallments(Number(v))}
+                    >
+                      <SelectTrigger className="glass-input mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            {n === 1
+                              ? `À vista — ${fmtBRL(total)} (vence hoje)`
+                              : `${n}x de ${fmtBRL(total / n)} (mensal)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {installments === 1
+                      ? "Será criada 1 conta a receber vencendo hoje, na carteira do cliente."
+                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª vence hoje).`}
                   </p>
                 </TabsContent>
               </Tabs>
