@@ -302,9 +302,44 @@ export default function Sales() {
         }
       />
 
+      <GlassCard className="mb-3 p-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="flex gap-1 flex-wrap">
+            {([
+              { v: "today", label: "Hoje" },
+              { v: "week", label: "Últimos 7 dias" },
+              { v: "month", label: "Últimos 30 dias" },
+              { v: "all", label: "Todas" },
+            ] as { v: PeriodFilter; label: string }[]).map((opt) => (
+              <Button
+                key={opt.v}
+                size="sm"
+                variant={period === opt.v ? "default" : "outline"}
+                onClick={() => setPeriod(opt.v)}
+                className={period === opt.v ? "bg-gradient-primary text-primary-foreground" : ""}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por cliente ou produto…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="glass-input pl-9"
+            />
+          </div>
+          <div className="text-sm text-muted-foreground sm:ml-auto whitespace-nowrap">
+            {filteredSales.length} venda(s) · <span className="font-semibold text-primary">{fmtBRL(periodTotal)}</span>
+          </div>
+        </div>
+      </GlassCard>
+
       <GlassCard>
         <div className="space-y-3">
-          {sales.map((s) => (
+          {filteredSales.map((s) => (
             <div key={s.id} className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
@@ -326,7 +361,11 @@ export default function Sales() {
               </div>
             </div>
           ))}
-          {sales.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nenhuma venda</div>}
+          {filteredSales.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              Nenhuma venda encontrada
+            </div>
+          )}
         </div>
       </GlassCard>
     </div>
