@@ -101,6 +101,35 @@ export default function Sales() {
 
   const total = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
 
+  const filteredSales = useMemo(() => {
+    const now = new Date();
+    let from: Date | null = null;
+    if (period === "today") {
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (period === "week") {
+      from = new Date(now);
+      from.setDate(now.getDate() - 7);
+    } else if (period === "month") {
+      from = new Date(now);
+      from.setDate(now.getDate() - 30);
+    }
+    const q = query.trim().toLowerCase();
+    return sales.filter((s) => {
+      if (from && new Date(s.sale_date) < from) return false;
+      if (!q) return true;
+      const inCustomer = (s.customers?.name ?? "").toLowerCase().includes(q);
+      const inItems = s.sale_items.some((it) =>
+        it.product_name.toLowerCase().includes(q),
+      );
+      return inCustomer || inItems;
+    });
+  }, [sales, period, query]);
+
+  const periodTotal = useMemo(
+    () => filteredSales.reduce((s, x) => s + Number(x.total || 0), 0),
+    [filteredSales],
+  );
+
   const reset = () => {
     setCustomerId(""); setDueDate(todayISO()); setNotes(""); setCart([]);
     setPickProduct(""); setPickVariant(""); setPickQty(1);
