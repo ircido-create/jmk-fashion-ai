@@ -13,6 +13,7 @@ import Customers from "./pages/Customers";
 import CustomerDetail from "./pages/CustomerDetail";
 import Inventory from "./pages/Inventory";
 import Sales from "./pages/Sales";
+import POS from "./pages/POS";
 import Receivable from "./pages/Receivable";
 import Payable from "./pages/Payable";
 import WhatsApp from "./pages/WhatsApp";
@@ -41,6 +42,7 @@ const App = () => (
                 <Route path="/clientes/:id" element={<CustomerDetail />} />
                 <Route path="/estoque" element={<Inventory />} />
                 <Route path="/vendas" element={<Sales />} />
+                <Route path="/pdv" element={<POS />} />
                 <Route path="/contas-receber" element={<Receivable />} />
                 <Route path="/contas-pagar" element={<Payable />} />
                 <Route path="/conversas" element={<Conversations />} />
