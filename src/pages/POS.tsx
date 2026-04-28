@@ -46,7 +46,7 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   debito: "Cartão de Débito",
   credito: "Cartão de Crédito",
   pix: "PIX",
-  fiado: "Fiado (Carteira)",
+  fiado: "Carteira",
 };
 
 type Step = 1 | 2 | 3;
@@ -248,7 +248,7 @@ export default function POS() {
       setStep(2);
     } else if (step === 2) {
       if (!customerId && paymentMethod === "fiado") {
-        toast.error("Cliente obrigatório para venda fiado");
+        toast.error("Cliente obrigatório para venda na carteira");
         return;
       }
       // Cliente é opcional para outras formas, mas vamos exigir para o cupom ficar mais completo
@@ -270,22 +270,26 @@ export default function POS() {
 
     const isCredit = paymentMethod === "credito";
     const isFiado = paymentMethod === "fiado";
-    const numInstallments = isCredit ? Math.max(1, installments) : 1;
+    const numInstallments =
+      isCredit || isFiado ? Math.max(1, installments) : 1;
     const willCreateReceivables = isFiado || (isCredit && generateReceivables);
 
     setSaving(true);
     try {
       let firstReceivableId: string | null = null;
 
-      // 1) Contas a receber (uma por parcela, ou única para fiado)
+      // 1) Contas a receber (uma por parcela)
       if (willCreateReceivables) {
         const baseDate = new Date();
-        const totalParts = isFiado ? 1 : numInstallments;
+        const totalParts = numInstallments;
         const parcelaValor = Math.round((total / totalParts) * 100) / 100;
         const records: any[] = [];
         for (let i = 0; i < totalParts; i++) {
-          // Fiado: vence hoje. Crédito parcelado: 1ª parcela em 30d, depois mensal
-          const due = isFiado ? new Date() : addMonths(baseDate, i + 1);
+          // 1ª parcela: fiado vence hoje, crédito em 30d. Demais: mensal
+          const due =
+            isFiado && i === 0
+              ? new Date()
+              : addMonths(baseDate, isFiado ? i : i + 1);
           // Ajusta centavos da última parcela
           const valor =
             i === totalParts - 1
@@ -295,9 +299,10 @@ export default function POS() {
             customer_id: customerId,
             amount: valor,
             due_date: due.toISOString().slice(0, 10),
-            description: isFiado
-              ? `Fiado — ${cart.length} item(ns)`
-              : `Venda parcelada (${i + 1}/${totalParts}) — ${PAYMENT_LABELS[paymentMethod]}`,
+            description:
+              totalParts === 1
+                ? `${PAYMENT_LABELS[paymentMethod]} — ${cart.length} item(ns)`
+                : `${PAYMENT_LABELS[paymentMethod]} (${i + 1}/${totalParts}) — ${cart.length} item(ns)`,
             status: "pendente",
           });
         }
@@ -532,13 +537,19 @@ export default function POS() {
           {step === 3 && (
             <GlassCard className="p-4">
               <Label className="mb-3 block">Forma de pagamento</Label>
-              <Tabs value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+              <Tabs
+                value={paymentMethod}
+                onValueChange={(v) => {
+                  setPaymentMethod(v as PaymentMethod);
+                  setInstallments(1);
+                }}
+              >
                 <TabsList className="grid grid-cols-5 w-full">
                   <TabsTrigger value="dinheiro">Dinheiro</TabsTrigger>
                   <TabsTrigger value="debito">Débito</TabsTrigger>
                   <TabsTrigger value="credito">Crédito</TabsTrigger>
                   <TabsTrigger value="pix">PIX</TabsTrigger>
-                  <TabsTrigger value="fiado">Fiado</TabsTrigger>
+                  <TabsTrigger value="fiado">Carteira</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="dinheiro" className="mt-4 space-y-3">
@@ -601,9 +612,31 @@ export default function POS() {
                   <p className="text-sm text-muted-foreground">Pagamento à vista via PIX.</p>
                 </TabsContent>
 
-                <TabsContent value="fiado" className="mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Será criada uma conta a receber em nome do cliente.
+                <TabsContent value="fiado" className="mt-4 space-y-3">
+                  <div>
+                    <Label>Parcelas</Label>
+                    <Select
+                      value={String(installments)}
+                      onValueChange={(v) => setInstallments(Number(v))}
+                    >
+                      <SelectTrigger className="glass-input mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            {n === 1
+                              ? `À vista — ${fmtBRL(total)} (vence hoje)`
+                              : `${n}x de ${fmtBRL(total / n)} (mensal)`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {installments === 1
+                      ? "Será criada 1 conta a receber vencendo hoje, na carteira do cliente."
+                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª vence hoje).`}
                   </p>
                 </TabsContent>
               </Tabs>
@@ -834,7 +867,14 @@ export default function POS() {
                 </>
               )}
               {receipt.payment === "fiado" && (
-                <div>Lançado em Contas a Receber.</div>
+                <>
+                  {receipt.installments > 1 && (
+                    <div>
+                      {receipt.installments}x de {fmtBRL(receipt.subtotal / receipt.installments)}
+                    </div>
+                  )}
+                  <div>Lançado na carteira do cliente.</div>
+                </>
               )}
               <div className="sep" />
               <div className="center">Obrigado pela preferência!</div>
