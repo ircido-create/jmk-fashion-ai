@@ -489,7 +489,9 @@ export type Database = {
           created_at: string
           customer_id: string | null
           id: string
+          installments: number | null
           notes: string | null
+          payment_method: string | null
           receivable_id: string | null
           sale_date: string
           total: number
@@ -499,7 +501,9 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           id?: string
+          installments?: number | null
           notes?: string | null
+          payment_method?: string | null
           receivable_id?: string | null
           sale_date?: string
           total?: number
@@ -509,7 +513,9 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           id?: string
+          installments?: number | null
           notes?: string | null
+          payment_method?: string | null
           receivable_id?: string | null
           sale_date?: string
           total?: number
