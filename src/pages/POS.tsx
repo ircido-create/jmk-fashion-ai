@@ -241,6 +241,9 @@ export default function POS() {
     setGenerateReceivables(true);
     setCashReceived("");
     setNotes("");
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    setFirstDueDate(d.toISOString().slice(0, 10));
   };
 
   // ---------- Step navigation ----------
@@ -285,16 +288,14 @@ export default function POS() {
 
       // 1) Contas a receber (uma por parcela)
       if (willCreateReceivables) {
-        const baseDate = new Date();
+        // Base = data da 1ª parcela escolhida (default 30 dias para fiado/crédito)
+        const baseDate = new Date(firstDueDate + "T00:00:00");
         const totalParts = numInstallments;
         const parcelaValor = Math.round((total / totalParts) * 100) / 100;
         const records: any[] = [];
         for (let i = 0; i < totalParts; i++) {
-          // 1ª parcela: fiado vence hoje, crédito em 30d. Demais: mensal
-          const due =
-            isFiado && i === 0
-              ? new Date()
-              : addMonths(baseDate, isFiado ? i : i + 1);
+          // 1ª parcela na data escolhida; demais somam meses a partir dela
+          const due = i === 0 ? baseDate : addMonths(baseDate, i);
           // Ajusta centavos da última parcela
           const valor =
             i === totalParts - 1
