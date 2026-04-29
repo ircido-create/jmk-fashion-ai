@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Link } from "react-router-dom";
@@ -31,6 +31,41 @@ export default function Customers() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [search, setSearch] = useState("");
+  const [cep, setCep] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
+  const addressRef = useRef<HTMLTextAreaElement>(null);
+
+  const formatCep = (v: string) => {
+    const d = v.replace(/\D/g, "").slice(0, 8);
+    return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+  };
+
+  const lookupCep = async () => {
+    const d = cep.replace(/\D/g, "");
+    if (d.length !== 8) { toast.error("CEP deve ter 8 dígitos"); return; }
+    setCepLoading(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${d}/json/`);
+      const j = await res.json();
+      if (j.erro) { toast.error("CEP não encontrado"); return; }
+      const parts = [
+        j.logradouro,
+        j.bairro,
+        j.localidade && j.uf ? `${j.localidade} - ${j.uf}` : (j.localidade || j.uf),
+        `CEP ${formatCep(d)}`,
+      ].filter(Boolean);
+      if (addressRef.current) {
+        addressRef.current.value = parts.join(", ");
+        addressRef.current.focus();
+      }
+      toast.success("Endereço preenchido");
+    } catch {
+      toast.error("Erro ao buscar CEP");
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
 
   const load = async () => {
     try {
@@ -100,7 +135,7 @@ export default function Customers() {
         title="Clientes"
         description={`${list.length} clientes cadastrados`}
         actions={
-          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null); }}>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setCep(""); } }}>
             <DialogTrigger asChild>
               <Button className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
                 <Plus className="h-4 w-4 mr-1" /> Novo
@@ -114,7 +149,23 @@ export default function Customers() {
                 <div><Label>CPF / CNPJ</Label><Input name="tax_id" defaultValue={formatTaxId(editing?.tax_id)} placeholder="000.000.000-00" className="glass-input" /></div>
                 <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
                 <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
-                <div><Label>Endereço</Label><Textarea name="address" defaultValue={editing?.address ?? ""} placeholder="Rua, número, bairro, cidade — UF, CEP" className="glass-input" rows={2} /></div>
+                <div>
+                  <Label>CEP (busca automática do endereço)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={cep}
+                      onChange={(e) => setCep(formatCep(e.target.value))}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); lookupCep(); } }}
+                      placeholder="00000-000"
+                      inputMode="numeric"
+                      className="glass-input"
+                    />
+                    <Button type="button" onClick={lookupCep} disabled={cepLoading} variant="secondary" className="rounded-xl">
+                      {cepLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div><Label>Endereço</Label><Textarea ref={addressRef} name="address" defaultValue={editing?.address ?? ""} placeholder="Rua, número, bairro, cidade — UF, CEP" className="glass-input" rows={2} /></div>
                 <div><Label>Observações</Label><Textarea name="notes" defaultValue={editing?.notes ?? ""} className="glass-input" rows={3} /></div>
                 <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
               </form>
