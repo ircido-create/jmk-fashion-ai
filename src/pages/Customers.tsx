@@ -135,7 +135,7 @@ export default function Customers() {
         title="Clientes"
         description={`${list.length} clientes cadastrados`}
         actions={
-          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(null); }}>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setCep(""); } }}>
             <DialogTrigger asChild>
               <Button className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
                 <Plus className="h-4 w-4 mr-1" /> Novo
