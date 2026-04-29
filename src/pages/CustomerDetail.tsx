@@ -184,6 +184,81 @@ export default function CustomerDetail() {
         <SmallCard label="Lucro gerado" value={fmtBRL(totals.profit)} success />
       </div>
 
+      {/* Parcelas / Carteira */}
+      <GlassCard>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-primary" />
+            Carteira — Parcelas pendentes
+          </h3>
+          <span className="text-xs text-muted-foreground">
+            {pendingReceivables.length} parcela(s) em aberto
+          </span>
+        </div>
+
+        {pendingReceivables.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            Nenhuma parcela pendente. 🎉
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2 mb-3 p-2 rounded-xl bg-white/40 dark:bg-white/5">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={selected.size === pendingReceivables.length && pendingReceivables.length > 0}
+                  onCheckedChange={toggleAll}
+                />
+                Selecionar todas
+              </label>
+              <div className="flex items-center gap-3">
+                {selected.size > 0 && (
+                  <span className="text-sm">
+                    <span className="text-muted-foreground">Selecionado:</span>{" "}
+                    <span className="font-semibold text-primary">{fmtBRL(selectedTotal)}</span>
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  onClick={paySelected}
+                  disabled={selected.size === 0 || paying}
+                >
+                  {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+                  Pagar selecionadas ({selected.size})
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {pendingReceivables.map((r) => {
+                const overdue = new Date(r.due_date) < new Date(new Date().toDateString());
+                return (
+                  <label
+                    key={r.id}
+                    className={`flex items-center gap-3 p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur cursor-pointer hover:bg-white/60 transition ${
+                      selected.has(r.id) ? "ring-2 ring-primary" : ""
+                    }`}
+                  >
+                    <Checkbox
+                      checked={selected.has(r.id)}
+                      onCheckedChange={() => toggle(r.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {r.description || "Parcela"}
+                      </div>
+                      <div className={`text-xs ${overdue ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                        Vence em {fmtDate(r.due_date)} {overdue && "• vencida"}
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold">{fmtBRL(Number(r.amount))}</div>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </GlassCard>
+
       {/* Histórico de produtos */}
       <GlassCard>
         <div className="flex items-center justify-between mb-3">
