@@ -31,6 +31,41 @@ export default function Customers() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [search, setSearch] = useState("");
+  const [cep, setCep] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
+  const addressRef = useRef<HTMLTextAreaElement>(null);
+
+  const formatCep = (v: string) => {
+    const d = v.replace(/\D/g, "").slice(0, 8);
+    return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+  };
+
+  const lookupCep = async () => {
+    const d = cep.replace(/\D/g, "");
+    if (d.length !== 8) { toast.error("CEP deve ter 8 dígitos"); return; }
+    setCepLoading(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${d}/json/`);
+      const j = await res.json();
+      if (j.erro) { toast.error("CEP não encontrado"); return; }
+      const parts = [
+        j.logradouro,
+        j.bairro,
+        j.localidade && j.uf ? `${j.localidade} - ${j.uf}` : (j.localidade || j.uf),
+        `CEP ${formatCep(d)}`,
+      ].filter(Boolean);
+      if (addressRef.current) {
+        addressRef.current.value = parts.join(", ");
+        addressRef.current.focus();
+      }
+      toast.success("Endereço preenchido");
+    } catch {
+      toast.error("Erro ao buscar CEP");
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
 
   const load = async () => {
     try {
