@@ -36,27 +36,66 @@ export default function CustomerDetail() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
-  const [receivables, setReceivables] = useState<ReceivableLike[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [paying, setPaying] = useState(false);
 
-  useEffect(() => {
+  const load = async () => {
     if (!id) return;
-    const load = async () => {
-      setLoading(true);
-      const [c, s, r] = await Promise.all([
-        supabase.from("customers").select("*").eq("id", id).maybeSingle(),
-        supabase.from("sales").select("*, sale_items(*)").eq("customer_id", id).order("sale_date", { ascending: false }),
-        supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at").eq("customer_id", id),
-      ]);
-      if (c.error) toast.error(c.error.message);
-      setCustomer(c.data as Customer | null);
-      setSales((s.data ?? []) as Sale[]);
-      setReceivables((r.data ?? []) as ReceivableLike[]);
-      setLoading(false);
-    };
-    load();
-  }, [id]);
+    setLoading(true);
+    const [c, s, r] = await Promise.all([
+      supabase.from("customers").select("*").eq("id", id).maybeSingle(),
+      supabase.from("sales").select("*, sale_items(*)").eq("customer_id", id).order("sale_date", { ascending: false }),
+      supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at, description").eq("customer_id", id).order("due_date", { ascending: true }),
+    ]);
+    if (c.error) toast.error(c.error.message);
+    setCustomer(c.data as Customer | null);
+    setSales((s.data ?? []) as Sale[]);
+    setReceivables((r.data ?? []) as Receivable[]);
+    setSelected(new Set());
+    setLoading(false);
+  };
 
-  const trust = useMemo(() => calculateTrust(receivables), [receivables]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  const trust = useMemo(() => calculateTrust(receivables as ReceivableLike[]), [receivables]);
+
+  const pendingReceivables = useMemo(
+    () => receivables.filter(r => r.status !== "pago"),
+    [receivables]
+  );
+
+  const selectedTotal = useMemo(
+    () => pendingReceivables.filter(r => selected.has(r.id)).reduce((s, r) => s + Number(r.amount), 0),
+    [pendingReceivables, selected]
+  );
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === pendingReceivables.length) setSelected(new Set());
+    else setSelected(new Set(pendingReceivables.map(r => r.id)));
+  };
+
+  const paySelected = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Marcar ${selected.size} parcela(s) como paga(s)? Total: ${fmtBRL(selectedTotal)}`)) return;
+    setPaying(true);
+    const { error } = await supabase
+      .from("accounts_receivable")
+      .update({ status: "pago", paid_at: new Date().toISOString() })
+      .in("id", Array.from(selected));
+    setPaying(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`${selected.size} parcela(s) quitada(s)`);
+    await load();
+  };
 
   const totals = useMemo(() => {
     let revenue = 0, cost = 0, units = 0;
