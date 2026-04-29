@@ -3,10 +3,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard, Wallet, CheckCircle2 } from "lucide-react";
 import { calculateTrust, trustBgClass, type ReceivableLike } from "@/lib/trustScore";
 import { toast } from "sonner";
 import { formatTaxId } from "@/lib/taxId";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
@@ -21,6 +22,10 @@ interface Sale {
   receivable_id: string | null;
   sale_items: SaleItem[];
 }
+interface Receivable {
+  id: string; amount: number; due_date: string;
+  status: string; paid_at: string | null; description: string | null;
+}
 
 const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
@@ -31,27 +36,66 @@ export default function CustomerDetail() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
-  const [receivables, setReceivables] = useState<ReceivableLike[]>([]);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [paying, setPaying] = useState(false);
 
-  useEffect(() => {
+  const load = async () => {
     if (!id) return;
-    const load = async () => {
-      setLoading(true);
-      const [c, s, r] = await Promise.all([
-        supabase.from("customers").select("*").eq("id", id).maybeSingle(),
-        supabase.from("sales").select("*, sale_items(*)").eq("customer_id", id).order("sale_date", { ascending: false }),
-        supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at").eq("customer_id", id),
-      ]);
-      if (c.error) toast.error(c.error.message);
-      setCustomer(c.data as Customer | null);
-      setSales((s.data ?? []) as Sale[]);
-      setReceivables((r.data ?? []) as ReceivableLike[]);
-      setLoading(false);
-    };
-    load();
-  }, [id]);
+    setLoading(true);
+    const [c, s, r] = await Promise.all([
+      supabase.from("customers").select("*").eq("id", id).maybeSingle(),
+      supabase.from("sales").select("*, sale_items(*)").eq("customer_id", id).order("sale_date", { ascending: false }),
+      supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at, description").eq("customer_id", id).order("due_date", { ascending: true }),
+    ]);
+    if (c.error) toast.error(c.error.message);
+    setCustomer(c.data as Customer | null);
+    setSales((s.data ?? []) as Sale[]);
+    setReceivables((r.data ?? []) as Receivable[]);
+    setSelected(new Set());
+    setLoading(false);
+  };
 
-  const trust = useMemo(() => calculateTrust(receivables), [receivables]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  const trust = useMemo(() => calculateTrust(receivables as ReceivableLike[]), [receivables]);
+
+  const pendingReceivables = useMemo(
+    () => receivables.filter(r => r.status !== "pago"),
+    [receivables]
+  );
+
+  const selectedTotal = useMemo(
+    () => pendingReceivables.filter(r => selected.has(r.id)).reduce((s, r) => s + Number(r.amount), 0),
+    [pendingReceivables, selected]
+  );
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === pendingReceivables.length) setSelected(new Set());
+    else setSelected(new Set(pendingReceivables.map(r => r.id)));
+  };
+
+  const paySelected = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Marcar ${selected.size} parcela(s) como paga(s)? Total: ${fmtBRL(selectedTotal)}`)) return;
+    setPaying(true);
+    const { error } = await supabase
+      .from("accounts_receivable")
+      .update({ status: "pago", paid_at: new Date().toISOString() })
+      .in("id", Array.from(selected));
+    setPaying(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`${selected.size} parcela(s) quitada(s)`);
+    await load();
+  };
 
   const totals = useMemo(() => {
     let revenue = 0, cost = 0, units = 0;
@@ -139,6 +183,81 @@ export default function CustomerDetail() {
         <SmallCard label="Total comprado" value={fmtBRL(totals.revenue)} accent />
         <SmallCard label="Lucro gerado" value={fmtBRL(totals.profit)} success />
       </div>
+
+      {/* Parcelas / Carteira */}
+      <GlassCard>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-primary" />
+            Carteira — Parcelas pendentes
+          </h3>
+          <span className="text-xs text-muted-foreground">
+            {pendingReceivables.length} parcela(s) em aberto
+          </span>
+        </div>
+
+        {pendingReceivables.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            Nenhuma parcela pendente. 🎉
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2 mb-3 p-2 rounded-xl bg-white/40 dark:bg-white/5">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={selected.size === pendingReceivables.length && pendingReceivables.length > 0}
+                  onCheckedChange={toggleAll}
+                />
+                Selecionar todas
+              </label>
+              <div className="flex items-center gap-3">
+                {selected.size > 0 && (
+                  <span className="text-sm">
+                    <span className="text-muted-foreground">Selecionado:</span>{" "}
+                    <span className="font-semibold text-primary">{fmtBRL(selectedTotal)}</span>
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  onClick={paySelected}
+                  disabled={selected.size === 0 || paying}
+                >
+                  {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+                  Pagar selecionadas ({selected.size})
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {pendingReceivables.map((r) => {
+                const overdue = new Date(r.due_date) < new Date(new Date().toDateString());
+                return (
+                  <label
+                    key={r.id}
+                    className={`flex items-center gap-3 p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur cursor-pointer hover:bg-white/60 transition ${
+                      selected.has(r.id) ? "ring-2 ring-primary" : ""
+                    }`}
+                  >
+                    <Checkbox
+                      checked={selected.has(r.id)}
+                      onCheckedChange={() => toggle(r.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {r.description || "Parcela"}
+                      </div>
+                      <div className={`text-xs ${overdue ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                        Vence em {fmtDate(r.due_date)} {overdue && "• vencida"}
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold">{fmtBRL(Number(r.amount))}</div>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </GlassCard>
 
       {/* Histórico de produtos */}
       <GlassCard>
