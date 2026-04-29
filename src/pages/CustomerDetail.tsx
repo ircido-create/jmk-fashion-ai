@@ -3,10 +3,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard, Wallet, CheckCircle2 } from "lucide-react";
 import { calculateTrust, trustBgClass, type ReceivableLike } from "@/lib/trustScore";
 import { toast } from "sonner";
 import { formatTaxId } from "@/lib/taxId";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
@@ -20,6 +21,10 @@ interface Sale {
   id: string; sale_date: string; total: number; notes: string | null;
   receivable_id: string | null;
   sale_items: SaleItem[];
+}
+interface Receivable {
+  id: string; amount: number; due_date: string;
+  status: string; paid_at: string | null; description: string | null;
 }
 
 const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
