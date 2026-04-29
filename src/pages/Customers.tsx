@@ -149,7 +149,23 @@ export default function Customers() {
                 <div><Label>CPF / CNPJ</Label><Input name="tax_id" defaultValue={formatTaxId(editing?.tax_id)} placeholder="000.000.000-00" className="glass-input" /></div>
                 <div><Label>Telefone (ex: +5511999999999)</Label><Input name="phone" defaultValue={editing?.phone ?? ""} className="glass-input" /></div>
                 <div><Label>E-mail</Label><Input name="email" type="email" defaultValue={editing?.email ?? ""} className="glass-input" /></div>
-                <div><Label>Endereço</Label><Textarea name="address" defaultValue={editing?.address ?? ""} placeholder="Rua, número, bairro, cidade — UF, CEP" className="glass-input" rows={2} /></div>
+                <div>
+                  <Label>CEP (busca automática do endereço)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={cep}
+                      onChange={(e) => setCep(formatCep(e.target.value))}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); lookupCep(); } }}
+                      placeholder="00000-000"
+                      inputMode="numeric"
+                      className="glass-input"
+                    />
+                    <Button type="button" onClick={lookupCep} disabled={cepLoading} variant="secondary" className="rounded-xl">
+                      {cepLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div><Label>Endereço</Label><Textarea ref={addressRef} name="address" defaultValue={editing?.address ?? ""} placeholder="Rua, número, bairro, cidade — UF, CEP" className="glass-input" rows={2} /></div>
                 <div><Label>Observações</Label><Textarea name="notes" defaultValue={editing?.notes ?? ""} className="glass-input" rows={3} /></div>
                 <Button type="submit" className="w-full bg-gradient-primary text-primary-foreground rounded-xl">Salvar</Button>
               </form>
