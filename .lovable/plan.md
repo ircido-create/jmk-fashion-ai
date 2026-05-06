@@ -1,69 +1,77 @@
 
+## Contexto
 
-# Dar baixa em massa nas contas a receber + anexar comprovante do extrato
+Quando um cliente responde ao status do WhatsApp, a Meta **não envia** ao webhook a foto/miniatura do status — só o texto. Logo, a Monica precisa de uma fonte de verdade alternativa para saber quais peças estão "no ar" naquele momento e qual delas o cliente provavelmente está comentando.
 
-## O que vai acontecer
+A solução combina dois pilares:
 
-1. **Todas as 155 contas a receber pendentes** (R$ 43.899,90) serão marcadas como `pago`, com `paid_at = data atual`.
-2. **O arquivo do extrato** (`Extrato_Lançamentos_1145_993315_23-04-2026-2.xlsx`) ficará anexado como **comprovante da baixa**, acessível na tela de Contas a Receber.
-3. A partir de agora, **toda baixa individual ou em massa** poderá ter um documento anexado (PDF, foto, planilha) — útil para anexar comprovantes Pix, extratos bancários, recibos.
+1. **Registro rápido do "Status do Dia"** — você marca quais peças do inventário estão postadas no status (válido por 24h, igual ao status real).
+2. **IA de visão + heurística** — quando chega uma resposta vaga ("quero este", "amei", "valor?"), a Monica considera APENAS as peças ativas no status e usa IA para escolher a mais provável com base no contexto da conversa. Se houver ambiguidade, ela pergunta de forma natural com mini-foto.
 
-## Mudanças no banco
+## Fluxo do usuário
 
-### Nova tabela: `payment_proofs`
-Guarda os comprovantes anexados a baixas:
-- `id`, `created_at`, `created_by`
-- `storage_path` — caminho do arquivo no bucket
-- `original_filename`, `mime_type`, `file_size`
-- `description` — texto livre (ex: "Baixa em massa do extrato 23/04/2026")
-- `payment_date` — data da baixa que esse comprovante representa
+### Postando um status
+1. Você abre uma nova aba **"Status do Dia"** no menu (ou um botão flutuante no Inventário).
+2. Vê todas as peças com foto. Clica nas que acabou de postar no status → ficam marcadas como "ativas" por 24h.
+3. (Atalho) Botão "Postar do romaneio de hoje" pré-seleciona as peças cadastradas nas últimas X horas.
 
-### Nova tabela: `receivable_payments`
-Vincula contas a receber a um comprovante (relação muitos-para-muitos):
-- `receivable_id` → `accounts_receivable.id`
-- `proof_id` → `payment_proofs.id`
-- `amount_paid` — valor efetivamente recebido naquela conta (preparando o terreno para o fluxo de "carteira" com saldo)
+### Cliente responde
+1. Cliente responde "quero este" → webhook recebe só o texto.
+2. Monica detecta resposta curta/ambígua + verifica se há peças no "Status do Dia" ativo.
+3. **Caso 1 — só 1 peça ativa**: assume essa peça, segue a venda normalmente ("Oi linda! O vestido rosa? Tenho nos tamanhos P, M, G — qual o seu?").
+4. **Caso 2 — várias peças ativas**: usa IA + histórico (ex: cliente já tinha perguntado sobre rosa antes? hora do dia bate com algum post?) para escolher top-1. Se confiança alta, segue. Se baixa, responde com até 3 mini-fotos: "Oi! Foi qual dessas? 😊".
+5. Toda venda fechada via status fica marcada com origem `status` no relatório (bônus pra você ver o ROI do canal).
 
-### Novo bucket de storage: `payment-proofs` (privado)
-- RLS: staff (admin + vendedor) pode upload e ler; somente admin pode deletar.
+## Componentes técnicos
 
-## Fluxo de baixa em massa (executado agora)
+### 1. Banco de dados
+Nova tabela `status_posts`:
+- `id`, `product_id` (fk products), `variant_id` (fk product_variants opcional)
+- `image_url` (foto que foi pro status — pode ser a do produto ou upload novo)
+- `posted_at`, `expires_at` (default `posted_at + 24h`)
+- `caption` (opcional, texto que você escreveu no status)
+- `created_by`
 
-1. Upload do arquivo `Extrato_Lançamentos_1145_993315_23-04-2026-2.xlsx` no bucket `payment-proofs`.
-2. Cria 1 registro em `payment_proofs` apontando para esse arquivo, com descrição "Baixa em massa — extrato 23/04/2026".
-3. Para cada uma das 155 contas pendentes:
-   - `UPDATE accounts_receivable SET status='pago', paid_at=now()`
-   - `INSERT INTO receivable_payments (receivable_id, proof_id, amount_paid=amount)`
+RLS: staff vê/insere/atualiza, admin deleta. Índice em `expires_at` para busca rápida de "ativos".
 
-## Mudanças na UI (`src/pages/Receivable.tsx`)
+### 2. UI: Página "Status do Dia" (`/status`)
+- Grid de cards com peças do inventário (busca + filtro por categoria/fornecedor).
+- Toggle "ativo no status" em cada card. Contador "X peças ativas · expiram em Yh".
+- Botão "Limpar status" (encerra todos antes de 24h).
+- Item no `AppSidebar` com ícone de stories.
 
-### Botão "Baixa em massa" (novo)
-- Ao lado de "Nova" e "PDF" no header.
-- Abre um modal: seleciona quais contas dar baixa (default: todas as filtradas atualmente em "A Receber"), permite anexar 1 arquivo, e confirma.
+### 3. Webhook — detecção de resposta de status
+No `whatsapp-webhook/index.ts`, dentro de `buildContext()`:
+- Buscar `status_posts` onde `expires_at > now()`.
+- Adicionar ao `contextText` enviado à IA uma seção:
+  ```
+  PEÇAS ATIVAS NO STATUS AGORA (cliente PODE estar respondendo a uma destas):
+  - [Nome] (id: X) — R$ Y — tamanhos disponíveis: ...
+  - ...
+  ```
+- Atualizar o `SALES_FOCUS` prompt: "Se a mensagem do cliente é curta/ambígua ('quero', 'amei', 'valor', 'tem?') E há peças no status ativo, assuma que ele está respondendo ao status. Se houver só 1 peça ativa, confirme essa peça. Se houver várias, escolha a mais coerente com o histórico OU peça confirmação enviando até 3 fotos."
 
-### Anexar comprovante na baixa individual
-- O botão atual ✓ ("marcar como recebido") passa a abrir um modal pequeno com:
-  - Valor recebido (default = valor da conta)
-  - Anexar comprovante (opcional)
-  - Botão "Confirmar baixa"
+### 4. Heurística de envio de fotos
+A função `searchVariantsWithImages()` já existe para "manda foto". Adicionar nova função `getActiveStatusVariants()` que retorna as peças do `status_posts` ativo, e quando a IA decidir "preciso confirmar qual peça", o webhook envia 1-3 fotos das ativas com legendas curtas ("1️⃣ Vestido rosa", "2️⃣ Conjunto verde").
 
-### Mostrar comprovantes anexados
-- Cada conta paga ganha um ícone 📎 quando tem comprovante. Ao clicar, abre/baixa o arquivo via signed URL.
+### 5. (Opcional, fase 2) Match por imagem
+Se o cliente encaminhar a imagem do status como mídia, a Monica já recebe `image` no webhook. Podemos rodar Lovable AI (gemini-3-flash) com a imagem + as fotos das peças ativas e pedir match. Isso cobre 100% dos casos.
 
-## O que NÃO está nesta tarefa
+### 6. Relatório
+Marcar nas vendas (`sales.notes` ou nova coluna `source`) quando a venda foi originada de status, para você ver depois "X% do faturamento vem do status".
 
-- Tela dedicada de "histórico de comprovantes" (lista todos os arquivos anexados). Pode ser feita depois.
-- Lógica completa de "carteira" (pagou a mais/menos → cria saldo automaticamente). A coluna `amount_paid` em `receivable_payments` já prepara o terreno, mas o fluxo automatizado fica para depois.
+## O que será entregue na fase 1
 
-## Arquivos afetados
+1. Tabela `status_posts` + migration com RLS.
+2. Página `/status` com grid de produtos e toggle ativo/inativo + 24h auto-expira.
+3. Item no sidebar.
+4. Webhook atualizado: contexto de peças ativas injetado no prompt da Monica + lógica de envio de fotos para desambiguar.
+5. Prompt da Monica ajustado para tratar respostas curtas como "resposta de status" quando houver peças ativas.
 
-- `supabase/migrations/` (nova migration: 2 tabelas + bucket + RLS)
-- `src/pages/Receivable.tsx` (botão de baixa em massa + modal de baixa individual com upload + ícone de comprovante)
-- Inserts via tool de banco (upload do extrato + baixa das 155 contas)
+A fase 2 (match por imagem encaminhada) fica pra depois, se você quiser.
 
-## Resultado esperado
+## Limitações honestas
 
-- Tela "Contas a Receber" → aba "A Receber" fica vazia (R$ 0,00).
-- Aba "Pago" mostra as 155 contas com data de hoje, todas com 📎 apontando para o mesmo extrato.
-- Próximas baixas (individuais ou em massa) podem anexar qualquer arquivo como prova.
-
+- **Não há como** a Monica ler a miniatura do status diretamente da resposta do cliente — é restrição da Meta, não tem volta.
+- A precisão depende de você marcar as peças ativas. Se esquecer, a Monica volta ao comportamento atual (perguntar o que é).
+- Se duas peças ativas forem muito parecidas, a confirmação com mini-fotos é o caminho mais seguro.

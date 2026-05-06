@@ -538,6 +538,57 @@ export type Database = {
           },
         ]
       }
+      status_posts: {
+        Row: {
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          image_url: string | null
+          posted_at: string
+          product_id: string
+          variant_id: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          image_url?: string | null
+          posted_at?: string
+          product_id: string
+          variant_id?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          image_url?: string | null
+          posted_at?: string
+          product_id?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "status_posts_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "status_posts_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_sites: {
         Row: {
           created_at: string

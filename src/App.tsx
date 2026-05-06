@@ -18,6 +18,7 @@ import Receivable from "./pages/Receivable";
 import Payable from "./pages/Payable";
 import WhatsApp from "./pages/WhatsApp";
 import Conversations from "./pages/Conversations";
+import Status from "./pages/Status";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import Install from "./pages/Install";
@@ -46,6 +47,7 @@ const App = () => (
                 <Route path="/contas-receber" element={<Receivable />} />
                 <Route path="/contas-pagar" element={<Payable />} />
                 <Route path="/conversas" element={<Conversations />} />
+                <Route path="/status" element={<Status />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
                 <Route path="/instalar" element={<Install />} />
               </Route>

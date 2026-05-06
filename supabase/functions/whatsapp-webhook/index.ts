@@ -1162,6 +1162,17 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
 
   const missing = missingFields(customer);
 
+  // Peças ativas no STATUS DO DIA (postadas no WhatsApp Status, válidas 24h)
+  let activeStatus: any[] = [];
+  try {
+    const { data: sp } = await supabase
+      .from("status_posts")
+      .select("id, image_url, caption, posted_at, products(id, name, price, supplier, sku, product_variants(size, color, quantity))")
+      .gt("expires_at", new Date().toISOString())
+      .order("posted_at", { ascending: false });
+    activeStatus = sp ?? [];
+  } catch (e) { console.error("status_posts fetch error", e); }
+
   return {
     matched,
     all,
@@ -1173,6 +1184,7 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
     focusedSource: focusedResult.source,
     focusedAmbiguous: focusedResult.ambiguous,
     focusedMediaCaption: focusedResult.mediaCaption ?? null,
+    activeStatus,
   };
 }
 
@@ -1283,6 +1295,20 @@ Se o cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENV
 
 === FILTRO POR FORNECEDOR ===
 ${supplierBlock}
+
+=== 📸 PEÇAS POSTADAS NO STATUS AGORA (últimas 24h) ===
+${ctx.activeStatus && ctx.activeStatus.length > 0
+  ? `O cliente PODE estar respondendo a uma destas peças que VOCÊ postou no status do WhatsApp. Quando a mensagem dele for curta/ambígua ("oi", "quero", "valor?", "amei", "tem?", "quanto?", "esse", "esse aí"), ASSUMA que é resposta ao status:
+${ctx.activeStatus.map((s: any, i: number) => {
+  const p = s.products;
+  const vars = (p?.product_variants ?? []).map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"}(${v.quantity})`).join(", ");
+  return `${i + 1}. ${p?.name ?? s.caption} — R$ ${p?.price ?? "?"} — Fornecedor: ${p?.supplier ?? "-"} — Tamanhos: ${vars || "única"}`;
+}).join("\n")}
+REGRA:
+- Se há SÓ 1 peça no status: confirme essa peça direto ("Oi! O ${ctx.activeStatus[0]?.products?.name ?? "vestido"}? Tenho disponível, qual seu tamanho?").
+- Se há VÁRIAS peças: escolha a mais coerente com o histórico da conversa. Se ainda houver dúvida real, pergunte de forma natural ("Oi! Foi qual peça que você viu no status? Tô com várias hoje 😊").
+- NUNCA finja que viu a foto. Apenas referencie pelo NOME da peça do catálogo acima.`
+  : "(nenhuma peça ativa no status agora — se o cliente mandar mensagem curta/ambígua, peça que ele descreva ou mande a foto da peça)"}
 
 === CATÁLOGO ${ctx.supplierMentioned ? `(filtrado por fornecedor "${ctx.supplierMentioned}")` : "COMPLETO"} — use SOMENTE estes produtos ===
 ${formatProducts(ctx.all)}
