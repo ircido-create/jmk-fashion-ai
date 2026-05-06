@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Package, ArrowDownCircle, ArrowUpCircle,
-  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag, Smartphone, ScanLine
+  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag, Smartphone, ScanLine, Camera
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
