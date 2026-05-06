@@ -18,6 +18,7 @@ import Receivable from "./pages/Receivable";
 import Payable from "./pages/Payable";
 import WhatsApp from "./pages/WhatsApp";
 import Conversations from "./pages/Conversations";
+import Status from "./pages/Status";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import Install from "./pages/Install";
