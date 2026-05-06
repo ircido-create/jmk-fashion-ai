@@ -47,6 +47,7 @@ const App = () => (
                 <Route path="/contas-receber" element={<Receivable />} />
                 <Route path="/contas-pagar" element={<Payable />} />
                 <Route path="/conversas" element={<Conversations />} />
+                <Route path="/status" element={<Status />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
                 <Route path="/instalar" element={<Install />} />
               </Route>
