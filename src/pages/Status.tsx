@@ -83,8 +83,7 @@ export default function Status() {
     <div className="space-y-6">
       <PageHeader
         title="Status do Dia"
-        subtitle="Marque as peças que você acabou de postar no status do WhatsApp. A Mônica usará essas peças para entender quando o cliente responder ao status."
-        icon={Camera}
+        description="Marque as peças que você acabou de postar no status do WhatsApp. A Mônica usará essas peças para entender quando o cliente responder ao status."
       />
 
       <GlassCard className="p-4">
