@@ -1296,16 +1296,6 @@ Se o cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENV
 === FILTRO POR FORNECEDOR ===
 ${supplierBlock}
 
-=== CATÁLOGO ${ctx.supplierMentioned ? `(filtrado por fornecedor "${ctx.supplierMentioned}")` : "COMPLETO"} — use SOMENTE estes produtos ===
-${formatProducts(ctx.all)}
-
-=== PRODUTO EM FOCO (último mostrado por VOCÊ) ===
-${focusedBlock}${ambiguityBlock}
-
-=== BUSCA NA PERGUNTA ATUAL ===
-${matchInfo}
-
-=== CLIENTE ===
 === 📸 PEÇAS POSTADAS NO STATUS AGORA (últimas 24h) ===
 ${ctx.activeStatus && ctx.activeStatus.length > 0
   ? `O cliente PODE estar respondendo a uma destas peças que VOCÊ postou no status do WhatsApp. Quando a mensagem dele for curta/ambígua ("oi", "quero", "valor?", "amei", "tem?", "quanto?", "esse", "esse aí"), ASSUMA que é resposta ao status:
