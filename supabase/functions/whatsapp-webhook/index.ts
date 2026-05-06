@@ -1162,6 +1162,17 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
 
   const missing = missingFields(customer);
 
+  // Peças ativas no STATUS DO DIA (postadas no WhatsApp Status, válidas 24h)
+  let activeStatus: any[] = [];
+  try {
+    const { data: sp } = await supabase
+      .from("status_posts")
+      .select("id, image_url, caption, posted_at, products(id, name, price, supplier, sku, product_variants(size, color, quantity))")
+      .gt("expires_at", new Date().toISOString())
+      .order("posted_at", { ascending: false });
+    activeStatus = sp ?? [];
+  } catch (e) { console.error("status_posts fetch error", e); }
+
   return {
     matched,
     all,
@@ -1173,6 +1184,7 @@ async function buildContext(phone: string, userMsg: string, history: any[]) {
     focusedSource: focusedResult.source,
     focusedAmbiguous: focusedResult.ambiguous,
     focusedMediaCaption: focusedResult.mediaCaption ?? null,
+    activeStatus,
   };
 }
 
