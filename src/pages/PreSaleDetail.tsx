@@ -43,7 +43,7 @@ export default function PreSaleDetail() {
   useEffect(() => { load(); }, [id]);
 
   const updateStatus = async (status: string) => {
-    const { error } = await supabase.from("pre_sales").update({ status }).eq("id", id!);
+    const { error } = await supabase.from("pre_sales").update({ status: status as any }).eq("id", id!);
     if (error) return toast.error(error.message);
     toast.success("Status atualizado");
     load();
