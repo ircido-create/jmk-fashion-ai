@@ -265,6 +265,132 @@ export type Database = {
         }
         Relationships: []
       }
+      pre_sale_items: {
+        Row: {
+          code: string | null
+          color: string | null
+          created_at: string
+          description: string
+          id: string
+          notes: string | null
+          photo_url: string | null
+          pre_sale_id: string
+          product_id: string | null
+          quantity: number
+          raw_ocr: Json | null
+          size: string | null
+          subtotal: number
+          supplier: string | null
+          unit_price: number
+          variant_id: string | null
+        }
+        Insert: {
+          code?: string | null
+          color?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          notes?: string | null
+          photo_url?: string | null
+          pre_sale_id: string
+          product_id?: string | null
+          quantity?: number
+          raw_ocr?: Json | null
+          size?: string | null
+          subtotal?: number
+          supplier?: string | null
+          unit_price?: number
+          variant_id?: string | null
+        }
+        Update: {
+          code?: string | null
+          color?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          notes?: string | null
+          photo_url?: string | null
+          pre_sale_id?: string
+          product_id?: string | null
+          quantity?: number
+          raw_ocr?: Json | null
+          size?: string | null
+          subtotal?: number
+          supplier?: string | null
+          unit_price?: number
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_sale_items_pre_sale_id_fkey"
+            columns: ["pre_sale_id"]
+            isOneToOne: false
+            referencedRelation: "pre_sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pre_sale_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pre_sale_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pre_sales: {
+        Row: {
+          created_at: string
+          customer_id: string | null
+          discount: number
+          id: string
+          notes: string | null
+          seller_id: string | null
+          status: Database["public"]["Enums"]["pre_sale_status"]
+          total: number
+          updated_at: string
+          whatsapp_sent_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: string | null
+          discount?: number
+          id?: string
+          notes?: string | null
+          seller_id?: string | null
+          status?: Database["public"]["Enums"]["pre_sale_status"]
+          total?: number
+          updated_at?: string
+          whatsapp_sent_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string | null
+          discount?: number
+          id?: string
+          notes?: string | null
+          seller_id?: string | null
+          status?: Database["public"]["Enums"]["pre_sale_status"]
+          total?: number
+          updated_at?: string
+          whatsapp_sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_sales_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_variants: {
         Row: {
           color: string | null
@@ -318,6 +444,7 @@ export type Database = {
           description: string | null
           id: string
           image_url: string | null
+          is_draft: boolean
           low_stock_threshold: number
           name: string
           price: number
@@ -333,6 +460,7 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          is_draft?: boolean
           low_stock_threshold?: number
           name: string
           price?: number
@@ -348,6 +476,7 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          is_draft?: boolean
           low_stock_threshold?: number
           name?: string
           price?: number
@@ -802,6 +931,14 @@ export type Database = {
       app_role: "admin" | "vendedor"
       message_direction: "inbound" | "outbound"
       payment_status: "pendente" | "pago" | "vencido" | "cancelado"
+      pre_sale_status:
+        | "aguardando_aprovacao"
+        | "aguardando_compra"
+        | "em_compra"
+        | "recebido"
+        | "pronto_entrega"
+        | "finalizado"
+        | "cancelado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -932,6 +1069,15 @@ export const Constants = {
       app_role: ["admin", "vendedor"],
       message_direction: ["inbound", "outbound"],
       payment_status: ["pendente", "pago", "vencido", "cancelado"],
+      pre_sale_status: [
+        "aguardando_aprovacao",
+        "aguardando_compra",
+        "em_compra",
+        "recebido",
+        "pronto_entrega",
+        "finalizado",
+        "cancelado",
+      ],
     },
   },
 } as const
