@@ -19,6 +19,9 @@ import Payable from "./pages/Payable";
 import WhatsApp from "./pages/WhatsApp";
 import Conversations from "./pages/Conversations";
 import Status from "./pages/Status";
+import PreSales from "./pages/PreSales";
+import PreSaleForm from "./pages/PreSaleForm";
+import PreSaleDetail from "./pages/PreSaleDetail";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import Install from "./pages/Install";
@@ -48,6 +51,9 @@ const App = () => (
                 <Route path="/contas-pagar" element={<Payable />} />
                 <Route path="/conversas" element={<Conversations />} />
                 <Route path="/status" element={<Status />} />
+                <Route path="/pre-vendas" element={<PreSales />} />
+                <Route path="/pre-vendas/nova" element={<PreSaleForm />} />
+                <Route path="/pre-vendas/:id" element={<PreSaleDetail />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
                 <Route path="/instalar" element={<Install />} />
               </Route>
