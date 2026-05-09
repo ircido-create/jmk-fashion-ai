@@ -51,6 +51,9 @@ const App = () => (
                 <Route path="/contas-pagar" element={<Payable />} />
                 <Route path="/conversas" element={<Conversations />} />
                 <Route path="/status" element={<Status />} />
+                <Route path="/pre-vendas" element={<PreSales />} />
+                <Route path="/pre-vendas/nova" element={<PreSaleForm />} />
+                <Route path="/pre-vendas/:id" element={<PreSaleDetail />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
                 <Route path="/instalar" element={<Install />} />
               </Route>
