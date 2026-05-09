@@ -15,6 +15,7 @@ const mainItems = [
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Estoque", url: "/estoque", icon: Package },
   { title: "PDV / Caixa", url: "/pdv", icon: ScanLine },
+  { title: "Pré-Vendas", url: "/pre-vendas", icon: Camera },
   { title: "Vendas", url: "/vendas", icon: ShoppingBag },
   { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownCircle },
   { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpCircle },
