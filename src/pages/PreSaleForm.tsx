@@ -284,7 +284,7 @@ export default function PreSaleForm() {
 
   return (
     <div className="container mx-auto py-6 px-4 max-w-3xl pb-32">
-      <PageHeader title="Nova Pré-Venda" description="Escaneie etiquetas, monte o pedido e finalize" />
+      <PageHeader title={isEdit ? "Editar Pré-Venda" : "Nova Pré-Venda"} description="Escaneie etiquetas, monte o pedido e finalize" />
 
       {/* Cliente */}
       <GlassCard className="mb-4">
