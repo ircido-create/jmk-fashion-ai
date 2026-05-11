@@ -176,7 +176,6 @@ export default function PreSaleForm() {
   const confirmItem = () => {
     if (!editing) return;
     if (!editing.description.trim()) return toast.error("Descrição obrigatória");
-    if (editing.unit_price <= 0) return toast.error("Defina o preço");
     setItems(prev => [...prev, editing]);
     setEditing(null);
     toast.success("Item adicionado");
