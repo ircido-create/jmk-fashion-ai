@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -37,12 +37,15 @@ const newId = () => Math.random().toString(36).slice(2);
 
 export default function PreSaleForm() {
   const navigate = useNavigate();
+  const { id: editId } = useParams();
+  const isEdit = !!editId;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(isEdit);
 
   // novo cliente rápido
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
@@ -59,13 +62,15 @@ export default function PreSaleForm() {
       .then(({ data }) => setCustomers((data as any) ?? []));
   }, []);
 
-  // autosave rascunho
+  // autosave rascunho (apenas para nova)
   useEffect(() => {
+    if (isEdit) return;
     const draft = { customer, items, notes };
     localStorage.setItem("presale_draft", JSON.stringify(draft));
-  }, [customer, items, notes]);
+  }, [customer, items, notes, isEdit]);
 
   useEffect(() => {
+    if (isEdit) return;
     const raw = localStorage.getItem("presale_draft");
     if (raw) {
       try {
@@ -75,7 +80,39 @@ export default function PreSaleForm() {
         if (d.notes) setNotes(d.notes);
       } catch {}
     }
-  }, []);
+  }, [isEdit]);
+
+  // carrega pré-venda para edição
+  useEffect(() => {
+    if (!isEdit || !editId) return;
+    (async () => {
+      const [{ data: ps }, { data: it }] = await Promise.all([
+        supabase.from("pre_sales").select("*,customer:customers(id,name,phone,tax_id)").eq("id", editId).maybeSingle(),
+        supabase.from("pre_sale_items").select("*").eq("pre_sale_id", editId).order("created_at"),
+      ]);
+      if (ps) {
+        setCustomer((ps as any).customer ?? null);
+        setNotes((ps as any).notes ?? "");
+      }
+      setItems(((it as any[]) ?? []).map(i => ({
+        tempId: i.id,
+        product_id: i.product_id,
+        variant_id: i.variant_id,
+        supplier: i.supplier,
+        code: i.code,
+        description: i.description,
+        color: i.color,
+        size: i.size,
+        quantity: i.quantity,
+        unit_price: Number(i.unit_price),
+        photo_url: i.photo_url,
+        raw_ocr: i.raw_ocr,
+        is_draft_product: false,
+        existing_image: null,
+      })));
+      setLoadingEdit(false);
+    })();
+  }, [isEdit, editId]);
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers.slice(0, 8);
@@ -139,7 +176,6 @@ export default function PreSaleForm() {
   const confirmItem = () => {
     if (!editing) return;
     if (!editing.description.trim()) return toast.error("Descrição obrigatória");
-    if (editing.unit_price <= 0) return toast.error("Defina o preço");
     setItems(prev => [...prev, editing]);
     setEditing(null);
     toast.success("Item adicionado");
@@ -168,16 +204,28 @@ export default function PreSaleForm() {
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      // 1. cria pre_sale
-      const { data: ps, error: psErr } = await supabase.from("pre_sales").insert({
-        customer_id: customer?.id ?? null,
-        seller_id: user?.id ?? null,
-        total,
-        notes: notes || null,
-      }).select().single();
-      if (psErr) throw psErr;
+      let psId = editId;
 
-      // 2. para cada item: se é rascunho, cria produto+variante
+      if (isEdit) {
+        const { error: upErr } = await supabase.from("pre_sales").update({
+          customer_id: customer?.id ?? null,
+          total,
+          notes: notes || null,
+        }).eq("id", editId!);
+        if (upErr) throw upErr;
+        // recriar itens (simples e seguro)
+        await supabase.from("pre_sale_items").delete().eq("pre_sale_id", editId!);
+      } else {
+        const { data: ps, error: psErr } = await supabase.from("pre_sales").insert({
+          customer_id: customer?.id ?? null,
+          seller_id: user?.id ?? null,
+          total,
+          notes: notes || null,
+        }).select().single();
+        if (psErr) throw psErr;
+        psId = ps.id;
+      }
+
       const itemsPayload = [];
       for (const it of items) {
         let productId = it.product_id;
@@ -206,7 +254,7 @@ export default function PreSaleForm() {
           }
         }
         itemsPayload.push({
-          pre_sale_id: ps.id,
+          pre_sale_id: psId,
           product_id: productId,
           variant_id: variantId,
           supplier: it.supplier,
@@ -224,9 +272,9 @@ export default function PreSaleForm() {
       const { error: iErr } = await supabase.from("pre_sale_items").insert(itemsPayload);
       if (iErr) throw iErr;
 
-      localStorage.removeItem("presale_draft");
-      toast.success("Pré-venda criada!");
-      navigate(`/pre-vendas/${ps.id}`);
+      if (!isEdit) localStorage.removeItem("presale_draft");
+      toast.success(isEdit ? "Pré-venda atualizada!" : "Pré-venda criada!");
+      navigate(`/pre-vendas/${psId}`);
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao salvar");
     } finally {
@@ -236,7 +284,7 @@ export default function PreSaleForm() {
 
   return (
     <div className="container mx-auto py-6 px-4 max-w-3xl pb-32">
-      <PageHeader title="Nova Pré-Venda" description="Escaneie etiquetas, monte o pedido e finalize" />
+      <PageHeader title={isEdit ? "Editar Pré-Venda" : "Nova Pré-Venda"} description="Escaneie etiquetas, monte o pedido e finalize" />
 
       {/* Cliente */}
       <GlassCard className="mb-4">
@@ -349,7 +397,7 @@ export default function PreSaleForm() {
             <div className="text-2xl font-bold">R$ {total.toFixed(2)}</div>
           </div>
           <Button size="lg" onClick={save} disabled={saving || items.length === 0}>
-            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : "Salvar pré-venda"}
+            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : (isEdit ? "Salvar alterações" : "Salvar pré-venda")}
           </Button>
         </div>
       </div>
@@ -410,7 +458,7 @@ export default function PreSaleForm() {
                   <Input value={editing.code ?? ""} onChange={e => setEditing({ ...editing, code: e.target.value })} />
                 </div>
                 <div>
-                  <Label className="text-xs">Preço (R$) *</Label>
+                  <Label className="text-xs">Preço (R$) <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input type="number" step="0.01" value={editing.unit_price}
                     onChange={e => setEditing({ ...editing, unit_price: Number(e.target.value) })} />
                 </div>

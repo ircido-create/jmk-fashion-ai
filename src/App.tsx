@@ -53,6 +53,7 @@ const App = () => (
                 <Route path="/status" element={<Status />} />
                 <Route path="/pre-vendas" element={<PreSales />} />
                 <Route path="/pre-vendas/nova" element={<PreSaleForm />} />
+                <Route path="/pre-vendas/:id/editar" element={<PreSaleForm />} />
                 <Route path="/pre-vendas/:id" element={<PreSaleDetail />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
                 <Route path="/instalar" element={<Install />} />
