@@ -336,6 +336,32 @@ export default function PreSaleForm() {
         <p className="text-xs text-muted-foreground text-center mt-2">
           Aponte a câmera para a etiqueta. A IA preenche tudo sozinha.
         </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full mt-2"
+          onClick={() => {
+            setEditingMatchOpts([]);
+            setEditing({
+              tempId: newId(),
+              product_id: null,
+              variant_id: null,
+              supplier: null,
+              code: null,
+              description: "",
+              color: null,
+              size: null,
+              quantity: 1,
+              unit_price: 0,
+              photo_url: null,
+              raw_ocr: null,
+              is_draft_product: true,
+              existing_image: null,
+            });
+          }}
+        >
+          <Plus className="h-4 w-4 mr-2" /> Adicionar item manualmente
+        </Button>
       </GlassCard>
 
       {/* Itens */}
