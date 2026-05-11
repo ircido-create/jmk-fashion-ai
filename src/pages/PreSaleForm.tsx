@@ -62,13 +62,15 @@ export default function PreSaleForm() {
       .then(({ data }) => setCustomers((data as any) ?? []));
   }, []);
 
-  // autosave rascunho
+  // autosave rascunho (apenas para nova)
   useEffect(() => {
+    if (isEdit) return;
     const draft = { customer, items, notes };
     localStorage.setItem("presale_draft", JSON.stringify(draft));
-  }, [customer, items, notes]);
+  }, [customer, items, notes, isEdit]);
 
   useEffect(() => {
+    if (isEdit) return;
     const raw = localStorage.getItem("presale_draft");
     if (raw) {
       try {
@@ -78,7 +80,39 @@ export default function PreSaleForm() {
         if (d.notes) setNotes(d.notes);
       } catch {}
     }
-  }, []);
+  }, [isEdit]);
+
+  // carrega pré-venda para edição
+  useEffect(() => {
+    if (!isEdit || !editId) return;
+    (async () => {
+      const [{ data: ps }, { data: it }] = await Promise.all([
+        supabase.from("pre_sales").select("*,customer:customers(id,name,phone,tax_id)").eq("id", editId).maybeSingle(),
+        supabase.from("pre_sale_items").select("*").eq("pre_sale_id", editId).order("created_at"),
+      ]);
+      if (ps) {
+        setCustomer((ps as any).customer ?? null);
+        setNotes((ps as any).notes ?? "");
+      }
+      setItems(((it as any[]) ?? []).map(i => ({
+        tempId: i.id,
+        product_id: i.product_id,
+        variant_id: i.variant_id,
+        supplier: i.supplier,
+        code: i.code,
+        description: i.description,
+        color: i.color,
+        size: i.size,
+        quantity: i.quantity,
+        unit_price: Number(i.unit_price),
+        photo_url: i.photo_url,
+        raw_ocr: i.raw_ocr,
+        is_draft_product: false,
+        existing_image: null,
+      })));
+      setLoadingEdit(false);
+    })();
+  }, [isEdit, editId]);
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers.slice(0, 8);
