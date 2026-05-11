@@ -458,7 +458,7 @@ export default function PreSaleForm() {
                   <Input value={editing.code ?? ""} onChange={e => setEditing({ ...editing, code: e.target.value })} />
                 </div>
                 <div>
-                  <Label className="text-xs">Preço (R$) *</Label>
+                  <Label className="text-xs">Preço (R$) <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input type="number" step="0.01" value={editing.unit_price}
                     onChange={e => setEditing({ ...editing, unit_price: Number(e.target.value) })} />
                 </div>
