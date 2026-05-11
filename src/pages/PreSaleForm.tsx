@@ -204,16 +204,28 @@ export default function PreSaleForm() {
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      // 1. cria pre_sale
-      const { data: ps, error: psErr } = await supabase.from("pre_sales").insert({
-        customer_id: customer?.id ?? null,
-        seller_id: user?.id ?? null,
-        total,
-        notes: notes || null,
-      }).select().single();
-      if (psErr) throw psErr;
+      let psId = editId;
 
-      // 2. para cada item: se é rascunho, cria produto+variante
+      if (isEdit) {
+        const { error: upErr } = await supabase.from("pre_sales").update({
+          customer_id: customer?.id ?? null,
+          total,
+          notes: notes || null,
+        }).eq("id", editId!);
+        if (upErr) throw upErr;
+        // recriar itens (simples e seguro)
+        await supabase.from("pre_sale_items").delete().eq("pre_sale_id", editId!);
+      } else {
+        const { data: ps, error: psErr } = await supabase.from("pre_sales").insert({
+          customer_id: customer?.id ?? null,
+          seller_id: user?.id ?? null,
+          total,
+          notes: notes || null,
+        }).select().single();
+        if (psErr) throw psErr;
+        psId = ps.id;
+      }
+
       const itemsPayload = [];
       for (const it of items) {
         let productId = it.product_id;
@@ -242,7 +254,7 @@ export default function PreSaleForm() {
           }
         }
         itemsPayload.push({
-          pre_sale_id: ps.id,
+          pre_sale_id: psId,
           product_id: productId,
           variant_id: variantId,
           supplier: it.supplier,
@@ -260,9 +272,9 @@ export default function PreSaleForm() {
       const { error: iErr } = await supabase.from("pre_sale_items").insert(itemsPayload);
       if (iErr) throw iErr;
 
-      localStorage.removeItem("presale_draft");
-      toast.success("Pré-venda criada!");
-      navigate(`/pre-vendas/${ps.id}`);
+      if (!isEdit) localStorage.removeItem("presale_draft");
+      toast.success(isEdit ? "Pré-venda atualizada!" : "Pré-venda criada!");
+      navigate(`/pre-vendas/${psId}`);
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao salvar");
     } finally {
