@@ -397,7 +397,7 @@ export default function PreSaleForm() {
             <div className="text-2xl font-bold">R$ {total.toFixed(2)}</div>
           </div>
           <Button size="lg" onClick={save} disabled={saving || items.length === 0}>
-            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : "Salvar pré-venda"}
+            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : (isEdit ? "Salvar alterações" : "Salvar pré-venda")}
           </Button>
         </div>
       </div>
