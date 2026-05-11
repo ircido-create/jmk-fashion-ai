@@ -48,26 +48,25 @@ export default function ResetPassword() {
           <h1 className="text-3xl font-display font-bold gradient-text">Nova senha</h1>
           <p className="text-muted-foreground mt-2 text-sm">Defina sua nova senha de acesso</p>
         </div>
-        <div className="glass-card p-6 md:p-8">
-          {!ready ? (
-            <p className="text-sm text-muted-foreground text-center">
-              Validando link... Se você não veio de um e-mail de recuperação, <button className="underline" onClick={() => navigate("/auth")}>volte ao login</button>.
+        <div className="glass-card p-6 md:p-8 space-y-4">
+          {!hasSession && (
+            <p className="text-xs text-muted-foreground text-center">
+              Sessão de recuperação não detectada. Você ainda pode tentar definir uma nova senha abaixo. Se falhar, <button className="underline" onClick={() => navigate("/auth")}>volte ao login</button> e solicite um novo link.
             </p>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="pwd">Nova senha</Label>
-                <Input id="pwd" name="password" type="password" required minLength={6} className="glass-input" />
-              </div>
-              <div>
-                <Label htmlFor="cpwd">Confirmar senha</Label>
-                <Input id="cpwd" name="confirm" type="password" required minLength={6} className="glass-input" />
-              </div>
-              <Button type="submit" disabled={loading} className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground shadow-glow h-11 rounded-xl">
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Redefinir senha"}
-              </Button>
-            </form>
           )}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="pwd">Nova senha</Label>
+              <Input id="pwd" name="password" type="password" required minLength={6} className="glass-input" />
+            </div>
+            <div>
+              <Label htmlFor="cpwd">Confirmar senha</Label>
+              <Input id="cpwd" name="confirm" type="password" required minLength={6} className="glass-input" />
+            </div>
+            <Button type="submit" disabled={loading} className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground shadow-glow h-11 rounded-xl">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Redefinir senha"}
+            </Button>
+          </form>
         </div>
       </div>
     </div>
