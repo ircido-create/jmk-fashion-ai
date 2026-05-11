@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, MessageCircle, ShoppingBag, Trash2 } from "lucide-react";
+import { ArrowLeft, MessageCircle, ShoppingBag, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
