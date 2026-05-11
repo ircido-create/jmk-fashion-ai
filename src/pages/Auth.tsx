@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Sparkles, Loader2 } from "lucide-react";
 
@@ -164,6 +165,37 @@ export default function Auth() {
           </Tabs>
         </div>
       </div>
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Recuperar senha</DialogTitle>
+            <DialogDescription>
+              Informe seu e-mail e enviaremos um link para você criar uma nova senha.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleForgot} className="space-y-3">
+            <div>
+              <Label htmlFor="forgot-email">E-mail</Label>
+              <Input
+                id="forgot-email"
+                type="email"
+                required
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setForgotOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar link"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
