@@ -10,15 +10,14 @@ import { Sparkles, Loader2 } from "lucide-react";
 export default function ResetPassword() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
-    // Supabase coloca o token no hash; o SDK processa automaticamente e dispara PASSWORD_RECOVERY
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") setReady(true);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(!!session);
     });
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true);
+      setHasSession(!!session);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
