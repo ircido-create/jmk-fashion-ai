@@ -113,9 +113,14 @@ export default function PreSaleDetail() {
         title={ps.customer?.name ?? "Sem cliente"}
         description={format(new Date(ps.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
         actions={
-          <Button variant="ghost" size="icon" onClick={remove}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
+          <div className="flex gap-1">
+            <Button variant="ghost" size="icon" onClick={() => navigate(`/pre-vendas/${id}/editar`)} title="Editar">
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={remove} title="Excluir">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
         }
       />
 
