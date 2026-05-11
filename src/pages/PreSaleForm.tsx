@@ -37,12 +37,15 @@ const newId = () => Math.random().toString(36).slice(2);
 
 export default function PreSaleForm() {
   const navigate = useNavigate();
+  const { id: editId } = useParams();
+  const isEdit = !!editId;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(isEdit);
 
   // novo cliente rápido
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
