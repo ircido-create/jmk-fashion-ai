@@ -22,12 +22,29 @@ export default function Auth() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"login" | "signup">("login");
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate("/", { replace: true });
     });
   }, [navigate]);
+
+  const handleForgot = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const email = forgotEmail.trim();
+    if (!email) return toast.error("Informe seu e-mail");
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setLoading(false);
+    if (error) return toast.error(error.message);
+    toast.success("Enviamos um link de redefinição para seu e-mail.");
+    setForgotOpen(false);
+    setForgotEmail("");
+  };
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -112,6 +129,13 @@ export default function Auth() {
                 <Button type="submit" disabled={loading} className="w-full bg-gradient-primary hover:opacity-90 text-primary-foreground shadow-glow h-11 rounded-xl">
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
                 </Button>
+                <button
+                  type="button"
+                  onClick={() => setForgotOpen(true)}
+                  className="block w-full text-center text-xs text-muted-foreground hover:text-foreground underline mt-2"
+                >
+                  Esqueci minha senha
+                </button>
               </form>
             </TabsContent>
 
