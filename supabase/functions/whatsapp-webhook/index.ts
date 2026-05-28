@@ -1382,17 +1382,75 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
     { role: "user", content: userMsg },
   ];
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model: "google/gemini-2.5-flash", messages }),
-  });
+  // Tenta o modelo principal; em caso de 429 faz retry com backoff; em caso de 402
+  // tenta um modelo mais barato como fallback. Em todos os casos, registra o erro
+  // visivelmente em whatsapp_config.last_error_message para o admin ver no painel.
+  const callModel = async (model: string): Promise<Response> => {
+    let lastResp: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model, messages }),
+      });
+      lastResp = r;
+      if (r.status !== 429) return r;
+      // 429: rate limit — espera 500ms, 1500ms, 3000ms
+      const delay = 500 * Math.pow(3, attempt);
+      console.warn(`[MONICA] 429 rate limit (attempt ${attempt + 1}/3), waiting ${delay}ms`);
+      await new Promise((res) => setTimeout(res, delay));
+    }
+    return lastResp!;
+  };
+
+  const recordAIError = async (status: number, body: string) => {
+    try {
+      const reason = status === 402
+        ? "IA sem créditos — adicione créditos em Settings → Workspace → Usage"
+        : status === 429
+        ? "IA com rate limit excedido (muitas requisições)"
+        : `IA falhou (HTTP ${status})`;
+      await supabase
+        .from("whatsapp_config")
+        .update({
+          last_error_at: new Date().toISOString(),
+          last_error_message: `${reason}. Detalhe: ${body.slice(0, 300)}`,
+        })
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+    } catch (e) {
+      console.error("recordAIError failed:", e);
+    }
+  };
+
+  let resp = await callModel("google/gemini-2.5-flash");
+
+  // Fallback para modelo mais barato em caso de 402 (créditos esgotados)
+  if (resp.status === 402) {
+    console.warn("[MONICA] 402 no modelo principal, tentando fallback gemini-2.5-flash-lite");
+    const fallback = await callModel("google/gemini-2.5-flash-lite");
+    if (fallback.ok) {
+      resp = fallback;
+    } else {
+      const t = await fallback.text();
+      console.error("AI error (fallback)", fallback.status, t);
+      await recordAIError(fallback.status, t);
+      if (fallback.status === 402) {
+        return "Oi! Estou com um probleminha técnico aqui, mas já avisei a equipe 💕 Em instantes te respondo direitinho, tá?";
+      }
+      return "Desculpe, estou com uma instabilidade no momento. Pode tentar novamente em instantes?";
+    }
+  }
 
   if (!resp.ok) {
-    console.error("AI error", resp.status, await resp.text());
+    const t = await resp.text();
+    console.error("AI error", resp.status, t);
+    await recordAIError(resp.status, t);
+    if (resp.status === 429) {
+      return "Oi! Tô com muitas conversas agora 😅 Me dá uns segundinhos e já te respondo, viu?";
+    }
     return "Desculpe, estou com uma instabilidade no momento. Pode tentar novamente em instantes?";
   }
   const data = await resp.json();
