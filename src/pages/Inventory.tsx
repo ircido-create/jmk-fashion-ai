@@ -325,8 +325,8 @@ export default function Inventory() {
                   <Button size="sm" variant="ghost" onClick={() => openImgSearchForProduct(p)} title="Buscar imagem do fornecedor" className="text-xs">
                     <Sparkles className="h-3.5 w-3.5 mr-1" /> Foto
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => remove(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => openEdit(p)} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => remove(p.id)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </div>
             </div>
@@ -370,7 +370,7 @@ export default function Inventory() {
                       <Input placeholder="P/M/G" value={v.size} onChange={(e) => updVariant(i, { size: e.target.value })} className="glass-input" />
                       <Input placeholder="Cor" value={v.color} onChange={(e) => updVariant(i, { color: e.target.value })} className="glass-input" />
                       <Input type="number" value={v.quantity} onChange={(e) => updVariant(i, { quantity: Number(e.target.value) })} className="glass-input" />
-                      <Button type="button" size="icon" variant="ghost" onClick={() => delVariant(i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button type="button" size="icon" variant="ghost" onClick={() => delVariant(i)} aria-label="Excluir variante"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                     <div className="flex items-center gap-2">
                       {v.image_url ? (

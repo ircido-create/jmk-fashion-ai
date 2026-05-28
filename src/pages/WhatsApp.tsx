@@ -220,7 +220,7 @@ export default function WhatsApp() {
           <Label className="text-xs">URL do Webhook (cole no painel Meta → Webhooks)</Label>
           <div className="flex gap-2 mt-1">
             <Input readOnly value={webhookUrl} className="font-mono text-xs" />
-            <Button variant="outline" size="icon" onClick={copyWebhook}>
+            <Button variant="outline" size="icon" onClick={copyWebhook} aria-label="Copiar webhook">
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>

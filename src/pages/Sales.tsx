@@ -271,7 +271,7 @@ export default function Sales() {
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="text-sm font-semibold">{fmtBRL(it.unitPrice * it.quantity)}</div>
-                          <Button size="icon" variant="ghost" onClick={() => setCart((c) => c.filter((_, idx) => idx !== i))}>
+                          <Button size="icon" variant="ghost" onClick={() => setCart((c) => c.filter((_, idx) => idx !== i))} aria-label="Remover item">
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>

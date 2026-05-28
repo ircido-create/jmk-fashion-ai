@@ -396,7 +396,7 @@ export default function PreSaleForm() {
                   <span className="ml-auto font-bold text-sm">
                     R$ {(it.quantity * it.unit_price).toFixed(2)}
                   </span>
-                  <Button variant="ghost" size="icon" onClick={() => removeItem(it.tempId)}>
+                  <Button variant="ghost" size="icon" onClick={() => removeItem(it.tempId)} aria-label="Remover item">
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
