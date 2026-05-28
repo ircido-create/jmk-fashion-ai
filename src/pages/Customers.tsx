@@ -197,8 +197,8 @@ export default function Customers() {
                 {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
               </Link>
               <div className="flex gap-1">
-                <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                <Button size="icon" variant="ghost" onClick={() => remove(c.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" onClick={() => remove(c.id)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
               </div>
             </div>
           ))}

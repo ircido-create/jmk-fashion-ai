@@ -89,7 +89,7 @@ export function AIAssistant() {
                   <div className="text-[11px] opacity-80">Tire suas dúvidas</div>
                 </div>
               </div>
-              <Button size="icon" variant="ghost" onClick={() => setOpen(false)} className="text-primary-foreground hover:bg-white/20 h-8 w-8">
+              <Button size="icon" variant="ghost" onClick={() => setOpen(false)} className="text-primary-foreground hover:bg-white/20 h-8 w-8" aria-label="Fechar assistente">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -123,7 +123,7 @@ export function AIAssistant() {
                 placeholder="Sua dúvida..."
                 className="flex-1 px-3 py-2 text-sm rounded-xl glass-input focus:outline-none focus:ring-2 focus:ring-primary"
               />
-              <Button onClick={send} disabled={loading || !input.trim()} size="icon" className="bg-gradient-primary text-primary-foreground rounded-xl">
+              <Button onClick={send} disabled={loading || !input.trim()} size="icon" className="bg-gradient-primary text-primary-foreground rounded-xl" aria-label="Enviar mensagem">
                 <Send className="h-4 w-4" />
               </Button>
             </div>

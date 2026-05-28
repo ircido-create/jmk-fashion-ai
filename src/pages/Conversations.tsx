@@ -891,7 +891,7 @@ export default function Conversations() {
               <div className="p-2 border-t border-white/30 bg-background/40">
                 {recording ? (
                   <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" onClick={cancelRecording} className="text-destructive">
+                    <Button variant="ghost" size="icon" onClick={cancelRecording} className="text-destructive" aria-label="Cancelar gravação">
                       <X className="h-5 w-5" />
                     </Button>
                     <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-full bg-destructive/10">
@@ -908,7 +908,7 @@ export default function Conversations() {
                     {/* Anexar */}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" disabled={sending}>
+                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" disabled={sending} aria-label="Anexar arquivo">
                           <Paperclip className="h-5 w-5" />
                         </Button>
                       </DropdownMenuTrigger>

@@ -33,7 +33,7 @@ export function AppLayout() {
                 {isAdmin ? "Admin" : "Vendedor"}
               </span>
               <ThemeToggle />
-              <Button variant="ghost" size="sm" onClick={signOut}>
+              <Button variant="ghost" size="sm" onClick={signOut} aria-label="Sair">
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>

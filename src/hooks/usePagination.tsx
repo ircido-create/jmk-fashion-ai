@@ -32,6 +32,7 @@ export function usePagination<T>(items: T[], pageSize = 20) {
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             className="h-8 w-8"
+            aria-label="Página anterior"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -44,6 +45,7 @@ export function usePagination<T>(items: T[], pageSize = 20) {
             disabled={page >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             className="h-8 w-8"
+            aria-label="Próxima página"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>

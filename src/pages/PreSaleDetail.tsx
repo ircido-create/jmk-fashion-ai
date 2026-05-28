@@ -114,10 +114,10 @@ export default function PreSaleDetail() {
         description={format(new Date(ps.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
         actions={
           <div className="flex gap-1">
-            <Button variant="ghost" size="icon" onClick={() => navigate(`/pre-vendas/${id}/editar`)} title="Editar">
+            <Button variant="ghost" size="icon" onClick={() => navigate(`/pre-vendas/${id}/editar`)} title="Editar" aria-label="Editar">
               <Pencil className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={remove} title="Excluir">
+            <Button variant="ghost" size="icon" onClick={remove} title="Excluir" aria-label="Excluir">
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
           </div>

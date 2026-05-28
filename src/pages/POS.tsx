@@ -741,6 +741,7 @@ export default function POS() {
                         variant="outline"
                         className="h-6 w-6"
                         onClick={() => updateQty(i, -1)}
+                        aria-label="Diminuir quantidade"
                       >
                         <Minus className="h-3 w-3" />
                       </Button>
@@ -750,6 +751,7 @@ export default function POS() {
                         variant="outline"
                         className="h-6 w-6"
                         onClick={() => updateQty(i, 1)}
+                        aria-label="Aumentar quantidade"
                       >
                         <Plus className="h-3 w-3" />
                       </Button>

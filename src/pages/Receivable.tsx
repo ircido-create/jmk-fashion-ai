@@ -875,12 +875,12 @@ export default function Receivable() {
                 <div className="font-semibold">R$ {Number(r.amount).toFixed(2)}</div>
                 <div className="flex gap-1 mt-1">
                   {r.status !== "pago" && (
-                    <Button size="icon" variant="ghost" onClick={() => openPay(r)} title="Marcar como recebido">
+                    <Button size="icon" variant="ghost" onClick={() => openPay(r)} title="Marcar como recebido" aria-label="Marcar como recebido">
                       <CheckCircle2 className="h-4 w-4 text-success" />
                     </Button>
                   )}
-                  <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => remove(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setOpen(true); }} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => remove(r.id)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </div>
             </div>
