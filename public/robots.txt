@@ -12,3 +12,5 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+Sitemap: https://jmk-fashion-ai.lovable.app/sitemap.xml
