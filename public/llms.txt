@@ -1,0 +1,7 @@
+# JMK Fashion — Gestão
+
+> Sistema interno de gestão da JMK Fashion: clientes, estoque, vendas, pré-vendas, contas a pagar e receber, e atendimento via WhatsApp. Acesso restrito a usuários autenticados.
+
+## Pages
+
+- [Entrar](/auth): Tela de login do sistema.
