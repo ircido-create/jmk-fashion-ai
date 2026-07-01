@@ -178,19 +178,14 @@ export default function Inventory() {
       let cursor = 0;
       const workers = Array.from({ length: Math.min(CONCURRENCY, pdfs.length) }, async () => {
         while (true) {
-          if (cancelImport) cancelled = true;
+          if (cancelImportRef.current) cancelled = true;
           if (cancelled) return;
           const myIdx = cursor++;
           if (myIdx >= pdfs.length) return;
           await processOne(pdfs[myIdx], myIdx);
         }
       });
-      // Reactive cancel: watch state via closure — simple polling
-      const cancelPoll = setInterval(() => {
-        setCancelImport((c) => { if (c) cancelled = true; return c; });
-      }, 500);
       await Promise.all(workers);
-      clearInterval(cancelPoll);
 
       toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro${cancelled ? " (cancelado)" : ""}`, { duration: 6000 });
       load();
