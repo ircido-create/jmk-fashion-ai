@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import SupplierImageSearch from "@/components/SupplierImageSearch";
 import { usePagination } from "@/hooks/usePagination";
+import { importRomaneioPhotos } from "@/lib/romaneioPhotos";
 
 interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
@@ -92,8 +93,19 @@ export default function Inventory() {
         `Romaneio importado: ${data.products_created} produtos novos, ${data.variants_added} variações adicionadas, ${data.payable_created} conta(s) a pagar criada(s)`
       );
       setImportOpen(false);
+      const fileRef = importFile;
       setImportFile(null);
       load();
+      // Etapa 2: extrair fotos do próprio PDF (silencioso, roda em background)
+      toast.info("Buscando fotos dos produtos no PDF...");
+      importRomaneioPhotos(fileRef).then((res) => {
+        if (res.imported > 0) {
+          toast.success(`${res.imported} foto(s) de produto importada(s) do romaneio`);
+          load();
+        } else if (res.warning) {
+          console.warn("Fotos do romaneio:", res.warning);
+        }
+      });
     } catch (e: any) {
       toast.error("Falha na importação: " + (e?.message || "erro desconhecido"));
     } finally {
