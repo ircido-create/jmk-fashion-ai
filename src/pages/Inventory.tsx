@@ -533,13 +533,13 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFiles([]); } }}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) { setImportFiles([]); setImportProgress([]); } } }}>
+        <DialogContent className="glass-card border-white/40 max-w-lg">
           <DialogHeader><DialogTitle>Importar romaneios (PDF)</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Anexe um ou vários PDFs de romaneio. A IA extrai fornecedor, produtos e parcelas.
-              Romaneios já importados são detectados automaticamente e pulados.
+              Anexe um ou vários PDFs. Processamos 3 em paralelo com repetição automática em caso de falha.
+              Duplicados são detectados e pulados.
             </p>
             <div>
               <Label>Arquivos PDF</Label>
@@ -551,22 +551,66 @@ export default function Inventory() {
                 disabled={importing}
                 className="glass-input mt-1"
               />
-              {importFiles.length > 0 && (
+              {importFiles.length > 0 && importProgress.length === 0 && (
                 <ul className="text-xs text-muted-foreground mt-2 space-y-0.5 max-h-32 overflow-auto">
                   {importFiles.map((f, i) => <li key={i}>• {f.name}</li>)}
                 </ul>
               )}
             </div>
-            <Button
-              onClick={handleImport}
-              disabled={!importFiles.length || importing}
-              className="w-full bg-gradient-primary text-primary-foreground rounded-xl"
-            >
-              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando {importFiles.length} arquivo(s)...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar {importFiles.length > 1 ? `${importFiles.length} romaneios` : "romaneio"}</>)}
-            </Button>
+
+            {importProgress.length > 0 && (() => {
+              const done = importProgress.filter(p => p.status !== "pending" && p.status !== "running").length;
+              const pct = Math.round((done / importProgress.length) * 100);
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{done} de {importProgress.length} — {pct}%</span>
+                    <span className="text-muted-foreground">
+                      ✅ {importProgress.filter(p => p.status === "ok").length} ·
+                      ⏭️ {importProgress.filter(p => p.status === "skip").length} ·
+                      ❌ {importProgress.filter(p => p.status === "err").length}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-primary transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <ul className="text-xs space-y-1 max-h-64 overflow-auto border rounded-lg p-2 bg-background/40">
+                    {importProgress.map((p, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="w-4 shrink-0">
+                          {p.status === "ok" && "✅"}
+                          {p.status === "skip" && "⏭️"}
+                          {p.status === "err" && "❌"}
+                          {p.status === "running" && <Loader2 className="h-3 w-3 animate-spin inline" />}
+                          {p.status === "pending" && "·"}
+                        </span>
+                        <span className="flex-1 truncate">{p.name}</span>
+                        {p.msg && <span className="text-muted-foreground text-[10px] truncate max-w-[45%]">{p.msg}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleImport}
+                disabled={!importFiles.length || importing}
+                className="flex-1 bg-gradient-primary text-primary-foreground rounded-xl"
+              >
+                {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar {importFiles.length > 1 ? `${importFiles.length} romaneios` : "romaneio"}</>)}
+              </Button>
+              {importing && (
+                <Button variant="outline" onClick={() => { cancelImportRef.current = true; toast.info("Cancelando após arquivos em voo..."); }} className="rounded-xl">
+                  Cancelar
+                </Button>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
 
       {imgSearchTarget && (
         <SupplierImageSearch
