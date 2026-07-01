@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,8 @@ export default function Inventory() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<Array<{ name: string; status: "pending" | "running" | "ok" | "skip" | "err"; msg?: string }>>([]);
+  const cancelImportRef = useRef(false);
   const [imgSearchOpen, setImgSearchOpen] = useState(false);
   const [imgSearchTarget, setImgSearchTarget] = useState<{
     productName: string;
@@ -80,64 +82,114 @@ export default function Inventory() {
     if (!importFiles.length) { toast.error("Selecione ao menos um PDF"); return; }
     const pdfs = importFiles.filter((f) => f.type === "application/pdf");
     if (!pdfs.length) { toast.error("Apenas PDF é suportado"); return; }
+
     setImporting(true);
-    let imported = 0;
-    let skipped = 0;
-    let failed = 0;
-    const details: string[] = [];
+    cancelImportRef.current = false;
+    const initial = pdfs.map((f) => ({ name: f.name, status: "pending" as const }));
+    setImportProgress(initial);
+
+    const updateItem = (idx: number, patch: Partial<{ status: "pending" | "running" | "ok" | "skip" | "err"; msg: string }>) => {
+      setImportProgress((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...patch };
+        return next;
+      });
+    };
+
     const photosQueue: File[] = [];
-    try {
-      for (const file of pdfs) {
+    let imported = 0, skipped = 0, failed = 0;
+    let cancelled = false;
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    const invokeWithRetry = async (path: string, file_hash: string, filename: string) => {
+      const delays = [0, 2000, 5000];
+      let lastErr: any;
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (delays[attempt]) await sleep(delays[attempt]);
         try {
-          // hash SHA-256
-          const buf = await file.arrayBuffer();
-          const hashBuf = await crypto.subtle.digest("SHA-256", buf);
-          const file_hash = Array.from(new Uint8Array(hashBuf))
-            .map((b) => b.toString(16).padStart(2, "0")).join("");
-
-          // Verifica hash antes de subir para evitar upload desnecessário
-          const { data: existing } = await supabase
-            .from("imported_romaneios")
-            .select("id, supplier, filename")
-            .eq("file_hash", file_hash)
-            .maybeSingle();
-          if (existing) {
-            skipped++;
-            details.push(`⏭️ ${file.name} — já importado`);
-            continue;
-          }
-
-          const path = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-          const { error: upErr } = await supabase.storage.from("romaneios").upload(path, file);
-          if (upErr) throw upErr;
           const { data, error } = await supabase.functions.invoke("parse-romaneio", {
-            body: { storage_path: path, file_hash, filename: file.name },
+            body: { storage_path: path, file_hash, filename },
           });
-          if (error) throw error;
-          if (data?.error) throw new Error(data.error);
-          if (data?.skipped) {
-            skipped++;
-            details.push(`⏭️ ${file.name} — duplicado (${data.reason === "hash" ? "arquivo idêntico" : "mesmo fornecedor/total/itens"})`);
-            continue;
+          if (error) {
+            const msg = String(error.message || "");
+            const ctx: any = (error as any).context;
+            const status: number | undefined = ctx?.status ?? ctx?.response?.status;
+            const retriable = status === 429 || (status && status >= 500) || /fetch|network|timeout/i.test(msg);
+            if (retriable && attempt < delays.length - 1) { lastErr = error; continue; }
+            throw error;
           }
-          imported++;
-          details.push(`✅ ${file.name} — ${data.products_created} novos, ${data.variants_added} variações, ${data.payable_created} conta(s)`);
-          photosQueue.push(file);
+          return data;
         } catch (e: any) {
-          failed++;
-          details.push(`❌ ${file.name} — ${e?.message || "erro"}`);
+          lastErr = e;
+          if (attempt >= delays.length - 1) throw e;
         }
       }
+      throw lastErr;
+    };
 
-      toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro`, {
-        description: details.slice(0, 8).join("\n"),
-        duration: 8000,
+    const processOne = async (file: File, idx: number) => {
+      if (cancelled) return;
+      updateItem(idx, { status: "running" });
+      try {
+        const buf = await file.arrayBuffer();
+        const hashBuf = await crypto.subtle.digest("SHA-256", buf);
+        const file_hash = Array.from(new Uint8Array(hashBuf))
+          .map((b) => b.toString(16).padStart(2, "0")).join("");
+
+        const { data: existing } = await supabase
+          .from("imported_romaneios")
+          .select("id")
+          .eq("file_hash", file_hash)
+          .maybeSingle();
+        if (existing) {
+          skipped++;
+          updateItem(idx, { status: "skip", msg: "já importado" });
+          return;
+        }
+
+        const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const { error: upErr } = await supabase.storage.from("romaneios").upload(path, file);
+        if (upErr) throw upErr;
+
+        const data = await invokeWithRetry(path, file_hash, file.name);
+        if (data?.error) throw new Error(data.error);
+        if (data?.skipped) {
+          skipped++;
+          updateItem(idx, { status: "skip", msg: data.reason === "hash" ? "arquivo idêntico" : data.reason === "no_items" ? "sem itens" : "duplicado" });
+          return;
+        }
+        imported++;
+        updateItem(idx, { status: "ok", msg: `${data.products_created || 0} novos · ${data.variants_added || 0} var · ${data.payable_created || 0} conta(s)` });
+        photosQueue.push(file);
+      } catch (e: any) {
+        failed++;
+        updateItem(idx, { status: "err", msg: e?.message?.slice(0, 120) || "erro" });
+      }
+    };
+
+    // beforeunload guard
+    const beforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", beforeUnload);
+
+    try {
+      // concurrency pool = 3
+      const CONCURRENCY = 3;
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(CONCURRENCY, pdfs.length) }, async () => {
+        while (true) {
+          if (cancelImportRef.current) cancelled = true;
+          if (cancelled) return;
+          const myIdx = cursor++;
+          if (myIdx >= pdfs.length) return;
+          await processOne(pdfs[myIdx], myIdx);
+        }
       });
-      setImportOpen(false);
-      setImportFiles([]);
+      await Promise.all(workers);
+
+      toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro${cancelled ? " (cancelado)" : ""}`, { duration: 6000 });
       load();
 
-      // Extrai fotos em background dos importados com sucesso
       if (photosQueue.length) {
         toast.info(`Buscando fotos em ${photosQueue.length} PDF(s)...`);
         (async () => {
@@ -146,18 +198,17 @@ export default function Inventory() {
             const res = await importRomaneioPhotos(f);
             totalPhotos += res.imported;
           }
-          if (totalPhotos > 0) {
-            toast.success(`${totalPhotos} foto(s) de produto importada(s)`);
-            load();
-          }
+          if (totalPhotos > 0) { toast.success(`${totalPhotos} foto(s) de produto importada(s)`); load(); }
         })();
       }
     } catch (e: any) {
       toast.error("Falha na importação: " + (e?.message || "erro desconhecido"));
     } finally {
+      window.removeEventListener("beforeunload", beforeUnload);
       setImporting(false);
     }
   };
+
 
   const load = async () => {
     const { data, error } = await supabase
@@ -482,13 +533,13 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFiles([]); } }}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) { setImportFiles([]); setImportProgress([]); } } }}>
+        <DialogContent className="glass-card border-white/40 max-w-lg">
           <DialogHeader><DialogTitle>Importar romaneios (PDF)</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Anexe um ou vários PDFs de romaneio. A IA extrai fornecedor, produtos e parcelas.
-              Romaneios já importados são detectados automaticamente e pulados.
+              Anexe um ou vários PDFs. Processamos 3 em paralelo com repetição automática em caso de falha.
+              Duplicados são detectados e pulados.
             </p>
             <div>
               <Label>Arquivos PDF</Label>
@@ -500,22 +551,66 @@ export default function Inventory() {
                 disabled={importing}
                 className="glass-input mt-1"
               />
-              {importFiles.length > 0 && (
+              {importFiles.length > 0 && importProgress.length === 0 && (
                 <ul className="text-xs text-muted-foreground mt-2 space-y-0.5 max-h-32 overflow-auto">
                   {importFiles.map((f, i) => <li key={i}>• {f.name}</li>)}
                 </ul>
               )}
             </div>
-            <Button
-              onClick={handleImport}
-              disabled={!importFiles.length || importing}
-              className="w-full bg-gradient-primary text-primary-foreground rounded-xl"
-            >
-              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando {importFiles.length} arquivo(s)...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar {importFiles.length > 1 ? `${importFiles.length} romaneios` : "romaneio"}</>)}
-            </Button>
+
+            {importProgress.length > 0 && (() => {
+              const done = importProgress.filter(p => p.status !== "pending" && p.status !== "running").length;
+              const pct = Math.round((done / importProgress.length) * 100);
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{done} de {importProgress.length} — {pct}%</span>
+                    <span className="text-muted-foreground">
+                      ✅ {importProgress.filter(p => p.status === "ok").length} ·
+                      ⏭️ {importProgress.filter(p => p.status === "skip").length} ·
+                      ❌ {importProgress.filter(p => p.status === "err").length}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-primary transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <ul className="text-xs space-y-1 max-h-64 overflow-auto border rounded-lg p-2 bg-background/40">
+                    {importProgress.map((p, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="w-4 shrink-0">
+                          {p.status === "ok" && "✅"}
+                          {p.status === "skip" && "⏭️"}
+                          {p.status === "err" && "❌"}
+                          {p.status === "running" && <Loader2 className="h-3 w-3 animate-spin inline" />}
+                          {p.status === "pending" && "·"}
+                        </span>
+                        <span className="flex-1 truncate">{p.name}</span>
+                        {p.msg && <span className="text-muted-foreground text-[10px] truncate max-w-[45%]">{p.msg}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleImport}
+                disabled={!importFiles.length || importing}
+                className="flex-1 bg-gradient-primary text-primary-foreground rounded-xl"
+              >
+                {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar {importFiles.length > 1 ? `${importFiles.length} romaneios` : "romaneio"}</>)}
+              </Button>
+              {importing && (
+                <Button variant="outline" onClick={() => { cancelImportRef.current = true; toast.info("Cancelando após arquivos em voo..."); }} className="rounded-xl">
+                  Cancelar
+                </Button>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
 
       {imgSearchTarget && (
         <SupplierImageSearch
