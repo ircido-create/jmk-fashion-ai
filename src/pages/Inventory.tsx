@@ -82,64 +82,119 @@ export default function Inventory() {
     if (!importFiles.length) { toast.error("Selecione ao menos um PDF"); return; }
     const pdfs = importFiles.filter((f) => f.type === "application/pdf");
     if (!pdfs.length) { toast.error("Apenas PDF é suportado"); return; }
+
     setImporting(true);
-    let imported = 0;
-    let skipped = 0;
-    let failed = 0;
-    const details: string[] = [];
+    setCancelImport(false);
+    const initial = pdfs.map((f) => ({ name: f.name, status: "pending" as const }));
+    setImportProgress(initial);
+
+    const updateItem = (idx: number, patch: Partial<{ status: "pending" | "running" | "ok" | "skip" | "err"; msg: string }>) => {
+      setImportProgress((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...patch };
+        return next;
+      });
+    };
+
     const photosQueue: File[] = [];
-    try {
-      for (const file of pdfs) {
+    let imported = 0, skipped = 0, failed = 0;
+    let cancelled = false;
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    const invokeWithRetry = async (path: string, file_hash: string, filename: string) => {
+      const delays = [0, 2000, 5000];
+      let lastErr: any;
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (delays[attempt]) await sleep(delays[attempt]);
         try {
-          // hash SHA-256
-          const buf = await file.arrayBuffer();
-          const hashBuf = await crypto.subtle.digest("SHA-256", buf);
-          const file_hash = Array.from(new Uint8Array(hashBuf))
-            .map((b) => b.toString(16).padStart(2, "0")).join("");
-
-          // Verifica hash antes de subir para evitar upload desnecessário
-          const { data: existing } = await supabase
-            .from("imported_romaneios")
-            .select("id, supplier, filename")
-            .eq("file_hash", file_hash)
-            .maybeSingle();
-          if (existing) {
-            skipped++;
-            details.push(`⏭️ ${file.name} — já importado`);
-            continue;
-          }
-
-          const path = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-          const { error: upErr } = await supabase.storage.from("romaneios").upload(path, file);
-          if (upErr) throw upErr;
           const { data, error } = await supabase.functions.invoke("parse-romaneio", {
-            body: { storage_path: path, file_hash, filename: file.name },
+            body: { storage_path: path, file_hash, filename },
           });
-          if (error) throw error;
-          if (data?.error) throw new Error(data.error);
-          if (data?.skipped) {
-            skipped++;
-            details.push(`⏭️ ${file.name} — duplicado (${data.reason === "hash" ? "arquivo idêntico" : "mesmo fornecedor/total/itens"})`);
-            continue;
+          if (error) {
+            const msg = String(error.message || "");
+            const ctx: any = (error as any).context;
+            const status: number | undefined = ctx?.status ?? ctx?.response?.status;
+            const retriable = status === 429 || (status && status >= 500) || /fetch|network|timeout/i.test(msg);
+            if (retriable && attempt < delays.length - 1) { lastErr = error; continue; }
+            throw error;
           }
-          imported++;
-          details.push(`✅ ${file.name} — ${data.products_created} novos, ${data.variants_added} variações, ${data.payable_created} conta(s)`);
-          photosQueue.push(file);
+          return data;
         } catch (e: any) {
-          failed++;
-          details.push(`❌ ${file.name} — ${e?.message || "erro"}`);
+          lastErr = e;
+          if (attempt >= delays.length - 1) throw e;
         }
       }
+      throw lastErr;
+    };
 
-      toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro`, {
-        description: details.slice(0, 8).join("\n"),
-        duration: 8000,
+    const processOne = async (file: File, idx: number) => {
+      if (cancelled) return;
+      updateItem(idx, { status: "running" });
+      try {
+        const buf = await file.arrayBuffer();
+        const hashBuf = await crypto.subtle.digest("SHA-256", buf);
+        const file_hash = Array.from(new Uint8Array(hashBuf))
+          .map((b) => b.toString(16).padStart(2, "0")).join("");
+
+        const { data: existing } = await supabase
+          .from("imported_romaneios")
+          .select("id")
+          .eq("file_hash", file_hash)
+          .maybeSingle();
+        if (existing) {
+          skipped++;
+          updateItem(idx, { status: "skip", msg: "já importado" });
+          return;
+        }
+
+        const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const { error: upErr } = await supabase.storage.from("romaneios").upload(path, file);
+        if (upErr) throw upErr;
+
+        const data = await invokeWithRetry(path, file_hash, file.name);
+        if (data?.error) throw new Error(data.error);
+        if (data?.skipped) {
+          skipped++;
+          updateItem(idx, { status: "skip", msg: data.reason === "hash" ? "arquivo idêntico" : data.reason === "no_items" ? "sem itens" : "duplicado" });
+          return;
+        }
+        imported++;
+        updateItem(idx, { status: "ok", msg: `${data.products_created || 0} novos · ${data.variants_added || 0} var · ${data.payable_created || 0} conta(s)` });
+        photosQueue.push(file);
+      } catch (e: any) {
+        failed++;
+        updateItem(idx, { status: "err", msg: e?.message?.slice(0, 120) || "erro" });
+      }
+    };
+
+    // beforeunload guard
+    const beforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", beforeUnload);
+
+    try {
+      // concurrency pool = 3
+      const CONCURRENCY = 3;
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(CONCURRENCY, pdfs.length) }, async () => {
+        while (true) {
+          if (cancelImport) cancelled = true;
+          if (cancelled) return;
+          const myIdx = cursor++;
+          if (myIdx >= pdfs.length) return;
+          await processOne(pdfs[myIdx], myIdx);
+        }
       });
-      setImportOpen(false);
-      setImportFiles([]);
+      // Reactive cancel: watch state via closure — simple polling
+      const cancelPoll = setInterval(() => {
+        setCancelImport((c) => { if (c) cancelled = true; return c; });
+      }, 500);
+      await Promise.all(workers);
+      clearInterval(cancelPoll);
+
+      toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro${cancelled ? " (cancelado)" : ""}`, { duration: 6000 });
       load();
 
-      // Extrai fotos em background dos importados com sucesso
       if (photosQueue.length) {
         toast.info(`Buscando fotos em ${photosQueue.length} PDF(s)...`);
         (async () => {
@@ -148,18 +203,17 @@ export default function Inventory() {
             const res = await importRomaneioPhotos(f);
             totalPhotos += res.imported;
           }
-          if (totalPhotos > 0) {
-            toast.success(`${totalPhotos} foto(s) de produto importada(s)`);
-            load();
-          }
+          if (totalPhotos > 0) { toast.success(`${totalPhotos} foto(s) de produto importada(s)`); load(); }
         })();
       }
     } catch (e: any) {
       toast.error("Falha na importação: " + (e?.message || "erro desconhecido"));
     } finally {
+      window.removeEventListener("beforeunload", beforeUnload);
       setImporting(false);
     }
   };
+
 
   const load = async () => {
     const { data, error } = await supabase
