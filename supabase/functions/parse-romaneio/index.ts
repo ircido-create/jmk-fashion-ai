@@ -88,12 +88,24 @@ Deno.serve(async (req) => {
     const { data: userRes } = await userClient.auth.getUser();
     if (!userRes?.user) return json({ error: "unauthorized" }, 401);
 
-    const { storage_path } = await req.json();
+    const { storage_path, file_hash, filename } = await req.json();
     if (!storage_path || typeof storage_path !== "string") {
       return json({ error: "storage_path required" }, 400);
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    // Duplicidade por hash
+    if (file_hash) {
+      const { data: dupHash } = await admin
+        .from("imported_romaneios")
+        .select("id, supplier, total, items_count, filename, created_at")
+        .eq("file_hash", file_hash)
+        .maybeSingle();
+      if (dupHash) {
+        return json({ ok: true, skipped: true, reason: "hash", existing: dupHash });
+      }
+    }
 
     // Baixar PDF do storage
     const { data: fileData, error: dlErr } = await admin.storage
