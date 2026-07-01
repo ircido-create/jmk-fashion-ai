@@ -77,35 +77,81 @@ export default function Inventory() {
   };
 
   const handleImport = async () => {
-    if (!importFile) { toast.error("Selecione um PDF"); return; }
-    if (importFile.type !== "application/pdf") { toast.error("Apenas PDF é suportado"); return; }
+    if (!importFiles.length) { toast.error("Selecione ao menos um PDF"); return; }
+    const pdfs = importFiles.filter((f) => f.type === "application/pdf");
+    if (!pdfs.length) { toast.error("Apenas PDF é suportado"); return; }
     setImporting(true);
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+    const details: string[] = [];
+    const photosQueue: File[] = [];
     try {
-      const path = `${Date.now()}_${importFile.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { error: upErr } = await supabase.storage.from("romaneios").upload(path, importFile);
-      if (upErr) throw upErr;
-      const { data, error } = await supabase.functions.invoke("parse-romaneio", {
-        body: { storage_path: path },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      toast.success(
-        `Romaneio importado: ${data.products_created} produtos novos, ${data.variants_added} variações adicionadas, ${data.payable_created} conta(s) a pagar criada(s)`
-      );
-      setImportOpen(false);
-      const fileRef = importFile;
-      setImportFile(null);
-      load();
-      // Etapa 2: extrair fotos do próprio PDF (silencioso, roda em background)
-      toast.info("Buscando fotos dos produtos no PDF...");
-      importRomaneioPhotos(fileRef).then((res) => {
-        if (res.imported > 0) {
-          toast.success(`${res.imported} foto(s) de produto importada(s) do romaneio`);
-          load();
-        } else if (res.warning) {
-          console.warn("Fotos do romaneio:", res.warning);
+      for (const file of pdfs) {
+        try {
+          // hash SHA-256
+          const buf = await file.arrayBuffer();
+          const hashBuf = await crypto.subtle.digest("SHA-256", buf);
+          const file_hash = Array.from(new Uint8Array(hashBuf))
+            .map((b) => b.toString(16).padStart(2, "0")).join("");
+
+          // Verifica hash antes de subir para evitar upload desnecessário
+          const { data: existing } = await supabase
+            .from("imported_romaneios")
+            .select("id, supplier, filename")
+            .eq("file_hash", file_hash)
+            .maybeSingle();
+          if (existing) {
+            skipped++;
+            details.push(`⏭️ ${file.name} — já importado`);
+            continue;
+          }
+
+          const path = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+          const { error: upErr } = await supabase.storage.from("romaneios").upload(path, file);
+          if (upErr) throw upErr;
+          const { data, error } = await supabase.functions.invoke("parse-romaneio", {
+            body: { storage_path: path, file_hash, filename: file.name },
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          if (data?.skipped) {
+            skipped++;
+            details.push(`⏭️ ${file.name} — duplicado (${data.reason === "hash" ? "arquivo idêntico" : "mesmo fornecedor/total/itens"})`);
+            continue;
+          }
+          imported++;
+          details.push(`✅ ${file.name} — ${data.products_created} novos, ${data.variants_added} variações, ${data.payable_created} conta(s)`);
+          photosQueue.push(file);
+        } catch (e: any) {
+          failed++;
+          details.push(`❌ ${file.name} — ${e?.message || "erro"}`);
         }
+      }
+
+      toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro`, {
+        description: details.slice(0, 8).join("\n"),
+        duration: 8000,
       });
+      setImportOpen(false);
+      setImportFiles([]);
+      load();
+
+      // Extrai fotos em background dos importados com sucesso
+      if (photosQueue.length) {
+        toast.info(`Buscando fotos em ${photosQueue.length} PDF(s)...`);
+        (async () => {
+          let totalPhotos = 0;
+          for (const f of photosQueue) {
+            const res = await importRomaneioPhotos(f);
+            totalPhotos += res.imported;
+          }
+          if (totalPhotos > 0) {
+            toast.success(`${totalPhotos} foto(s) de produto importada(s)`);
+            load();
+          }
+        })();
+      }
     } catch (e: any) {
       toast.error("Falha na importação: " + (e?.message || "erro desconhecido"));
     } finally {
