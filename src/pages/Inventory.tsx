@@ -41,7 +41,7 @@ export default function Inventory() {
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [importOpen, setImportOpen] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
   const [imgSearchOpen, setImgSearchOpen] = useState(false);
   const [imgSearchTarget, setImgSearchTarget] = useState<{
