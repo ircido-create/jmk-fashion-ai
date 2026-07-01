@@ -84,7 +84,7 @@ export default function Inventory() {
     if (!pdfs.length) { toast.error("Apenas PDF é suportado"); return; }
 
     setImporting(true);
-    setCancelImport(false);
+    cancelImportRef.current = false;
     const initial = pdfs.map((f) => ({ name: f.name, status: "pending" as const }));
     setImportProgress(initial);
 
