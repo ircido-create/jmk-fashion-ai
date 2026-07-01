@@ -482,31 +482,36 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFile(null); } }}>
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFiles([]); } }}>
         <DialogContent className="glass-card border-white/40 max-w-md">
-          <DialogHeader><DialogTitle>Importar romaneio (PDF)</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Importar romaneios (PDF)</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Anexe o PDF do romaneio. A IA extrai fornecedor, produtos e parcelas para cadastrar
-              automaticamente no estoque (margem 100% arredondada para cima) e em contas a pagar.
+              Anexe um ou vários PDFs de romaneio. A IA extrai fornecedor, produtos e parcelas.
+              Romaneios já importados são detectados automaticamente e pulados.
             </p>
             <div>
-              <Label>Arquivo PDF</Label>
+              <Label>Arquivos PDF</Label>
               <Input
                 type="file"
                 accept="application/pdf"
-                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                multiple
+                onChange={(e) => setImportFiles(Array.from(e.target.files ?? []))}
                 disabled={importing}
                 className="glass-input mt-1"
               />
-              {importFile && <p className="text-xs text-muted-foreground mt-1">{importFile.name}</p>}
+              {importFiles.length > 0 && (
+                <ul className="text-xs text-muted-foreground mt-2 space-y-0.5 max-h-32 overflow-auto">
+                  {importFiles.map((f, i) => <li key={i}>• {f.name}</li>)}
+                </ul>
+              )}
             </div>
             <Button
               onClick={handleImport}
-              disabled={!importFile || importing}
+              disabled={!importFiles.length || importing}
               className="w-full bg-gradient-primary text-primary-foreground rounded-xl"
             >
-              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar</>)}
+              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando {importFiles.length} arquivo(s)...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar {importFiles.length > 1 ? `${importFiles.length} romaneios` : "romaneio"}</>)}
             </Button>
           </div>
         </DialogContent>
