@@ -272,6 +272,16 @@ Deno.serve(async (req) => {
       else payableCreated = rows.length;
     }
 
+    // Registrar romaneio importado
+    await admin.from("imported_romaneios").insert({
+      file_hash: file_hash || null,
+      supplier,
+      total,
+      items_count: items.length,
+      storage_path,
+      filename: filename || null,
+    });
+
     return json({
       ok: true,
       supplier,
