@@ -160,41 +160,53 @@ async function aiExtractPass(file_base64: string, filename: string, exclude: any
     ? "Extraia TODOS os lançamentos a receber deste PDF (todas as páginas). Inclua total_count e grand_total."
     : `Já extraí ${exclude.length} lançamentos. Continue do ponto onde parou. NÃO repita. Últimos extraídos:\n${exclude.slice(-8).map((e: any) => `- ${e.customer_name} | R$ ${e.amount} | ${e.due_date}`).join("\n")}\n\nRetorne APENAS os RESTANTES no mesmo formato JSON.`;
 
-  const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      max_tokens: 16000,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: userText },
-            { type: "file", file: { filename: filename || "extrato.pdf", file_data: `data:application/pdf;base64,${file_base64}` } },
-          ],
-        },
-      ],
-    }),
-  });
+  const models = ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "google/gemini-2.5-pro"];
+  let lastErr = "";
 
-  if (!aiResp.ok) {
-    const errText = await aiResp.text();
-    console.error("AI gateway error", aiResp.status, errText);
-    if (aiResp.status === 429) throw new Error("Limite de requisições atingido. Tente novamente em alguns segundos.");
-    if (aiResp.status === 402) throw new Error("Créditos esgotados na IA. Adicione créditos em Lovable AI.");
-    throw new Error("AI error: " + errText.slice(0, 200));
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          max_tokens: 16000,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: userText },
+                { type: "file", file: { filename: filename || "extrato.pdf", file_data: `data:application/pdf;base64,${file_base64}` } },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (aiResp.ok) {
+        const aiJson = await aiResp.json();
+        const choice = aiJson.choices?.[0];
+        const finishReason = choice?.finish_reason;
+        const content = choice?.message?.content;
+        if (!content) throw new Error("IA não retornou conteúdo");
+        const parsed = extractJSON(content);
+        return { items: Array.isArray(parsed.items) ? parsed.items : [], total_count: parsed.total_count, grand_total: parsed.grand_total, finishReason };
+      }
+
+      const errText = await aiResp.text();
+      lastErr = `${aiResp.status} ${errText.slice(0, 200)}`;
+      console.error(`AI gateway ${model} tentativa ${attempt + 1}:`, lastErr);
+      if (aiResp.status === 402) throw new Error("Créditos esgotados na IA. Adicione créditos em Lovable AI.");
+      // Não retry em erros de cliente (exceto 429). Retry em 429/5xx.
+      if (![429, 500, 502, 503, 504].includes(aiResp.status)) break;
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
   }
-  const aiJson = await aiResp.json();
-  const choice = aiJson.choices?.[0];
-  const finishReason = choice?.finish_reason;
-  const content = choice?.message?.content;
-  if (!content) throw new Error("IA não retornou conteúdo");
-  const parsed = extractJSON(content);
-  return { items: Array.isArray(parsed.items) ? parsed.items : [], total_count: parsed.total_count, grand_total: parsed.grand_total, finishReason };
+  throw new Error("IA indisponível no momento. Tente novamente em alguns instantes. (" + lastErr + ")");
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
