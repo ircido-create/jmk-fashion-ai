@@ -88,12 +88,24 @@ Deno.serve(async (req) => {
     const { data: userRes } = await userClient.auth.getUser();
     if (!userRes?.user) return json({ error: "unauthorized" }, 401);
 
-    const { storage_path } = await req.json();
+    const { storage_path, file_hash, filename } = await req.json();
     if (!storage_path || typeof storage_path !== "string") {
       return json({ error: "storage_path required" }, 400);
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    // Duplicidade por hash
+    if (file_hash) {
+      const { data: dupHash } = await admin
+        .from("imported_romaneios")
+        .select("id, supplier, total, items_count, filename, created_at")
+        .eq("file_hash", file_hash)
+        .maybeSingle();
+      if (dupHash) {
+        return json({ ok: true, skipped: true, reason: "hash", existing: dupHash });
+      }
+    }
 
     // Baixar PDF do storage
     const { data: fileData, error: dlErr } = await admin.storage
@@ -158,6 +170,19 @@ Deno.serve(async (req) => {
     const { supplier, total, installments, items } = extracted;
     if (!Array.isArray(items) || items.length === 0) {
       return json({ error: "Nenhum produto encontrado no romaneio" }, 422);
+    }
+
+    // Duplicidade por fornecedor + total + nº de itens (tolerância R$ 0,01)
+    if (supplier && typeof total === "number") {
+      const { data: dups } = await admin
+        .from("imported_romaneios")
+        .select("id, supplier, total, items_count, filename, created_at")
+        .eq("supplier", supplier)
+        .eq("items_count", items.length);
+      const match = dups?.find((d: any) => Math.abs(Number(d.total) - Number(total)) < 0.01);
+      if (match) {
+        return json({ ok: true, skipped: true, reason: "supplier_total_items", existing: match });
+      }
     }
 
     let productsCreated = 0;
@@ -246,6 +271,16 @@ Deno.serve(async (req) => {
       if (payErr) console.error("payable insert err", payErr);
       else payableCreated = rows.length;
     }
+
+    // Registrar romaneio importado
+    await admin.from("imported_romaneios").insert({
+      file_hash: file_hash || null,
+      supplier,
+      total,
+      items_count: items.length,
+      storage_path,
+      filename: filename || null,
+    });
 
     return json({
       ok: true,

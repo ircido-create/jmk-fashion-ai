@@ -41,7 +41,7 @@ export default function Inventory() {
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [importOpen, setImportOpen] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
   const [imgSearchOpen, setImgSearchOpen] = useState(false);
   const [imgSearchTarget, setImgSearchTarget] = useState<{
@@ -77,35 +77,81 @@ export default function Inventory() {
   };
 
   const handleImport = async () => {
-    if (!importFile) { toast.error("Selecione um PDF"); return; }
-    if (importFile.type !== "application/pdf") { toast.error("Apenas PDF é suportado"); return; }
+    if (!importFiles.length) { toast.error("Selecione ao menos um PDF"); return; }
+    const pdfs = importFiles.filter((f) => f.type === "application/pdf");
+    if (!pdfs.length) { toast.error("Apenas PDF é suportado"); return; }
     setImporting(true);
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+    const details: string[] = [];
+    const photosQueue: File[] = [];
     try {
-      const path = `${Date.now()}_${importFile.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { error: upErr } = await supabase.storage.from("romaneios").upload(path, importFile);
-      if (upErr) throw upErr;
-      const { data, error } = await supabase.functions.invoke("parse-romaneio", {
-        body: { storage_path: path },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      toast.success(
-        `Romaneio importado: ${data.products_created} produtos novos, ${data.variants_added} variações adicionadas, ${data.payable_created} conta(s) a pagar criada(s)`
-      );
-      setImportOpen(false);
-      const fileRef = importFile;
-      setImportFile(null);
-      load();
-      // Etapa 2: extrair fotos do próprio PDF (silencioso, roda em background)
-      toast.info("Buscando fotos dos produtos no PDF...");
-      importRomaneioPhotos(fileRef).then((res) => {
-        if (res.imported > 0) {
-          toast.success(`${res.imported} foto(s) de produto importada(s) do romaneio`);
-          load();
-        } else if (res.warning) {
-          console.warn("Fotos do romaneio:", res.warning);
+      for (const file of pdfs) {
+        try {
+          // hash SHA-256
+          const buf = await file.arrayBuffer();
+          const hashBuf = await crypto.subtle.digest("SHA-256", buf);
+          const file_hash = Array.from(new Uint8Array(hashBuf))
+            .map((b) => b.toString(16).padStart(2, "0")).join("");
+
+          // Verifica hash antes de subir para evitar upload desnecessário
+          const { data: existing } = await supabase
+            .from("imported_romaneios")
+            .select("id, supplier, filename")
+            .eq("file_hash", file_hash)
+            .maybeSingle();
+          if (existing) {
+            skipped++;
+            details.push(`⏭️ ${file.name} — já importado`);
+            continue;
+          }
+
+          const path = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+          const { error: upErr } = await supabase.storage.from("romaneios").upload(path, file);
+          if (upErr) throw upErr;
+          const { data, error } = await supabase.functions.invoke("parse-romaneio", {
+            body: { storage_path: path, file_hash, filename: file.name },
+          });
+          if (error) throw error;
+          if (data?.error) throw new Error(data.error);
+          if (data?.skipped) {
+            skipped++;
+            details.push(`⏭️ ${file.name} — duplicado (${data.reason === "hash" ? "arquivo idêntico" : "mesmo fornecedor/total/itens"})`);
+            continue;
+          }
+          imported++;
+          details.push(`✅ ${file.name} — ${data.products_created} novos, ${data.variants_added} variações, ${data.payable_created} conta(s)`);
+          photosQueue.push(file);
+        } catch (e: any) {
+          failed++;
+          details.push(`❌ ${file.name} — ${e?.message || "erro"}`);
         }
+      }
+
+      toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro`, {
+        description: details.slice(0, 8).join("\n"),
+        duration: 8000,
       });
+      setImportOpen(false);
+      setImportFiles([]);
+      load();
+
+      // Extrai fotos em background dos importados com sucesso
+      if (photosQueue.length) {
+        toast.info(`Buscando fotos em ${photosQueue.length} PDF(s)...`);
+        (async () => {
+          let totalPhotos = 0;
+          for (const f of photosQueue) {
+            const res = await importRomaneioPhotos(f);
+            totalPhotos += res.imported;
+          }
+          if (totalPhotos > 0) {
+            toast.success(`${totalPhotos} foto(s) de produto importada(s)`);
+            load();
+          }
+        })();
+      }
     } catch (e: any) {
       toast.error("Falha na importação: " + (e?.message || "erro desconhecido"));
     } finally {
@@ -436,31 +482,36 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFile(null); } }}>
+      <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) setImportFiles([]); } }}>
         <DialogContent className="glass-card border-white/40 max-w-md">
-          <DialogHeader><DialogTitle>Importar romaneio (PDF)</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Importar romaneios (PDF)</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Anexe o PDF do romaneio. A IA extrai fornecedor, produtos e parcelas para cadastrar
-              automaticamente no estoque (margem 100% arredondada para cima) e em contas a pagar.
+              Anexe um ou vários PDFs de romaneio. A IA extrai fornecedor, produtos e parcelas.
+              Romaneios já importados são detectados automaticamente e pulados.
             </p>
             <div>
-              <Label>Arquivo PDF</Label>
+              <Label>Arquivos PDF</Label>
               <Input
                 type="file"
                 accept="application/pdf"
-                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                multiple
+                onChange={(e) => setImportFiles(Array.from(e.target.files ?? []))}
                 disabled={importing}
                 className="glass-input mt-1"
               />
-              {importFile && <p className="text-xs text-muted-foreground mt-1">{importFile.name}</p>}
+              {importFiles.length > 0 && (
+                <ul className="text-xs text-muted-foreground mt-2 space-y-0.5 max-h-32 overflow-auto">
+                  {importFiles.map((f, i) => <li key={i}>• {f.name}</li>)}
+                </ul>
+              )}
             </div>
             <Button
               onClick={handleImport}
-              disabled={!importFile || importing}
+              disabled={!importFiles.length || importing}
               className="w-full bg-gradient-primary text-primary-foreground rounded-xl"
             >
-              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar</>)}
+              {importing ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando {importFiles.length} arquivo(s)...</>) : (<><FileUp className="h-4 w-4 mr-2" /> Importar {importFiles.length > 1 ? `${importFiles.length} romaneios` : "romaneio"}</>)}
             </Button>
           </div>
         </DialogContent>

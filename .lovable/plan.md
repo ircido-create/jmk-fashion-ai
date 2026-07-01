@@ -1,34 +1,41 @@
 ## Objetivo
-Ao importar um romaneio (PDF do fornecedor) em Estoque, extrair também as fotos dos produtos que estejam embutidas no próprio PDF e salvá-las como imagem principal do produto — **apenas** quando o produto for novo ou ainda não tiver foto (nunca sobrescreve).
+Permitir importar **vários romaneios (PDFs) de uma vez** em Estoque, detectando e pulando automaticamente os que já foram importados anteriormente.
 
 ## Como vai funcionar
 
-1. Usuário abre Estoque → Importar Romaneio e envia o PDF (fluxo atual, sem mudança na UI).
-2. Backend (`parse-romaneio`) roda em duas etapas dentro da mesma chamada:
-   - **Etapa A — extração de dados (já existe)**: Gemini 2.5 Pro lê o PDF e retorna fornecedor, itens (SKU, nome, cor, tamanho, qty, custo) e parcelas.
-   - **Etapa B — extração de imagens (novo)**: renderiza cada página do PDF em imagem (usando `pdfium` via WASM em Deno, ou fallback `pdf.js`) e pede ao Gemini para associar cada foto visível a um SKU da lista extraída na etapa A, retornando para cada SKU um recorte (bounding box em % da página + índice da página). Recortamos server-side com Canvas API, comprimimos em JPEG (máx 800px, ~85% qualidade) e subimos no bucket `product-images`.
-3. Para cada produto processado, se `image_url IS NULL`, gravamos o public URL da foto extraída. Se já tiver foto, ignoramos.
-4. Resposta da função ganha `photos_imported: N` e o toast em `Inventory.tsx` mostra "X fotos importadas".
+1. Em Estoque → Importar Romaneio, o campo de arquivo passa a aceitar **múltiplos PDFs** (multi-select).
+2. Ao confirmar, o front processa os PDFs em fila (um por vez, para não estourar timeouts nem créditos da IA):
+   - Calcula o **hash SHA-256** do PDF localmente.
+   - Chama `parse-romaneio` normalmente.
+   - Após extrair os dados, valida duplicidade no servidor (ver abaixo).
+3. Ao final, exibe um resumo único no toast: `X romaneios importados, Y pulados (duplicados), Z com erro`, listando os arquivos pulados/com erro em um pequeno relatório expansível.
 
-## Detalhes técnicos
+## Detecção de duplicidade (regra: hash OU fornecedor+total+itens)
 
-- **Renderização do PDF em Deno edge function**: usar `npm:pdfjs-dist` com `getDocument().getPage().render()` em um `OffscreenCanvas` (ou `npm:@napi-rs/canvas` compatível). Escala 1.5x para boa leitura de foto.
-- **Segunda chamada Gemini** (`google/gemini-2.5-pro`) recebe:
-  - Todas as páginas como `image_url` base64.
-  - A lista de SKUs extraídos na etapa A como texto.
-  - Tool call `associate_photos` com schema `{ associations: [{ sku, page_index, bbox: {x,y,w,h} }] }` (coords normalizadas 0-1).
-- **Recorte + upload**: para cada associação, redesenhar a região no canvas, `toBlob('image/jpeg')`, `admin.storage.from('product-images').upload('romaneio/{sku}-{timestamp}.jpg', blob, { upsert: false })`, pegar public URL, `update products set image_url = ... where id = ? and image_url is null`.
-- **Custo/tempo**: cada página adiciona ~1-3s. Limitar a 20 páginas para não estourar timeout de 150s da edge function.
-- **Fallback silencioso**: se a etapa B falhar (PDF sem imagens, Gemini não achou correspondência, erro de render), a importação de dados **não** é afetada — só retorna `photos_imported: 0` e um `photos_warning` opcional.
+Nova tabela `imported_romaneios` guarda o histórico do que já entrou:
+
+```text
+imported_romaneios
+  id, file_hash (unique), supplier, total, items_count,
+  storage_path, filename, imported_by, created_at
+```
+
+Na `parse-romaneio`, antes de inserir produtos/contas:
+
+1. Se existir linha com o mesmo `file_hash` → duplicado (pular).
+2. Se existir linha com mesmo `supplier` + mesmo `total` (tolerância de R$ 0,01) + mesmo `items_count` → duplicado (pular).
+3. Caso contrário, prossegue com a importação e no final grava a linha em `imported_romaneios` (na mesma transação lógica).
+
+Quando duplicado, a função retorna `{ ok: true, skipped: true, reason: "hash" | "supplier_total_items", existing: {...} }` sem tocar em produtos/estoque/contas.
 
 ## Arquivos afetados
 
-- `supabase/functions/parse-romaneio/index.ts` — adicionar etapa B (render + associate + crop + upload + update).
-- `src/pages/Inventory.tsx` — mostrar `photos_imported` no toast final.
+- **Migração**: cria `imported_romaneios` com RLS (authenticated pode ler/inserir; select all) e índice em `file_hash`.
+- `supabase/functions/parse-romaneio/index.ts`: aceita `file_hash` no body, checa duplicidade antes de processar, grava registro ao final da importação bem-sucedida, retorna `skipped`.
+- `src/pages/Inventory.tsx`: input `multiple`, loop sequencial, cálculo de hash com `crypto.subtle.digest`, agregação de resultados, toast final com resumo + lista de pulados.
 
 ## Fora de escopo
 
-- Não altera o fluxo manual "Buscar imagem do fornecedor" (`SupplierImageSearch`) — continua disponível como antes.
-- Não busca fotos externas na web (usuário escolheu extrair só do PDF).
-- Não sobrescreve fotos existentes.
-- Não extrai foto por variação (cor/tamanho) — só imagem principal do produto, já que romaneios normalmente têm uma foto por referência.
+- Não muda o fluxo de extração de fotos (`importRomaneioPhotos`) — continua rodando por PDF importado com sucesso.
+- Não expõe tela de histórico de romaneios importados (fica só a tabela no banco; pode virar tela depois).
+- Não paraleliza chamadas à IA (fila sequencial para respeitar rate limit).

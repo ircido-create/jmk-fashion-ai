@@ -229,6 +229,42 @@ export type Database = {
         }
         Relationships: []
       }
+      imported_romaneios: {
+        Row: {
+          created_at: string
+          file_hash: string
+          filename: string | null
+          id: string
+          imported_by: string | null
+          items_count: number | null
+          storage_path: string | null
+          supplier: string | null
+          total: number | null
+        }
+        Insert: {
+          created_at?: string
+          file_hash: string
+          filename?: string | null
+          id?: string
+          imported_by?: string | null
+          items_count?: number | null
+          storage_path?: string | null
+          supplier?: string | null
+          total?: number | null
+        }
+        Update: {
+          created_at?: string
+          file_hash?: string
+          filename?: string | null
+          id?: string
+          imported_by?: string | null
+          items_count?: number | null
+          storage_path?: string | null
+          supplier?: string | null
+          total?: number | null
+        }
+        Relationships: []
+      }
       payment_proofs: {
         Row: {
           created_at: string
