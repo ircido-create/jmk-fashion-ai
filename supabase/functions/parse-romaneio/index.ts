@@ -169,7 +169,12 @@ Deno.serve(async (req) => {
 
     const { supplier, total, installments, items } = extracted;
     if (!Array.isArray(items) || items.length === 0) {
-      return json({ error: "Nenhum produto encontrado no romaneio" }, 422);
+      return json({
+        ok: true,
+        skipped: true,
+        reason: "no_items",
+        existing: { supplier, total, filename: filename || null },
+      });
     }
 
     // Duplicidade por fornecedor + total + nº de itens (tolerância R$ 0,01)
