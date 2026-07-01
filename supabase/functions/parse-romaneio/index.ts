@@ -172,6 +172,19 @@ Deno.serve(async (req) => {
       return json({ error: "Nenhum produto encontrado no romaneio" }, 422);
     }
 
+    // Duplicidade por fornecedor + total + nº de itens (tolerância R$ 0,01)
+    if (supplier && typeof total === "number") {
+      const { data: dups } = await admin
+        .from("imported_romaneios")
+        .select("id, supplier, total, items_count, filename, created_at")
+        .eq("supplier", supplier)
+        .eq("items_count", items.length);
+      const match = dups?.find((d: any) => Math.abs(Number(d.total) - Number(total)) < 0.01);
+      if (match) {
+        return json({ ok: true, skipped: true, reason: "supplier_total_items", existing: match });
+      }
+    }
+
     let productsCreated = 0;
     let variantsAdded = 0;
     let variantsUpdated = 0;
