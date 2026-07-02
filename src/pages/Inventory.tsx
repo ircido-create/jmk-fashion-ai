@@ -78,9 +78,10 @@ export default function Inventory() {
     setImgSearchOpen(true);
   };
 
-  const handleImport = async () => {
-    if (!importFiles.length) { toast.error("Selecione ao menos um PDF"); return; }
-    const pdfs = importFiles.filter((f) => f.type === "application/pdf");
+  const handleImport = async (filesOverride?: File[]) => {
+    const source = filesOverride ?? importFiles;
+    if (!source.length) { toast.error("Selecione ao menos um PDF"); return; }
+    const pdfs = source.filter((f) => f.type === "application/pdf");
     if (!pdfs.length) { toast.error("Apenas PDF é suportado"); return; }
 
     setImporting(true);
