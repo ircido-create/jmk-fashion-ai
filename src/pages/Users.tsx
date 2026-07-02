@@ -104,6 +104,11 @@ export default function Users() {
                         </Button>
                       </div>
                     </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Ativo</span>
+                        <Switch checked={u.active} onCheckedChange={() => toggleActive(u)} disabled={isMe} />
+                      </div>
                       <Button size="sm" variant="outline"
                         onClick={() => { setPwUser(u); setPwValue(""); }}>
                         <KeyRound className="h-3 w-3 mr-1" /> Redefinir senha
@@ -139,8 +144,6 @@ export default function Users() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-        </p>
-      </GlassCard>
     </div>
   );
 }
