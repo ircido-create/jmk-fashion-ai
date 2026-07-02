@@ -197,18 +197,29 @@ export default function Receivable() {
       if (!(amt > 0)) throw new Error("Valor inválido");
       if (!payDate) throw new Error("Informe a data do recebimento");
       const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
-      const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
-      const { error } = await supabase
+      // 1) UPDATE do status primeiro — se falhar, aborta e mostra o erro
+      const { data: updated, error } = await supabase
         .from("accounts_receivable")
         .update({ status: "pago", paid_at: paidAtIso })
-        .eq("id", payTarget.id);
+        .eq("id", payTarget.id)
+        .select("id");
       if (error) throw error;
-      if (proofId) {
-        await supabase.from("receivable_payments").insert({
-          receivable_id: payTarget.id, proof_id: proofId, amount_paid: amt,
-        });
+      if (!updated || updated.length === 0) {
+        throw new Error("Não foi possível atualizar (permissão negada). Verifique sua função de usuário.");
       }
-      toast.success("Recebimento confirmado");
+      // 2) Comprovante é opcional — não bloqueia a baixa se der erro
+      try {
+        const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
+        if (proofId) {
+          await supabase.from("receivable_payments").insert({
+            receivable_id: payTarget.id, proof_id: proofId, amount_paid: amt,
+          });
+        }
+      } catch (proofErr: any) {
+        console.warn("Comprovante não registrado:", proofErr?.message);
+      }
+      toast.success("Recebimento confirmado — movido para Pago");
+      setFilter("pago");
       setPayOpen(false); setPayTarget(null); setPayFile(null);
       load();
     } catch (e: any) {
