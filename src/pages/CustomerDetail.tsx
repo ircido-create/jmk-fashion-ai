@@ -89,17 +89,42 @@ export default function CustomerDetail() {
     else setSelected(new Set(pendingReceivables.map(r => r.id)));
   };
 
-  const paySelected = async () => {
+  const openPayDialog = () => {
     if (selected.size === 0) return;
-    if (!confirm(`Marcar ${selected.size} parcela(s) como paga(s)? Total: ${fmtBRL(selectedTotal)}`)) return;
+    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayAmount(selectedTotal.toFixed(2));
+    setPayOpen(true);
+  };
+
+  const confirmPay = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const received = Number(payAmount.replace(",", "."));
+    if (!isFinite(received) || received <= 0) { toast.error("Informe um valor válido"); return; }
+    if (!payDate) { toast.error("Informe a data do recebimento"); return; }
+
     setPaying(true);
+    const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
+    const selectedList = pendingReceivables.filter(r => selected.has(r.id));
+    const expected = selectedList.reduce((s, r) => s + Number(r.amount), 0);
+
     const { error } = await supabase
       .from("accounts_receivable")
-      .update({ status: "pago", paid_at: new Date().toISOString() })
-      .in("id", Array.from(selected));
+      .update({ status: "pago", paid_at: paidAtIso })
+      .in("id", ids);
+    if (error) { setPaying(false); toast.error(error.message); return; }
+
+    // registra recebimentos (rateio proporcional se diferente do total)
+    const payments = selectedList.map(r => {
+      const share = expected > 0 ? (Number(r.amount) / expected) * received : received / selectedList.length;
+      return { receivable_id: r.id, amount_paid: Number(share.toFixed(2)) };
+    });
+    const { error: pErr } = await supabase.from("receivable_payments").insert(payments);
+    if (pErr) console.warn("receivable_payments insert:", pErr.message);
+
     setPaying(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success(`${selected.size} parcela(s) quitada(s)`);
+    setPayOpen(false);
+    toast.success(`${ids.length} parcela(s) quitada(s) — ${fmtBRL(received)}`);
     await load();
   };
 
