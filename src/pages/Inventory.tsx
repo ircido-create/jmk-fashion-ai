@@ -43,7 +43,7 @@ export default function Inventory() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState<Array<{ name: string; status: "pending" | "running" | "ok" | "skip" | "err"; msg?: string }>>([]);
+  const [importProgress, setImportProgress] = useState<Array<{ name: string; status: "pending" | "running" | "ok" | "skip" | "err"; msg?: string; retriable?: boolean }>>([]);
   const cancelImportRef = useRef(false);
   const [imgSearchOpen, setImgSearchOpen] = useState(false);
   const [imgSearchTarget, setImgSearchTarget] = useState<{
@@ -78,9 +78,10 @@ export default function Inventory() {
     setImgSearchOpen(true);
   };
 
-  const handleImport = async () => {
-    if (!importFiles.length) { toast.error("Selecione ao menos um PDF"); return; }
-    const pdfs = importFiles.filter((f) => f.type === "application/pdf");
+  const handleImport = async (filesOverride?: File[]) => {
+    const source = filesOverride ?? importFiles;
+    if (!source.length) { toast.error("Selecione ao menos um PDF"); return; }
+    const pdfs = source.filter((f) => f.type === "application/pdf");
     if (!pdfs.length) { toast.error("Apenas PDF é suportado"); return; }
 
     setImporting(true);
@@ -88,7 +89,7 @@ export default function Inventory() {
     const initial = pdfs.map((f) => ({ name: f.name, status: "pending" as const }));
     setImportProgress(initial);
 
-    const updateItem = (idx: number, patch: Partial<{ status: "pending" | "running" | "ok" | "skip" | "err"; msg: string }>) => {
+    const updateItem = (idx: number, patch: Partial<{ status: "pending" | "running" | "ok" | "skip" | "err"; msg: string; retriable: boolean }>) => {
       setImportProgress((prev) => {
         const next = [...prev];
         next[idx] = { ...next[idx], ...patch };
@@ -156,15 +157,17 @@ export default function Inventory() {
         if (data?.error) throw new Error(data.error);
         if (data?.skipped) {
           skipped++;
-          updateItem(idx, { status: "skip", msg: data.reason === "hash" ? "arquivo idêntico" : data.reason === "no_items" ? "sem itens" : "duplicado" });
+          const isHash = data.reason === "hash";
+          const label = isHash ? "já importado (arquivo idêntico)" : data.reason === "no_items" ? "IA não leu itens" : "duplicado";
+          updateItem(idx, { status: "skip", msg: label, retriable: !isHash });
           return;
         }
         imported++;
-        updateItem(idx, { status: "ok", msg: `${data.products_created || 0} novos · ${data.variants_added || 0} var · ${data.payable_created || 0} conta(s)` });
+        updateItem(idx, { status: "ok", msg: `${data.products_created || 0} novos · ${data.variants_added || 0} var · ${data.payable_created || 0} conta(s)${data.attempts > 1 ? ` · ${data.attempts}ª tent.` : ""}` });
         photosQueue.push(file);
       } catch (e: any) {
         failed++;
-        updateItem(idx, { status: "err", msg: e?.message?.slice(0, 120) || "erro" });
+        updateItem(idx, { status: "err", msg: e?.message?.slice(0, 120) || "erro", retriable: true });
       }
     };
 
@@ -595,7 +598,7 @@ export default function Inventory() {
 
             <div className="flex gap-2">
               <Button
-                onClick={handleImport}
+                onClick={() => handleImport()}
                 disabled={!importFiles.length || importing}
                 className="flex-1 bg-gradient-primary text-primary-foreground rounded-xl"
               >
@@ -604,6 +607,22 @@ export default function Inventory() {
               {importing && (
                 <Button variant="outline" onClick={() => { cancelImportRef.current = true; toast.info("Cancelando após arquivos em voo..."); }} className="rounded-xl">
                   Cancelar
+                </Button>
+              )}
+              {!importing && importProgress.length > 0 && importProgress.some((p) => p.retriable) && (
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    const retryNames = new Set(importProgress.filter((p) => p.retriable).map((p) => p.name));
+                    const retryFiles = importFiles.filter((f) => retryNames.has(f.name));
+                    if (!retryFiles.length) return;
+                    setImportFiles(retryFiles);
+                    setImportProgress([]);
+                    handleImport(retryFiles);
+                  }}
+                >
+                  Tentar novamente ({importProgress.filter((p) => p.retriable).length})
                 </Button>
               )}
             </div>
