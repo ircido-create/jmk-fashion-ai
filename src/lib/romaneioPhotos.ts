@@ -115,3 +115,48 @@ export async function importRomaneioPhotos(file: File): Promise<{ imported: numb
     return { imported: 0, warning: e?.message };
   }
 }
+
+/**
+ * Reprocessa todos os PDFs de romaneios já importados para tentar extrair fotos
+ * dos produtos que ainda estão sem imagem. Útil quando a primeira tentativa
+ * (durante a importação) não conseguiu associar todas as fotos.
+ */
+export async function reprocessRomaneioPhotos(
+  onProgress?: (current: number, total: number, filename: string) => void
+): Promise<{ imported: number; processed: number; failed: number }> {
+  // 1. Buscar romaneios com storage_path
+  const { data: romaneios, error } = await supabase
+    .from("imported_romaneios")
+    .select("id, filename, storage_path")
+    .not("storage_path", "is", null);
+  if (error || !romaneios?.length) return { imported: 0, processed: 0, failed: 0 };
+
+  let imported = 0;
+  let failed = 0;
+  let processed = 0;
+
+  for (const rom of romaneios) {
+    processed++;
+    onProgress?.(processed, romaneios.length, rom.filename);
+    try {
+      // Verifica se ainda há produtos sem foto — se não, para
+      const { count } = await supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .is("image_url", null)
+        .not("sku", "is", null);
+      if (!count) break;
+
+      const { data: blob, error: dlErr } = await supabase.storage
+        .from("romaneios")
+        .download(rom.storage_path!);
+      if (dlErr || !blob) { failed++; continue; }
+      const file = new File([blob], rom.filename, { type: "application/pdf" });
+      const res = await importRomaneioPhotos(file);
+      imported += res.imported;
+    } catch {
+      failed++;
+    }
+  }
+  return { imported, processed, failed };
+}
