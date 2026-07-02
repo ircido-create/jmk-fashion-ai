@@ -227,6 +227,24 @@ export default function Inventory() {
   useEffect(() => { load(); }, []);
 
   const openNew = () => { setEditing(null); setVariants([]); setOpen(true); };
+
+  const handleReprocessPhotos = async () => {
+    if (reprocessing) return;
+    setReprocessing(true);
+    setReprocessMsg("Iniciando...");
+    try {
+      const res = await reprocessRomaneioPhotos((cur, total, name) => {
+        setReprocessMsg(`Processando ${cur}/${total}: ${name}`);
+      });
+      toast.success(`${res.imported} foto(s) importada(s) de ${res.processed} romaneio(s)`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao reprocessar");
+    } finally {
+      setReprocessing(false);
+      setReprocessMsg("");
+    }
+  };
   const openEdit = (p: Product) => {
     setEditing(p);
     setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity, image_url: v.image_url ?? null })) ?? []);
