@@ -122,50 +122,72 @@ Deno.serve(async (req) => {
     }
     const b64 = btoa(binary);
 
-    // Chamar Lovable AI com o PDF (Gemini 2.5 Pro suporta PDF nativamente)
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Extraia os dados deste romaneio." },
-              {
-                type: "file",
-                file: { filename: "romaneio.pdf", file_data: `data:application/pdf;base64,${b64}` },
-              },
-            ],
-          },
-        ],
-        tools: [tool],
-        tool_choice: { type: "function", function: { name: "extract_romaneio" } },
-      }),
-    });
+    // Chamar Lovable AI com o PDF. Tenta várias combinações (modelo + prompt reforçado)
+    // até obter itens. Gemini às vezes devolve items:[] em PDFs com layout de grade.
+    const callAI = async (model: string, reinforce: boolean) => {
+      const userText = reinforce
+        ? "Este romaneio CONTÉM produtos. Extraia TODAS as linhas da tabela de itens, mesmo em grade de tamanhos (uma linha por combinação SKU+tamanho+cor com quantidade > 0). Nunca devolva items vazio se houver tabela de produtos."
+        : "Extraia os dados deste romaneio.";
+      const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: userText },
+                { type: "file", file: { filename: "romaneio.pdf", file_data: `data:application/pdf;base64,${b64}` } },
+              ],
+            },
+          ],
+          tools: [tool],
+          tool_choice: { type: "function", function: { name: "extract_romaneio" } },
+        }),
+      });
+      return resp;
+    };
 
-    if (!aiResp.ok) {
-      const errText = await aiResp.text();
-      console.error("AI gateway error", aiResp.status, errText);
-      if (aiResp.status === 429) return json({ error: "Rate limit. Tente novamente em alguns segundos." }, 429);
-      if (aiResp.status === 402) return json({ error: "Créditos esgotados. Adicione fundos em Lovable AI." }, 402);
-      return json({ error: "AI error: " + errText.slice(0, 200) }, 500);
+    const attempts: Array<{ model: string; reinforce: boolean }> = [
+      { model: "google/gemini-2.5-pro", reinforce: false },
+      { model: "google/gemini-2.5-pro", reinforce: true },
+      { model: "google/gemini-2.5-flash", reinforce: true },
+    ];
+
+    let extracted: any = null;
+    let attemptsUsed = 0;
+    let lastErr = "";
+    for (const a of attempts) {
+      attemptsUsed++;
+      const aiResp = await callAI(a.model, a.reinforce);
+      if (!aiResp.ok) {
+        const errText = await aiResp.text();
+        lastErr = errText.slice(0, 200);
+        console.error("AI gateway error", aiResp.status, errText.slice(0, 200));
+        if (aiResp.status === 429) return json({ error: "Rate limit. Tente novamente em alguns segundos." }, 429);
+        if (aiResp.status === 402) return json({ error: "Créditos esgotados. Adicione fundos em Lovable AI." }, 402);
+        continue;
+      }
+      const aiJson = await aiResp.json();
+      const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
+      if (!toolCall) { lastErr = "no tool call"; continue; }
+      try {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        console.log(`Extracted (attempt ${attemptsUsed}, ${a.model}${a.reinforce ? "+reinforce" : ""}):`, JSON.stringify(parsed).slice(0, 500));
+        if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+          extracted = parsed;
+          break;
+        }
+        // guarda como fallback caso todas as tentativas venham vazias
+        if (!extracted) extracted = parsed;
+      } catch (e) { lastErr = "json parse: " + (e as Error).message; }
     }
 
-    const aiJson = await aiResp.json();
-    const toolCall = aiJson.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) {
-      console.error("No tool call in response", JSON.stringify(aiJson).slice(0, 500));
-      return json({ error: "IA não conseguiu extrair os dados" }, 422);
+    if (!extracted) {
+      return json({ error: "IA não conseguiu extrair os dados: " + lastErr }, 422);
     }
-
-    const extracted = JSON.parse(toolCall.function.arguments);
-    console.log("Extracted:", JSON.stringify(extracted).slice(0, 1000));
 
     const { supplier, total, installments, items } = extracted;
     if (!Array.isArray(items) || items.length === 0) {
@@ -173,9 +195,11 @@ Deno.serve(async (req) => {
         ok: true,
         skipped: true,
         reason: "no_items",
+        attempts: attemptsUsed,
         existing: { supplier, total, filename: filename || null },
       });
     }
+
 
     // Duplicidade por fornecedor + total + nº de itens (tolerância R$ 0,01)
     if (supplier && typeof total === "number") {
