@@ -250,7 +250,7 @@ export default function CustomerDetail() {
                 )}
                 <Button
                   size="sm"
-                  onClick={paySelected}
+                  onClick={openPayDialog}
                   disabled={selected.size === 0 || paying}
                 >
                   {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
