@@ -1,17 +1,21 @@
-## Ajuste no Painel — card "Vencidos"
+## Alterar senha do admin
 
-Hoje o card **Vencidos** mostra apenas a quantidade de títulos vencidos. Vou alterar para exibir também o **valor total em R$**, mantendo a contagem como informação secundária.
+Por segurança, senhas do sistema de autenticação não podem ser gravadas diretamente via SQL (ficam com hash gerenciado pelo backend). Existem duas formas de fazer isso:
 
-### Alterações em `src/pages/Dashboard.tsx`
+### Opção A — Você mesmo faz agora (recomendado, mais rápido)
+1. Abra o painel do backend (botão "View Backend").
+2. Vá em **Users**.
+3. Localize `ircido@gmail.com`.
+4. Clique nos três pontinhos → **Send password recovery** ou **Reset password** e defina `J@s3m6240`.
 
-1. Na função `loadAll`, trocar a consulta atual (que traz só `count`) por uma que retorne também os valores:
-   - Buscar `amount` de `accounts_receivable` com `status = 'pendente'` e `due_date < hoje`.
-   - Somar em `overdueAmount` além de contar em `overdueCount`.
+Não precisa alterar nada no código.
 
-2. Ampliar o estado `stats` para incluir `overdueAmount: number`.
+### Opção B — Eu implemento um botão temporário "Redefinir senha" para admins
+Se preferir, crio uma Edge Function `admin-set-password` (usando a chave de serviço no servidor) e um pequeno formulário na tela `/usuarios`, restrito a quem tem role `admin`, para redefinir a senha de qualquer usuário. Fica disponível para uso futuro também.
 
-3. No array `cards`, alterar o item **Vencidos**:
-   - `value` passa a ser `R$ X,XX` (valor total).
-   - Adicionar um subtítulo/linha extra com "N título(s)" abaixo do valor (mesmo padrão visual dos outros cards de valor).
+Detalhes técnicos da Opção B:
+- Edge Function protegida: valida que o chamador é `admin` via `has_role()` antes de invocar `auth.admin.updateUserById(id, { password })`.
+- UI: campo "Nova senha" + botão em cada linha da tabela de usuários.
+- Nenhuma senha trafega em logs.
 
-Nenhuma outra tela é afetada.
+Qual opção prefere? Se escolher a B, já sigo com a implementação.

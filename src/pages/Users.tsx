@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { Shield, User, Loader2 } from "lucide-react";
+import { Shield, User, Loader2, KeyRound } from "lucide-react";
 
 interface UserRow {
   id: string; full_name: string | null; email: string | null; active: boolean;
@@ -16,6 +18,9 @@ export default function Users() {
   const { user: me } = useAuth();
   const [list, setList] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pwUser, setPwUser] = useState<UserRow | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -41,6 +46,24 @@ export default function Users() {
     await supabase.from("user_roles").delete().eq("user_id", u.id);
     const { error } = await supabase.from("user_roles").insert({ user_id: u.id, role });
     if (error) toast.error(error.message); else { toast.success(`Papel definido: ${role}`); load(); }
+  };
+
+  const savePassword = async () => {
+    if (!pwUser || pwValue.length < 6) {
+      toast.error("Senha precisa ter ao menos 6 caracteres");
+      return;
+    }
+    setPwSaving(true);
+    const { data, error } = await supabase.functions.invoke("admin-set-password", {
+      body: { user_id: pwUser.id, password: pwValue },
+    });
+    setPwSaving(false);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || error?.message || "Falha ao redefinir");
+      return;
+    }
+    toast.success(`Senha de ${pwUser.email} redefinida`);
+    setPwUser(null); setPwValue("");
   };
 
   return (
@@ -81,9 +104,15 @@ export default function Users() {
                         </Button>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-xs text-muted-foreground">Ativo</span>
-                      <Switch checked={u.active} onCheckedChange={() => toggleActive(u)} disabled={isMe} />
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Ativo</span>
+                        <Switch checked={u.active} onCheckedChange={() => toggleActive(u)} disabled={isMe} />
+                      </div>
+                      <Button size="sm" variant="outline"
+                        onClick={() => { setPwUser(u); setPwValue(""); }}>
+                        <KeyRound className="h-3 w-3 mr-1" /> Redefinir senha
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -95,6 +124,26 @@ export default function Users() {
           Para criar novos usuários, peça que se cadastrem na tela de login. Você pode então definir o papel e ativar/desativar o acesso aqui.
         </p>
       </GlassCard>
+
+      <Dialog open={!!pwUser} onOpenChange={(o) => { if (!o) { setPwUser(null); setPwValue(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redefinir senha</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Usuário: <b>{pwUser?.email}</b></p>
+            <Input type="text" placeholder="Nova senha (mín. 6)" value={pwValue}
+              onChange={(e) => setPwValue(e.target.value)} autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwUser(null)}>Cancelar</Button>
+            <Button onClick={savePassword} disabled={pwSaving}>
+              {pwSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
