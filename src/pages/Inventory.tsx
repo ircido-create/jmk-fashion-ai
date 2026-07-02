@@ -226,6 +226,33 @@ export default function Inventory() {
 
   useEffect(() => { load(); }, []);
 
+  // Auto: busca fotos automaticamente nos romaneios quando há produtos sem imagem
+  const autoRanRef = useRef(false);
+  useEffect(() => {
+    if (autoRanRef.current || reprocessing || list.length === 0) return;
+    const semFoto = list.some((p) => !p.image_url);
+    if (!semFoto) return;
+    autoRanRef.current = true;
+    (async () => {
+      setReprocessing(true);
+      setReprocessMsg("Buscando fotos automaticamente...");
+      try {
+        const res = await reprocessRomaneioPhotos((cur, total, name) => {
+          setReprocessMsg(`Buscando fotos ${cur}/${total}: ${name}`);
+        });
+        if (res.imported > 0) {
+          toast.success(`${res.imported} foto(s) importada(s) automaticamente`);
+          await load();
+        }
+      } catch {
+        // silencioso — usuário pode clicar em "Buscar fotos" manualmente
+      } finally {
+        setReprocessing(false);
+        setReprocessMsg("");
+      }
+    })();
+  }, [list, reprocessing]);
+
   const openNew = () => { setEditing(null); setVariants([]); setOpen(true); };
 
   const handleReprocessPhotos = async () => {
