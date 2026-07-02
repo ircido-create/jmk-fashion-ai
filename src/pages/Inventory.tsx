@@ -608,6 +608,22 @@ export default function Inventory() {
                   Cancelar
                 </Button>
               )}
+              {!importing && importProgress.length > 0 && importProgress.some((p) => p.retriable) && (
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    const retryNames = new Set(importProgress.filter((p) => p.retriable).map((p) => p.name));
+                    const retryFiles = importFiles.filter((f) => retryNames.has(f.name));
+                    if (!retryFiles.length) return;
+                    setImportFiles(retryFiles);
+                    setImportProgress([]);
+                    setTimeout(() => handleImport(), 0);
+                  }}
+                >
+                  Tentar novamente ({importProgress.filter((p) => p.retriable).length})
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
