@@ -374,6 +374,10 @@ export default function Inventory() {
             <Button onClick={() => setImportOpen(true)} variant="outline" className="rounded-xl">
               <FileUp className="h-4 w-4 mr-1" /> Importar romaneio
             </Button>
+            <Button onClick={handleReprocessPhotos} disabled={reprocessing} variant="outline" className="rounded-xl" title="Reprocessa PDFs dos romaneios importados para buscar fotos dos produtos sem imagem">
+              {reprocessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+              {reprocessing ? (reprocessMsg || "Buscando...") : "Buscar fotos"}
+            </Button>
             <Button onClick={openNew} className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
               <Plus className="h-4 w-4 mr-1" /> Novo produto
             </Button>
