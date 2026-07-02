@@ -619,7 +619,7 @@ export default function Inventory() {
                     if (!retryFiles.length) return;
                     setImportFiles(retryFiles);
                     setImportProgress([]);
-                    setTimeout(() => handleImport(), 0);
+                    handleImport(retryFiles);
                   }}
                 >
                   Tentar novamente ({importProgress.filter((p) => p.retriable).length})
