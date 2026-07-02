@@ -88,7 +88,7 @@ export default function Inventory() {
     const initial = pdfs.map((f) => ({ name: f.name, status: "pending" as const }));
     setImportProgress(initial);
 
-    const updateItem = (idx: number, patch: Partial<{ status: "pending" | "running" | "ok" | "skip" | "err"; msg: string }>) => {
+    const updateItem = (idx: number, patch: Partial<{ status: "pending" | "running" | "ok" | "skip" | "err"; msg: string; retriable: boolean }>) => {
       setImportProgress((prev) => {
         const next = [...prev];
         next[idx] = { ...next[idx], ...patch };
