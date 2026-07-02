@@ -598,7 +598,7 @@ export default function Inventory() {
 
             <div className="flex gap-2">
               <Button
-                onClick={handleImport}
+                onClick={() => handleImport()}
                 disabled={!importFiles.length || importing}
                 className="flex-1 bg-gradient-primary text-primary-foreground rounded-xl"
               >
