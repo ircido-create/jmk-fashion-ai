@@ -218,7 +218,8 @@ export default function Receivable() {
       } catch (proofErr: any) {
         console.warn("Comprovante não registrado:", proofErr?.message);
       }
-      toast.success("Recebimento confirmado");
+      toast.success("Recebimento confirmado — movido para Pago");
+      setFilter("pago");
       setPayOpen(false); setPayTarget(null); setPayFile(null);
       load();
     } catch (e: any) {
