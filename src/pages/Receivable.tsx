@@ -924,6 +924,14 @@ export default function Receivable() {
                 {payTarget.customers?.name ?? "—"} • Venc: {format(parseISO(payTarget.due_date), "dd/MM/yyyy", { locale: ptBR })}
               </div>
               <div>
+                <Label>Data do recebimento</Label>
+                <Input
+                  type="date" value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                  className="glass-input"
+                />
+              </div>
+              <div>
                 <Label>Valor recebido (R$)</Label>
                 <Input
                   type="number" step="0.01" value={payAmount}
