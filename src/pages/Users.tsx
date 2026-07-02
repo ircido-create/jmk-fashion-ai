@@ -18,6 +18,9 @@ export default function Users() {
   const { user: me } = useAuth();
   const [list, setList] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pwUser, setPwUser] = useState<UserRow | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
