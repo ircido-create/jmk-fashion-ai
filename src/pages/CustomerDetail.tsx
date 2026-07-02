@@ -119,7 +119,7 @@ export default function CustomerDetail() {
       const share = expected > 0 ? (Number(r.amount) / expected) * received : received / selectedList.length;
       return { receivable_id: r.id, amount_paid: Number(share.toFixed(2)) };
     });
-    const { error: pErr } = await supabase.from("receivable_payments").insert(payments);
+    const { error: pErr } = await supabase.from("receivable_payments").insert(payments as any);
     if (pErr) console.warn("receivable_payments insert:", pErr.message);
 
     setPaying(false);
