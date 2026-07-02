@@ -195,10 +195,12 @@ export default function Receivable() {
     try {
       const amt = Number(payAmount);
       if (!(amt > 0)) throw new Error("Valor inválido");
+      if (!payDate) throw new Error("Informe a data do recebimento");
+      const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
       const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
       const { error } = await supabase
         .from("accounts_receivable")
-        .update({ status: "pago", paid_at: new Date().toISOString() })
+        .update({ status: "pago", paid_at: paidAtIso })
         .eq("id", payTarget.id);
       if (error) throw error;
       if (proofId) {
