@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import SupplierImageSearch from "@/components/SupplierImageSearch";
 import { usePagination } from "@/hooks/usePagination";
-import { importRomaneioPhotos } from "@/lib/romaneioPhotos";
+import { importRomaneioPhotos, reprocessRomaneioPhotos } from "@/lib/romaneioPhotos";
 
 interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
