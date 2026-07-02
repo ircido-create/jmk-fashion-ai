@@ -8,6 +8,9 @@ import { calculateTrust, trustBgClass, type ReceivableLike } from "@/lib/trustSc
 import { toast } from "sonner";
 import { formatTaxId } from "@/lib/taxId";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
