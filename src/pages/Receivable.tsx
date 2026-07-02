@@ -47,6 +47,7 @@ export default function Receivable() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Receivable | null>(null);
   const [filter, setFilter] = useState<string>("a_receber");
+  const [search, setSearch] = useState("");
 
   // Baixa individual
   const [payOpen, setPayOpen] = useState(false);
