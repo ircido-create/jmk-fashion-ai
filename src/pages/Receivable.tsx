@@ -228,14 +228,22 @@ export default function Receivable() {
   };
 
   const filtered = (() => {
-    switch (filter) {
-      case "todos": return list;
-      case "a_receber": return list.filter((r) => r.status === "pendente" || r.status === "vencido");
-      case "a_vencer": return list.filter((r) => r.status === "pendente");
-      case "vencido": return list.filter((r) => r.status === "vencido");
-      case "pago": return list.filter((r) => r.status === "pago");
-      default: return list;
-    }
+    const base = (() => {
+      switch (filter) {
+        case "todos": return list;
+        case "a_receber": return list.filter((r) => r.status === "pendente" || r.status === "vencido");
+        case "a_vencer": return list.filter((r) => r.status === "pendente");
+        case "vencido": return list.filter((r) => r.status === "vencido");
+        case "pago": return list.filter((r) => r.status === "pago");
+        default: return list;
+      }
+    })();
+    const q = search.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((r) =>
+      (r.customers?.name ?? "").toLowerCase().includes(q) ||
+      (r.description ?? "").toLowerCase().includes(q)
+    );
   })();
   const total = filtered.reduce((s, r) => s + Number(r.amount), 0);
 
