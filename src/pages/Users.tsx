@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { Shield, User, Loader2 } from "lucide-react";
+import { Shield, User, Loader2, KeyRound } from "lucide-react";
 
 interface UserRow {
   id: string; full_name: string | null; email: string | null; active: boolean;
