@@ -48,6 +48,24 @@ export default function Users() {
     if (error) toast.error(error.message); else { toast.success(`Papel definido: ${role}`); load(); }
   };
 
+  const savePassword = async () => {
+    if (!pwUser || pwValue.length < 6) {
+      toast.error("Senha precisa ter ao menos 6 caracteres");
+      return;
+    }
+    setPwSaving(true);
+    const { data, error } = await supabase.functions.invoke("admin-set-password", {
+      body: { user_id: pwUser.id, password: pwValue },
+    });
+    setPwSaving(false);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || error?.message || "Falha ao redefinir");
+      return;
+    }
+    toast.success(`Senha de ${pwUser.email} redefinida`);
+    setPwUser(null); setPwValue("");
+  };
+
   return (
     <div>
       <PageHeader title="Usuários" description="Gestão de acesso ao sistema" />
