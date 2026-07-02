@@ -1,17 +1,17 @@
-## Objetivo
-Ao marcar parcelas como recebidas em **Cliente → Carteira**, abrir um diálogo pedindo **data do recebimento** e **valor recebido** antes de quitar.
+## Ajuste no Painel — card "Vencidos"
 
-## Alterações em `src/pages/CustomerDetail.tsx`
+Hoje o card **Vencidos** mostra apenas a quantidade de títulos vencidos. Vou alterar para exibir também o **valor total em R$**, mantendo a contagem como informação secundária.
 
-1. Substituir o `confirm()` por um `Dialog` (shadcn) acionado pelo botão "Pagar selecionadas".
-2. Campos do diálogo:
-   - **Data do recebimento** — `Input type="date"`, padrão: hoje.
-   - **Valor recebido** — `Input` numérico, padrão: soma das parcelas selecionadas (`selectedTotal`), editável.
-   - Exibir resumo: nº de parcelas, total esperado, diferença (se valor recebido ≠ total).
-3. Confirmar → executar:
-   - `UPDATE accounts_receivable SET status='pago', paid_at=<data escolhida em ISO>` nas parcelas selecionadas.
-   - `INSERT INTO receivable_payments (receivable_id, amount_paid)` — um registro por parcela. Quando o valor recebido for igual ao total, cada parcela recebe seu próprio `amount`. Quando for diferente (recebimento parcial/ajustado do lote), ratear proporcionalmente entre as parcelas selecionadas.
-4. Manter feedback via `toast` e recarregar (`load()`).
+### Alterações em `src/pages/Dashboard.tsx`
 
-## Observação
-Só afeta a UI de recebimento no detalhe do cliente (`/clientes/:id`). Nada muda em `/contas-receber` nem no PDV.
+1. Na função `loadAll`, trocar a consulta atual (que traz só `count`) por uma que retorne também os valores:
+   - Buscar `amount` de `accounts_receivable` com `status = 'pendente'` e `due_date < hoje`.
+   - Somar em `overdueAmount` além de contar em `overdueCount`.
+
+2. Ampliar o estado `stats` para incluir `overdueAmount: number`.
+
+3. No array `cards`, alterar o item **Vencidos**:
+   - `value` passa a ser `R$ X,XX` (valor total).
+   - Adicionar um subtítulo/linha extra com "N título(s)" abaixo do valor (mesmo padrão visual dos outros cards de valor).
+
+Nenhuma outra tela é afetada.
