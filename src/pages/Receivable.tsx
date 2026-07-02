@@ -185,6 +185,7 @@ export default function Receivable() {
     setPayTarget(r);
     setPayAmount(String(r.amount));
     setPayFile(null);
+    setPayDate(new Date().toISOString().slice(0, 10));
     setPayOpen(true);
   };
 
