@@ -54,6 +54,7 @@ export default function Receivable() {
   const [payTarget, setPayTarget] = useState<Receivable | null>(null);
   const [payAmount, setPayAmount] = useState<string>("");
   const [payFile, setPayFile] = useState<File | null>(null);
+  const [payDate, setPayDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [paySaving, setPaySaving] = useState(false);
 
   // Baixa em massa (conciliação por extrato)
