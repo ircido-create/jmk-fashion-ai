@@ -96,6 +96,7 @@ export default function Dashboard() {
             </div>
             <div className="text-xs text-muted-foreground">{c.label}</div>
             <div className="text-xl md:text-2xl font-display font-bold mt-1">{c.value}</div>
+            {(c as any).sub && <div className="text-[11px] text-muted-foreground mt-1">{(c as any).sub}</div>}
           </div>
         ))}
       </div>
