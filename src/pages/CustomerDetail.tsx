@@ -8,6 +8,9 @@ import { calculateTrust, trustBgClass, type ReceivableLike } from "@/lib/trustSc
 import { toast } from "sonner";
 import { formatTaxId } from "@/lib/taxId";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
@@ -39,6 +42,9 @@ export default function CustomerDetail() {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [paying, setPaying] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [payAmount, setPayAmount] = useState("");
 
   const load = async () => {
     if (!id) return;
@@ -83,17 +89,42 @@ export default function CustomerDetail() {
     else setSelected(new Set(pendingReceivables.map(r => r.id)));
   };
 
-  const paySelected = async () => {
+  const openPayDialog = () => {
     if (selected.size === 0) return;
-    if (!confirm(`Marcar ${selected.size} parcela(s) como paga(s)? Total: ${fmtBRL(selectedTotal)}`)) return;
+    setPayDate(new Date().toISOString().slice(0, 10));
+    setPayAmount(selectedTotal.toFixed(2));
+    setPayOpen(true);
+  };
+
+  const confirmPay = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const received = Number(payAmount.replace(",", "."));
+    if (!isFinite(received) || received <= 0) { toast.error("Informe um valor válido"); return; }
+    if (!payDate) { toast.error("Informe a data do recebimento"); return; }
+
     setPaying(true);
+    const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
+    const selectedList = pendingReceivables.filter(r => selected.has(r.id));
+    const expected = selectedList.reduce((s, r) => s + Number(r.amount), 0);
+
     const { error } = await supabase
       .from("accounts_receivable")
-      .update({ status: "pago", paid_at: new Date().toISOString() })
-      .in("id", Array.from(selected));
+      .update({ status: "pago", paid_at: paidAtIso })
+      .in("id", ids);
+    if (error) { setPaying(false); toast.error(error.message); return; }
+
+    // registra recebimentos (rateio proporcional se diferente do total)
+    const payments = selectedList.map(r => {
+      const share = expected > 0 ? (Number(r.amount) / expected) * received : received / selectedList.length;
+      return { receivable_id: r.id, amount_paid: Number(share.toFixed(2)) };
+    });
+    const { error: pErr } = await supabase.from("receivable_payments").insert(payments as any);
+    if (pErr) console.warn("receivable_payments insert:", pErr.message);
+
     setPaying(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success(`${selected.size} parcela(s) quitada(s)`);
+    setPayOpen(false);
+    toast.success(`${ids.length} parcela(s) quitada(s) — ${fmtBRL(received)}`);
     await load();
   };
 
@@ -219,7 +250,7 @@ export default function CustomerDetail() {
                 )}
                 <Button
                   size="sm"
-                  onClick={paySelected}
+                  onClick={openPayDialog}
                   disabled={selected.size === 0 || paying}
                 >
                   {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
@@ -292,6 +323,51 @@ export default function CustomerDetail() {
           </div>
         )}
       </GlassCard>
+
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar recebimento</DialogTitle>
+            <DialogDescription>
+              {selected.size} parcela(s) — total esperado {fmtBRL(selectedTotal)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-date">Data do recebimento</Label>
+              <Input id="pay-date" type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-amount">Valor recebido (R$)</Label>
+              <Input
+                id="pay-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+              />
+              {(() => {
+                const v = Number(payAmount.replace(",", "."));
+                const diff = v - selectedTotal;
+                if (!isFinite(v) || v <= 0 || Math.abs(diff) < 0.01) return null;
+                return (
+                  <div className={`text-xs ${diff < 0 ? "text-warning" : "text-primary"}`}>
+                    {diff < 0 ? "Recebido a menos" : "Recebido a mais"}: {fmtBRL(Math.abs(diff))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)} disabled={paying}>Cancelar</Button>
+            <Button onClick={confirmPay} disabled={paying}>
+              {paying ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
