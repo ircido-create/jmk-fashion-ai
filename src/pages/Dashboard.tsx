@@ -32,9 +32,9 @@ export default function Dashboard() {
     const [c, p, r, ap, od, ls] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
-      fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").eq("status", "pendente")),
-      fetchAll<{ amount: number }>((sb) => sb.from("accounts_payable").select("amount").eq("status", "pendente")),
-      fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").eq("status", "pendente").lt("due_date", today)),
+      fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"])),
+      fetchAll<{ amount: number }>((sb) => sb.from("accounts_payable").select("amount").in("status", ["pendente", "vencido"])),
+      fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"]).lt("due_date", today)),
       fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
     ]);
 
