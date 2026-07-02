@@ -104,9 +104,10 @@ export default function Users() {
                         </Button>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-xs text-muted-foreground">Ativo</span>
-                      <Switch checked={u.active} onCheckedChange={() => toggleActive(u)} disabled={isMe} />
+                      <Button size="sm" variant="outline"
+                        onClick={() => { setPwUser(u); setPwValue(""); }}>
+                        <KeyRound className="h-3 w-3 mr-1" /> Redefinir senha
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -116,6 +117,28 @@ export default function Users() {
         )}
         <p className="text-xs text-muted-foreground mt-4">
           Para criar novos usuários, peça que se cadastrem na tela de login. Você pode então definir o papel e ativar/desativar o acesso aqui.
+        </p>
+      </GlassCard>
+
+      <Dialog open={!!pwUser} onOpenChange={(o) => { if (!o) { setPwUser(null); setPwValue(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redefinir senha</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Usuário: <b>{pwUser?.email}</b></p>
+            <Input type="text" placeholder="Nova senha (mín. 6)" value={pwValue}
+              onChange={(e) => setPwValue(e.target.value)} autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPwUser(null)}>Cancelar</Button>
+            <Button onClick={savePassword} disabled={pwSaving}>
+              {pwSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
         </p>
       </GlassCard>
     </div>
