@@ -91,9 +91,16 @@ Deno.serve(async (req) => {
 
     const j = await resp.json();
     const call = j.choices?.[0]?.message?.tool_calls?.[0];
-    if (!call) return json({ ok: true, associations: [] });
-    const args = JSON.parse(call.function.arguments);
-    return json({ ok: true, associations: args.associations ?? [] });
+    const rawArgs = call?.function?.arguments;
+    if (!rawArgs) return json({ ok: true, associations: [] });
+    let args: any = {};
+    try {
+      args = typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs;
+    } catch (e) {
+      console.error("failed to parse tool args", String(rawArgs).slice(0, 200));
+      return json({ ok: true, associations: [] });
+    }
+    return json({ ok: true, associations: Array.isArray(args?.associations) ? args.associations : [] });
   } catch (e) {
     console.error(e);
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
