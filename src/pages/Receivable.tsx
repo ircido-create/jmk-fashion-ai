@@ -858,6 +858,15 @@ export default function Receivable() {
           ))}
         </div>
 
+        <div className="relative mb-4">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome do cliente ou descrição..."
+            className="glass-input"
+          />
+        </div>
+
         <div className="space-y-2">
           {paged.map((r) => (
             <div key={r.id} className="p-3 rounded-xl bg-white/40 backdrop-blur flex items-center justify-between gap-3">
