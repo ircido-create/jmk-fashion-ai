@@ -201,18 +201,10 @@ Deno.serve(async (req) => {
     }
 
 
-    // Duplicidade por fornecedor + total + nº de itens (tolerância R$ 0,01)
-    if (supplier && typeof total === "number") {
-      const { data: dups } = await admin
-        .from("imported_romaneios")
-        .select("id, supplier, total, items_count, filename, created_at")
-        .eq("supplier", supplier)
-        .eq("items_count", items.length);
-      const match = dups?.find((d: any) => Math.abs(Number(d.total) - Number(total)) < 0.01);
-      if (match) {
-        return json({ ok: true, skipped: true, reason: "supplier_total_items", existing: match });
-      }
-    }
+    // Duplicidade agora é feita SOMENTE por file_hash (SHA-256) — a checagem por
+    // fornecedor+total+itens_count gerava falsos positivos em romaneios pequenos
+    // do mesmo fornecedor com valores repetidos.
+
 
     let productsCreated = 0;
     let variantsAdded = 0;
