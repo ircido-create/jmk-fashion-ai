@@ -43,6 +43,8 @@ export default function Inventory() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
+  const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessMsg, setReprocessMsg] = useState<string>("");
   const [importProgress, setImportProgress] = useState<Array<{ name: string; status: "pending" | "running" | "ok" | "skip" | "err"; msg?: string; retriable?: boolean }>>([]);
   const cancelImportRef = useRef(false);
   const [imgSearchOpen, setImgSearchOpen] = useState(false);
