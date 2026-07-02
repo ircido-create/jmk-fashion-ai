@@ -156,15 +156,17 @@ export default function Inventory() {
         if (data?.error) throw new Error(data.error);
         if (data?.skipped) {
           skipped++;
-          updateItem(idx, { status: "skip", msg: data.reason === "hash" ? "arquivo idêntico" : data.reason === "no_items" ? "sem itens" : "duplicado" });
+          const isHash = data.reason === "hash";
+          const label = isHash ? "já importado (arquivo idêntico)" : data.reason === "no_items" ? "IA não leu itens" : "duplicado";
+          updateItem(idx, { status: "skip", msg: label, retriable: !isHash });
           return;
         }
         imported++;
-        updateItem(idx, { status: "ok", msg: `${data.products_created || 0} novos · ${data.variants_added || 0} var · ${data.payable_created || 0} conta(s)` });
+        updateItem(idx, { status: "ok", msg: `${data.products_created || 0} novos · ${data.variants_added || 0} var · ${data.payable_created || 0} conta(s)${data.attempts > 1 ? ` · ${data.attempts}ª tent.` : ""}` });
         photosQueue.push(file);
       } catch (e: any) {
         failed++;
-        updateItem(idx, { status: "err", msg: e?.message?.slice(0, 120) || "erro" });
+        updateItem(idx, { status: "err", msg: e?.message?.slice(0, 120) || "erro", retriable: true });
       }
     };
 
