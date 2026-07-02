@@ -34,7 +34,7 @@ export default function Dashboard() {
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").eq("status", "pendente")),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_payable").select("amount").eq("status", "pendente")),
-      supabase.from("accounts_receivable").select("id", { count: "exact", head: true }).eq("status", "pendente").lt("due_date", today),
+      fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").eq("status", "pendente").lt("due_date", today)),
       fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
     ]);
 
@@ -45,7 +45,8 @@ export default function Dashboard() {
       products: p.count ?? 0,
       receivable: r.reduce((s, x) => s + Number(x.amount), 0),
       payable: ap.reduce((s, x) => s + Number(x.amount), 0),
-      overdue: od.count ?? 0,
+      overdue: od.length,
+      overdueAmount: od.reduce((s, x) => s + Number(x.amount), 0),
       lowStock,
     });
 
