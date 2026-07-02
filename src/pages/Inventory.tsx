@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import SupplierImageSearch from "@/components/SupplierImageSearch";
 import { usePagination } from "@/hooks/usePagination";
-import { importRomaneioPhotos } from "@/lib/romaneioPhotos";
+import { importRomaneioPhotos, reprocessRomaneioPhotos } from "@/lib/romaneioPhotos";
 
 interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
@@ -43,6 +43,8 @@ export default function Inventory() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
+  const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessMsg, setReprocessMsg] = useState<string>("");
   const [importProgress, setImportProgress] = useState<Array<{ name: string; status: "pending" | "running" | "ok" | "skip" | "err"; msg?: string; retriable?: boolean }>>([]);
   const cancelImportRef = useRef(false);
   const [imgSearchOpen, setImgSearchOpen] = useState(false);
@@ -225,6 +227,24 @@ export default function Inventory() {
   useEffect(() => { load(); }, []);
 
   const openNew = () => { setEditing(null); setVariants([]); setOpen(true); };
+
+  const handleReprocessPhotos = async () => {
+    if (reprocessing) return;
+    setReprocessing(true);
+    setReprocessMsg("Iniciando...");
+    try {
+      const res = await reprocessRomaneioPhotos((cur, total, name) => {
+        setReprocessMsg(`Processando ${cur}/${total}: ${name}`);
+      });
+      toast.success(`${res.imported} foto(s) importada(s) de ${res.processed} romaneio(s)`);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao reprocessar");
+    } finally {
+      setReprocessing(false);
+      setReprocessMsg("");
+    }
+  };
   const openEdit = (p: Product) => {
     setEditing(p);
     setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity, image_url: v.image_url ?? null })) ?? []);
@@ -353,6 +373,10 @@ export default function Inventory() {
           <>
             <Button onClick={() => setImportOpen(true)} variant="outline" className="rounded-xl">
               <FileUp className="h-4 w-4 mr-1" /> Importar romaneio
+            </Button>
+            <Button onClick={handleReprocessPhotos} disabled={reprocessing} variant="outline" className="rounded-xl" title="Reprocessa PDFs dos romaneios importados para buscar fotos dos produtos sem imagem">
+              {reprocessing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ImageIcon className="h-4 w-4 mr-1" />}
+              {reprocessing ? (reprocessMsg || "Buscando...") : "Buscar fotos"}
             </Button>
             <Button onClick={openNew} className="bg-gradient-primary text-primary-foreground shadow-glow rounded-xl">
               <Plus className="h-4 w-4 mr-1" /> Novo produto
