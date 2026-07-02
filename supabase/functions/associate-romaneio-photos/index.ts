@@ -49,7 +49,14 @@ const tool = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const { pages, skus } = await req.json();
+    let body: any = {};
+    try {
+      const text = await req.text();
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      return json({ error: "invalid JSON body" }, 400);
+    }
+    const { pages, skus } = body;
     if (!Array.isArray(pages) || !pages.length) return json({ error: "pages required" }, 400);
     if (!Array.isArray(skus) || !skus.length) return json({ ok: true, associations: [] });
 
