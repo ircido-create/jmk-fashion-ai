@@ -42,6 +42,9 @@ export default function CustomerDetail() {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [paying, setPaying] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [payAmount, setPayAmount] = useState("");
 
   const load = async () => {
     if (!id) return;
