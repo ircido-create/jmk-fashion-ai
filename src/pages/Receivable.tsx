@@ -54,6 +54,7 @@ export default function Receivable() {
   const [payTarget, setPayTarget] = useState<Receivable | null>(null);
   const [payAmount, setPayAmount] = useState<string>("");
   const [payFile, setPayFile] = useState<File | null>(null);
+  const [payDate, setPayDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [paySaving, setPaySaving] = useState(false);
 
   // Baixa em massa (conciliação por extrato)
@@ -184,6 +185,7 @@ export default function Receivable() {
     setPayTarget(r);
     setPayAmount(String(r.amount));
     setPayFile(null);
+    setPayDate(new Date().toISOString().slice(0, 10));
     setPayOpen(true);
   };
 
@@ -193,10 +195,12 @@ export default function Receivable() {
     try {
       const amt = Number(payAmount);
       if (!(amt > 0)) throw new Error("Valor inválido");
+      if (!payDate) throw new Error("Informe a data do recebimento");
+      const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
       const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
       const { error } = await supabase
         .from("accounts_receivable")
-        .update({ status: "pago", paid_at: new Date().toISOString() })
+        .update({ status: "pago", paid_at: paidAtIso })
         .eq("id", payTarget.id);
       if (error) throw error;
       if (proofId) {
@@ -918,6 +922,14 @@ export default function Receivable() {
             <div className="space-y-3">
               <div className="text-sm text-muted-foreground">
                 {payTarget.customers?.name ?? "—"} • Venc: {format(parseISO(payTarget.due_date), "dd/MM/yyyy", { locale: ptBR })}
+              </div>
+              <div>
+                <Label>Data do recebimento</Label>
+                <Input
+                  type="date" value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                  className="glass-input"
+                />
               </div>
               <div>
                 <Label>Valor recebido (R$)</Label>
