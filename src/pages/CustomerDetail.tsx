@@ -323,6 +323,51 @@ export default function CustomerDetail() {
           </div>
         )}
       </GlassCard>
+
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar recebimento</DialogTitle>
+            <DialogDescription>
+              {selected.size} parcela(s) — total esperado {fmtBRL(selectedTotal)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-date">Data do recebimento</Label>
+              <Input id="pay-date" type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-amount">Valor recebido (R$)</Label>
+              <Input
+                id="pay-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+              />
+              {(() => {
+                const v = Number(payAmount.replace(",", "."));
+                const diff = v - selectedTotal;
+                if (!isFinite(v) || v <= 0 || Math.abs(diff) < 0.01) return null;
+                return (
+                  <div className={`text-xs ${diff < 0 ? "text-warning" : "text-primary"}`}>
+                    {diff < 0 ? "Recebido a menos" : "Recebido a mais"}: {fmtBRL(Math.abs(diff))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)} disabled={paying}>Cancelar</Button>
+            <Button onClick={confirmPay} disabled={paying}>
+              {paying ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
