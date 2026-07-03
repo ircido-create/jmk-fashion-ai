@@ -1,27 +1,49 @@
-## Conferência da planilha `clientes.xlsx`
+## Tela de Conciliação de Clientes
 
-Aba usada: **Lançamentos** (203 linhas → 201 únicos após dedupe por nome+CPF).
+Adiciona uma nova aba **"Conciliação"** na página `/clientes` que lista pares de cadastros suspeitos de serem o mesmo cliente e permite mesclar com um clique.
 
-Cruzei com os **286 clientes** já cadastrados no banco usando duas chaves:
-1. **CPF/CNPJ** (só dígitos) — match exato.
-2. **Nome normalizado** (sem acento/caixa) — match exato, prefixo ou substring (a partir de 10 caracteres) para tolerar nomes truncados da planilha (ex.: `APARECIDA PAIX` → `APARECIDA PAIXAO DOS SANTOS`).
+### Regras de detecção
+1. **Mesmo CPF/CNPJ** (só dígitos). Match forte.
+2. **Nome truncado é prefixo de outro** (≥10 caracteres, sem acento/caixa). Ex.: `APARECIDA PAIX` ↔ `APARECIDA PAIXAO DOS SANTOS`.
 
-**Resultado:** 121 já existem, **80 estão faltando**.
+Também mostro no relatório os **2 duplicados exatos** já detectados (`GUILHERME OMAR PARLETTA`, `RUTH DA SILVA LUCAS PINTO`) como caso da regra 2 (prefixo = nome inteiro).
 
-## O que vou fazer
+### UI (nova aba na página Clientes)
+Cada par suspeito aparece como um card:
 
-Inserir os 80 clientes ausentes na tabela `customers` com:
-- `name` = como está na planilha (nomes truncados como `ALINE AZEVEDO SANTOS VIEI` ficam assim; você pode editar depois em `/clientes`).
-- `tax_id` = só dígitos, quando a planilha traz.
-- Demais campos ficam vazios.
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Possível duplicidade — motivo: nome truncado                │
+│                                                              │
+│  [ ] Manter                    [ ] Manter (canônico)         │
+│  APARECIDA PAIX                APARECIDA PAIXAO DOS SANTOS   │
+│  Apelido: —                    Apelido: CIDA VILMA           │
+│  CPF: —                        CPF: —                        │
+│  Vendas: 0 · Receber: 0        Vendas: 3 · Receber: R$ 240   │
+│                                                              │
+│                        [ Mesclar ]   [ Ignorar ]             │
+└─────────────────────────────────────────────────────────────┘
+```
 
-Casos especiais tratados:
-- `THAMIRIS SOUZA NASCIMENTO 40630308810` (CNPJ `40830089000138`) entra como um segundo cadastro em nome dela — a planilha traz as duas linhas.
-- `BEATRIZ MELO DA SILVA` aparece duas vezes na planilha (uma com CPF, uma sem). Insiro só a versão com CPF.
-- `MARIA MYLLENA VIANA MOREIRA` e `MARIA MYLLENA VIANA NASCIMENTO` compartilham o mesmo CPF `05445142388` — mantenho as duas grafias como registros separados, pois foi assim que a planilha entregou; se preferir mesclar, me avise depois.
+- O lado marcado como **canônico** é sugerido automaticamente (o que tem mais dados: apelido, CPF, vendas, receber). Você pode inverter antes de mesclar.
+- **Mesclar** transfere para o canônico:
+  - `sales.customer_id`
+  - `accounts_receivable.customer_id`
+  - Preenche no canônico os campos que estiverem vazios (apelido, CPF, telefone, email, endereço, notas) usando o valor do duplicado.
+  - Apaga o registro duplicado.
+- **Ignorar** guarda um par ignorado (nova tabela `customer_merge_ignored` com os dois ids) para não voltar a aparecer.
 
-## Amostra dos que serão inseridos
+### Backend
+- Nova tabela `customer_merge_ignored (customer_a_id, customer_b_id)` com RLS para `authenticated`.
+- Nova Edge Function `merge-customers` que recebe `{ keep_id, drop_id }`, roda as atualizações em transação e devolve contagem de linhas migradas. Usa `service_role` para garantir consistência mesmo com RLS.
+- A listagem dos pares é feita no cliente: busca todos os clientes uma vez e aplica as duas regras em memória (356 registros → trivial).
 
-ALDER LINS DE MELO · ALINE AZEVEDO SANTOS VIEI · ANA VAGNA RANGEL SILVA · ANNE DE SOUSA ARAÚJO (539.137.698-03) · BARBARA RAIANE SILVA VERI · BEATRIZ MELO DA SILVA (462.858.858-93) · BRUNA SILVA GONCALVES (358.617.408-01) · CARLOS EDUARDO RODRIGUES (133.154.148-40) · CIBELE SANTOS CAMPELO (424.558.368-19) · CLEIDE APARECIDA OLIVEIRA · … (e mais 70).
+### Arquivos afetados
+- `src/pages/Customers.tsx` — adicionar `<Tabs>` com "Lista" (atual) e "Conciliação" (nova).
+- `src/components/customers/Reconciliation.tsx` — nova, contém a lógica de detecção e os cards.
+- `supabase/functions/merge-customers/index.ts` — nova edge function.
+- Migration: cria `customer_merge_ignored` com RLS/GRANTs.
 
-Nenhum outro dado do sistema é alterado.
+### Fora do escopo
+- Não uso apelido↔nome como regra de match agora (você deixou de fora). Se depois quiser adicionar, é só uma linha na detecção.
+- Não altero a página `/clientes` além de introduzir as abas.
