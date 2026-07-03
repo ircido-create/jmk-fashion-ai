@@ -17,7 +17,7 @@ import { z } from "zod";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
-import { reconcile, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
+import { reconcile, reconcileManualPayment, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
 
 interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; }
 interface Receivable {
@@ -197,28 +197,65 @@ export default function Receivable() {
       if (!(amt > 0)) throw new Error("Valor inválido");
       if (!payDate) throw new Error("Informe a data do recebimento");
       const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
-      // 1) UPDATE do status primeiro — se falhar, aborta e mostra o erro
-      const { data: updated, error } = await supabase
-        .from("accounts_receivable")
-        .update({ status: "pago", paid_at: paidAtIso })
-        .eq("id", payTarget.id)
-        .select("id");
-      if (error) throw error;
-      if (!updated || updated.length === 0) {
-        throw new Error("Não foi possível atualizar (permissão negada). Verifique sua função de usuário.");
+
+      const customerReceivables = list.filter((r) =>
+        payTarget.customer_id
+          ? r.customer_id === payTarget.customer_id
+          : r.id === payTarget.id
+      );
+      const lite: ReceivableLite[] = customerReceivables.map((r) => ({
+        id: r.id,
+        customer_id: r.customer_id,
+        customer_name: r.customers?.name ?? payTarget.customers?.name ?? "",
+        amount: Number(r.amount),
+        due_date: r.due_date,
+        status: r.status,
+      }));
+      const result = reconcileManualPayment(lite, amt, [payTarget.id]);
+      if (result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
+
+      const settleIds = result.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
+      const reduceActions = result.actions.filter((a) => a.kind === "reduce");
+
+      if (settleIds.length > 0) {
+        const { data: updated, error } = await supabase
+          .from("accounts_receivable")
+          .update({ status: "pago", paid_at: paidAtIso })
+          .in("id", settleIds)
+          .select("id");
+        if (error) throw error;
+        if (!updated || updated.length === 0) {
+          throw new Error("Não foi possível atualizar (permissão negada). Verifique sua função de usuário.");
+        }
       }
-      // 2) Comprovante é opcional — não bloqueia a baixa se der erro
+
+      for (const a of reduceActions) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ amount: a.new_amount })
+          .eq("id", a.receivable_id);
+        if (error) throw error;
+      }
+
       try {
         const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
         if (proofId) {
-          await supabase.from("receivable_payments").insert({
-            receivable_id: payTarget.id, proof_id: proofId, amount_paid: amt,
-          });
+          const links = result.actions.map((a) => ({
+            receivable_id: a.receivable_id,
+            proof_id: proofId,
+            amount_paid: a.amount_paid,
+          }));
+          const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
+          if (linkErr) throw linkErr;
         }
       } catch (proofErr: any) {
-        console.warn("Comprovante não registrado:", proofErr?.message);
+        console.warn("Comprovante/histórico não registrado:", proofErr?.message);
       }
-      toast.success("Recebimento confirmado — movido para Pago");
+
+      const leftoverMsg = result.leftovers.length > 0 ? ` • sobra R$ ${result.leftovers[0].amount.toFixed(2)}` : "";
+      toast.success(
+        `Recebimento aplicado: ${result.totals.fullySettled} quitada(s) + ${result.totals.partiallyReduced} reduzida(s)${leftoverMsg}`
+      );
       setFilter("pago");
       setPayOpen(false); setPayTarget(null); setPayFile(null);
       load();
