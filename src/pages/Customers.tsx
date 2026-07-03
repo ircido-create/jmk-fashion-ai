@@ -116,7 +116,7 @@ export default function Customers() {
       .from("accounts_receivable")
       .select("id, amount, paid_amount")
       .eq("customer_id", id)
-      .neq("status", "paid");
+      .neq("status", "pago");
     if (chkErr) { toast.error(chkErr.message); return; }
     const outstanding = (pending ?? []).reduce(
       (s, r: any) => s + (Number(r.amount) - Number(r.paid_amount ?? 0)),
