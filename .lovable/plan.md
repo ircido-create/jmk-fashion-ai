@@ -1,27 +1,21 @@
-## Objetivo
-
-Você quer garantir que, quando um cliente paga a MAIS do que a parcela atual, o excedente é usado pra abater a próxima parcela (mais antiga em aberto).
-
-Boa notícia: a lógica em `src/lib/reconcile.ts` já faz isso. Ela soma todos os pagamentos do cliente num "pool" e vai consumindo parcelas da mais antiga pra mais nova:
-
-- Se o pool cobre a parcela inteira → marca como **quitada** (`settle`) e continua com o que sobrou.
-- Se sobra só uma parte → **reduz** o valor da próxima parcela (`reduce`) e ela continua pendente com valor menor.
-- Se ainda sobrar depois de quitar tudo → vai pra lista `leftovers` (crédito sem parcela pra abater).
-
-O que falta é **prova de que funciona** e deixar isso visível.
-
 ## Plano
 
-1. **Adicionar teste unitário** em `src/test/reconcile.test.ts` cobrindo três casos:
-   - Pagamento único = parcela → 1 `settle`.
-   - Pagamento único > parcela1 mas < parcela1+parcela2 → 1 `settle` (parcela1) + 1 `reduce` (parcela2 com valor reduzido).
-   - Pagamento >> soma de todas as parcelas → todas `settle` + entrada em `leftovers` com o troco.
+1. **Corrigir baixa individual em Contas a Receber**
+   - Quando o valor recebido for maior que a parcela selecionada, marcar a parcela atual como paga.
+   - Usar automaticamente o excedente para abater as próximas parcelas pendentes/vencidas do mesmo cliente, da mais antiga para a mais nova.
+   - Se o excedente quitar a próxima parcela inteira, marcar como paga; se for parcial, reduzir o valor restante da parcela.
 
-2. **Rodar `bunx vitest run`** pra confirmar que passa.
+2. **Corrigir recebimento no detalhe do cliente**
+   - Aplicar a mesma regra na tela do cliente ao pagar parcelas selecionadas.
+   - Evitar o comportamento atual de rateio proporcional, porque ele registra pagamento a maior mas não reduz corretamente as próximas parcelas.
 
-3. **Sem mudanças na UI ou no banco.** O componente de conciliação de extrato já renderiza tanto `settle` quanto `reduce`, e o `leftovers` já aparece na seção "Sobras".
+3. **Registrar histórico dos abatimentos**
+   - Criar registros em `receivable_payments` com o valor realmente abatido em cada parcela.
+   - Manter o comprovante quando existir na baixa individual.
 
-## Fora do escopo
+4. **Ajustar mensagens da interface**
+   - Mostrar no sucesso quantas parcelas foram quitadas e quantas foram reduzidas.
+   - Indicar que valor pago a maior foi aplicado nas próximas parcelas.
 
-- Não vou criar "crédito" em parcela negativa (você não pediu essa opção).
-- Não vou mexer em `merge-customers`, `Receivable.tsx`, nem no fluxo de conciliação de duplicados.
+5. **Validar com teste**
+   - Reutilizar a lógica de conciliação já testada e adicionar/cobrir o cenário da baixa manual: parcela de R$ 100 paga com R$ 150 reduz a próxima de R$ 200 para R$ 150.
