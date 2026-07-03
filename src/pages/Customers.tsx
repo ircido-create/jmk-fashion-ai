@@ -112,11 +112,26 @@ export default function Customers() {
   };
 
   const remove = async (id: string) => {
+    const { data: pending, error: chkErr } = await supabase
+      .from("accounts_receivable")
+      .select("id, amount, paid_amount")
+      .eq("customer_id", id)
+      .neq("status", "pago");
+    if (chkErr) { toast.error(chkErr.message); return; }
+    const outstanding = (pending ?? []).reduce(
+      (s, r: any) => s + (Number(r.amount) - Number(r.paid_amount ?? 0)),
+      0
+    );
+    if (outstanding > 0.009) {
+      toast.error(`Cliente possui saldo em aberto de R$ ${outstanding.toFixed(2)}. Não é possível excluir.`);
+      return;
+    }
     if (!confirm("Excluir este cliente?")) return;
     const { error } = await supabase.from("customers").delete().eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success("Excluído"); load(); }
   };
+
 
   const searchDigits = digitsOnly(search);
   const filtered = list.filter((c) => {
