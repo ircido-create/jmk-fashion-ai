@@ -59,6 +59,7 @@ const App = () => (
                 <Route path="/pre-vendas/:id/editar" element={<PreSaleForm />} />
                 <Route path="/pre-vendas/:id" element={<PreSaleDetail />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
+                <Route path="/relatorios" element={<Reports />} />
                 <Route path="/instalar" element={<Install />} />
               </Route>
               <Route element={<ProtectedRoute adminOnly />}>
