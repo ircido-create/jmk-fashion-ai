@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Package, ArrowDownCircle, ArrowUpCircle,
-  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag, Smartphone, ScanLine, Camera
+  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag, Smartphone, ScanLine, Camera, FileBarChart2
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -19,6 +19,7 @@ const mainItems = [
   { title: "Vendas", url: "/vendas", icon: ShoppingBag },
   { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownCircle },
   { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpCircle },
+  { title: "Relatórios", url: "/relatorios", icon: FileBarChart2 },
   { title: "Status do Dia", url: "/status", icon: Camera },
   { title: "Conversas", url: "/conversas", icon: MessageCircle },
   { title: "WhatsApp IA", url: "/whatsapp", icon: MessageSquare },

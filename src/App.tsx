@@ -26,6 +26,7 @@ import PreSaleDetail from "./pages/PreSaleDetail";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import Install from "./pages/Install";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ const App = () => (
                 <Route path="/pre-vendas/:id/editar" element={<PreSaleForm />} />
                 <Route path="/pre-vendas/:id" element={<PreSaleDetail />} />
                 <Route path="/whatsapp" element={<WhatsApp />} />
+                <Route path="/relatorios" element={<Reports />} />
                 <Route path="/instalar" element={<Install />} />
               </Route>
               <Route element={<ProtectedRoute adminOnly />}>
