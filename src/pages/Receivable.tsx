@@ -83,7 +83,7 @@ export default function Receivable() {
       const data = await fetchAll<any>((sb) =>
         sb.from("accounts_receivable")
           .select("*, customers(name)")
-          .order("due_date", { ascending: false })
+          .order("due_date", { ascending: true })
       );
       const today = new Date().toISOString().slice(0, 10);
       const items: Receivable[] = data.map((r: any) => ({
