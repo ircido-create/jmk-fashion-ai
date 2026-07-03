@@ -250,10 +250,16 @@ export default function Reports() {
   const monthly = useMemo(() => {
     const m = new Map<string, { month: string; compras: number; pagamentos: number }>();
     const key = (d: string) => d.slice(0, 7);
+    const linkedReceivableIds = new Set(filteredSales.map((s: any) => s.receivable_id).filter(Boolean));
     filteredSales.forEach((s) => {
       const k = key(s.sale_date);
       const e = m.get(k) ?? { month: k, compras: 0, pagamentos: 0 };
       e.compras += Number(s.total); m.set(k, e);
+    });
+    filteredReceivables.filter((r) => !linkedReceivableIds.has(r.id)).forEach((r) => {
+      const k = key(r.created_at.slice(0, 10));
+      const e = m.get(k) ?? { month: k, compras: 0, pagamentos: 0 };
+      e.compras += Number(r.amount); m.set(k, e);
     });
     payments.forEach((p) => {
       const pf = proofs[p.proof_id];
@@ -265,7 +271,7 @@ export default function Reports() {
       e.pagamentos += Number(p.amount_paid); m.set(k, e);
     });
     return Array.from(m.values()).sort((a, b) => (a.month < b.month ? -1 : 1));
-  }, [filteredSales, payments, proofs, from, to]);
+  }, [filteredSales, filteredReceivables, payments, proofs, from, to]);
 
   const topProducts = useMemo(() => {
     const m = new Map<string, number>();
