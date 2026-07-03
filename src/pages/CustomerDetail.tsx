@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { reconcileManualPayment, type ReceivableLite } from "@/lib/reconcile";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
@@ -67,7 +68,7 @@ export default function CustomerDetail() {
   const trust = useMemo(() => calculateTrust(receivables as ReceivableLike[]), [receivables]);
 
   const pendingReceivables = useMemo(
-    () => receivables.filter(r => r.status !== "pago"),
+    () => receivables.filter(r => r.status !== "pago" && r.status !== "cancelado"),
     [receivables]
   );
 
@@ -104,28 +105,72 @@ export default function CustomerDetail() {
     if (!payDate) { toast.error("Informe a data do recebimento"); return; }
 
     setPaying(true);
-    const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
-    const selectedList = pendingReceivables.filter(r => selected.has(r.id));
-    const expected = selectedList.reduce((s, r) => s + Number(r.amount), 0);
+    try {
+      const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
+      const lite: ReceivableLite[] = pendingReceivables.map((r) => ({
+        id: r.id,
+        customer_id: id ?? null,
+        customer_name: customer?.name ?? "",
+        amount: Number(r.amount),
+        due_date: r.due_date,
+        status: r.status,
+      }));
+      const result = reconcileManualPayment(lite, received, ids);
+      if (result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
 
-    const { error } = await supabase
-      .from("accounts_receivable")
-      .update({ status: "pago", paid_at: paidAtIso })
-      .in("id", ids);
-    if (error) { setPaying(false); toast.error(error.message); return; }
+      const settleIds = result.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
+      const reduceActions = result.actions.filter((a) => a.kind === "reduce");
 
-    // registra recebimentos (rateio proporcional se diferente do total)
-    const payments = selectedList.map(r => {
-      const share = expected > 0 ? (Number(r.amount) / expected) * received : received / selectedList.length;
-      return { receivable_id: r.id, amount_paid: Number(share.toFixed(2)) };
-    });
-    const { error: pErr } = await supabase.from("receivable_payments").insert(payments as any);
-    if (pErr) console.warn("receivable_payments insert:", pErr.message);
+      if (settleIds.length > 0) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ status: "pago", paid_at: paidAtIso })
+          .in("id", settleIds);
+        if (error) throw error;
+      }
 
-    setPaying(false);
-    setPayOpen(false);
-    toast.success(`${ids.length} parcela(s) quitada(s) — ${fmtBRL(received)}`);
-    await load();
+      for (const a of reduceActions) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ amount: a.new_amount })
+          .eq("id", a.receivable_id);
+        if (error) throw error;
+      }
+
+      try {
+        const { data: proof, error: proofErr } = await supabase
+          .from("payment_proofs")
+          .insert({
+            storage_path: "",
+            description: `Recebimento manual — ${customer?.name ?? "cliente"}`,
+            payment_date: paidAtIso,
+          })
+          .select("id")
+          .single();
+        if (proofErr) throw proofErr;
+
+        const payments = result.actions.map((a) => ({
+          receivable_id: a.receivable_id,
+          proof_id: proof.id,
+          amount_paid: a.amount_paid,
+        }));
+        const { error: pErr } = await supabase.from("receivable_payments").insert(payments as any);
+        if (pErr) throw pErr;
+      } catch (historyErr: any) {
+        console.warn("receivable_payments insert:", historyErr?.message);
+      }
+
+      setPayOpen(false);
+      const leftoverMsg = result.leftovers.length > 0 ? ` • sobra ${fmtBRL(result.leftovers[0].amount)}` : "";
+      toast.success(
+        `${result.totals.fullySettled} parcela(s) quitada(s) + ${result.totals.partiallyReduced} reduzida(s) — ${fmtBRL(result.totals.paidSum)}${leftoverMsg}`
+      );
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setPaying(false);
+    }
   };
 
   const totals = useMemo(() => {

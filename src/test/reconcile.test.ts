@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reconcile, type ReceivableLite, type PaymentRow } from "@/lib/reconcile";
+import { reconcile, reconcileManualPayment, type ReceivableLite, type PaymentRow } from "@/lib/reconcile";
 
 const mkR = (id: string, amount: number, due_date: string): ReceivableLite => ({
   id,
@@ -63,5 +63,22 @@ describe("reconcile — pagamento a maior rola pra próxima parcela", () => {
     expect(res.actions[0]).toMatchObject({ kind: "settle", receivable_id: "r1" });
     expect(res.actions[1]).toMatchObject({ kind: "settle", receivable_id: "r2" });
     expect(res.actions[2]).toMatchObject({ kind: "reduce", receivable_id: "r3", new_amount: 70 });
+  });
+
+  it("baixa manual com valor a maior quita selecionada e reduz a próxima", () => {
+    const res = reconcileManualPayment(
+      [mkR("r1", 100, "2026-01-01"), mkR("r2", 200, "2026-02-01")],
+      150,
+      ["r1"]
+    );
+    expect(res.actions).toHaveLength(2);
+    expect(res.actions[0]).toMatchObject({ kind: "settle", receivable_id: "r1", amount_paid: 100 });
+    expect(res.actions[1]).toMatchObject({
+      kind: "reduce",
+      receivable_id: "r2",
+      amount_paid: 50,
+      new_amount: 150,
+    });
+    expect(res.leftovers).toHaveLength(0);
   });
 });
