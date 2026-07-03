@@ -1,21 +1,27 @@
-## Alterar senha do admin
+## Conferência da planilha `clientes.xlsx`
 
-Por segurança, senhas do sistema de autenticação não podem ser gravadas diretamente via SQL (ficam com hash gerenciado pelo backend). Existem duas formas de fazer isso:
+Aba usada: **Lançamentos** (203 linhas → 201 únicos após dedupe por nome+CPF).
 
-### Opção A — Você mesmo faz agora (recomendado, mais rápido)
-1. Abra o painel do backend (botão "View Backend").
-2. Vá em **Users**.
-3. Localize `ircido@gmail.com`.
-4. Clique nos três pontinhos → **Send password recovery** ou **Reset password** e defina `J@s3m6240`.
+Cruzei com os **286 clientes** já cadastrados no banco usando duas chaves:
+1. **CPF/CNPJ** (só dígitos) — match exato.
+2. **Nome normalizado** (sem acento/caixa) — match exato, prefixo ou substring (a partir de 10 caracteres) para tolerar nomes truncados da planilha (ex.: `APARECIDA PAIX` → `APARECIDA PAIXAO DOS SANTOS`).
 
-Não precisa alterar nada no código.
+**Resultado:** 121 já existem, **80 estão faltando**.
 
-### Opção B — Eu implemento um botão temporário "Redefinir senha" para admins
-Se preferir, crio uma Edge Function `admin-set-password` (usando a chave de serviço no servidor) e um pequeno formulário na tela `/usuarios`, restrito a quem tem role `admin`, para redefinir a senha de qualquer usuário. Fica disponível para uso futuro também.
+## O que vou fazer
 
-Detalhes técnicos da Opção B:
-- Edge Function protegida: valida que o chamador é `admin` via `has_role()` antes de invocar `auth.admin.updateUserById(id, { password })`.
-- UI: campo "Nova senha" + botão em cada linha da tabela de usuários.
-- Nenhuma senha trafega em logs.
+Inserir os 80 clientes ausentes na tabela `customers` com:
+- `name` = como está na planilha (nomes truncados como `ALINE AZEVEDO SANTOS VIEI` ficam assim; você pode editar depois em `/clientes`).
+- `tax_id` = só dígitos, quando a planilha traz.
+- Demais campos ficam vazios.
 
-Qual opção prefere? Se escolher a B, já sigo com a implementação.
+Casos especiais tratados:
+- `THAMIRIS SOUZA NASCIMENTO 40630308810` (CNPJ `40830089000138`) entra como um segundo cadastro em nome dela — a planilha traz as duas linhas.
+- `BEATRIZ MELO DA SILVA` aparece duas vezes na planilha (uma com CPF, uma sem). Insiro só a versão com CPF.
+- `MARIA MYLLENA VIANA MOREIRA` e `MARIA MYLLENA VIANA NASCIMENTO` compartilham o mesmo CPF `05445142388` — mantenho as duas grafias como registros separados, pois foi assim que a planilha entregou; se preferir mesclar, me avise depois.
+
+## Amostra dos que serão inseridos
+
+ALDER LINS DE MELO · ALINE AZEVEDO SANTOS VIEI · ANA VAGNA RANGEL SILVA · ANNE DE SOUSA ARAÚJO (539.137.698-03) · BARBARA RAIANE SILVA VERI · BEATRIZ MELO DA SILVA (462.858.858-93) · BRUNA SILVA GONCALVES (358.617.408-01) · CARLOS EDUARDO RODRIGUES (133.154.148-40) · CIBELE SANTOS CAMPELO (424.558.368-19) · CLEIDE APARECIDA OLIVEIRA · … (e mais 70).
+
+Nenhum outro dado do sistema é alterado.
