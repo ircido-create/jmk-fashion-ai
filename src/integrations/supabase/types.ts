@@ -127,6 +127,27 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_merge_ignored: {
+        Row: {
+          created_at: string
+          customer_a_id: string
+          customer_b_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_a_id: string
+          customer_b_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          customer_a_id?: string
+          customer_b_id?: string
+          id?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           address: string | null
