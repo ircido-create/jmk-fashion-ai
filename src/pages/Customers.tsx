@@ -114,12 +114,13 @@ export default function Customers() {
   const remove = async (id: string) => {
     const { data: pending, error: chkErr } = await supabase
       .from("accounts_receivable")
-      .select("id, amount, paid_amount")
+      .select("id, amount")
       .eq("customer_id", id)
-      .neq("status", "pago");
+      .neq("status", "pago")
+      .neq("status", "cancelado");
     if (chkErr) { toast.error(chkErr.message); return; }
     const outstanding = (pending ?? []).reduce(
-      (s, r: any) => s + (Number(r.amount) - Number(r.paid_amount ?? 0)),
+      (s, r: any) => s + Number(r.amount ?? 0),
       0
     );
     if (outstanding > 0.009) {
