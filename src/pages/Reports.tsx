@@ -213,10 +213,17 @@ export default function Reports() {
   type StatementRow = { date: string; kind: "compra" | "pagamento"; desc: string; debit: number; credit: number };
   const statement = useMemo<StatementRow[]>(() => {
     const rows: StatementRow[] = [];
+    const linkedReceivableIds = new Set(filteredSales.map((s: any) => s.receivable_id).filter(Boolean));
     filteredSales.forEach((s) => rows.push({
       date: s.sale_date, kind: "compra",
       desc: `Venda #${s.id.slice(0, 8)} · ${s.payment_method ?? "—"}${s.installments ? ` (${s.installments}x)` : ""}`,
       debit: Number(s.total), credit: 0,
+    }));
+    // Receivables sem venda associada → cada parcela entra como compra
+    filteredReceivables.filter((r) => !linkedReceivableIds.has(r.id)).forEach((r) => rows.push({
+      date: r.created_at.slice(0, 10), kind: "compra",
+      desc: `Parcela venc. ${fmtDate(r.due_date)}${r.description ? ` · ${r.description}` : ""}`,
+      debit: Number(r.amount), credit: 0,
     }));
     payments.forEach((p) => {
       const r = receivables.find((x) => x.id === p.receivable_id);
@@ -232,7 +239,7 @@ export default function Reports() {
     });
     rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     return rows;
-  }, [filteredSales, payments, receivables, proofs, from, to]);
+  }, [filteredSales, filteredReceivables, payments, receivables, proofs, from, to]);
 
   const statementWithBalance = useMemo(() => {
     let bal = 0;
