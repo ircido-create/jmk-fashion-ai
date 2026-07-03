@@ -164,18 +164,32 @@ export default function Reports() {
   }, [items]);
 
   const totalsPurchases = useMemo(() => {
-    const totalBought = filteredSales.reduce((s, x) => s + Number(x.total), 0);
+    const salesTotal = filteredSales.reduce((s, x) => s + Number(x.total), 0);
+    const salesDates = filteredSales.map((s) => s.sale_date);
     const qtyItems = filteredSales.reduce((s, x) => s + (itemsBySale.get(x.id) ?? []).reduce((a, it) => a + Number(it.quantity), 0), 0);
-    const first = filteredSales.length ? filteredSales[filteredSales.length - 1].sale_date : null;
-    const last = filteredSales.length ? filteredSales[0].sale_date : null;
+
+    // Fallback: quando não há registro em `sales`, tratamos os receivables como compras.
+    // Agrupamos por data de criação (yyyy-mm-dd) para inferir "pedidos".
+    const linkedReceivableIds = new Set(filteredSales.map((s: any) => s.receivable_id).filter(Boolean));
+    const orphanReceivables = filteredReceivables.filter((r) => !linkedReceivableIds.has(r.id));
+    const receivableTotal = orphanReceivables.reduce((s, r) => s + Number(r.amount), 0);
+    const receivableDates = orphanReceivables.map((r) => r.created_at.slice(0, 10));
+    const orderGroups = new Set(receivableDates);
+
+    const totalBought = salesTotal + receivableTotal;
+    const orders = filteredSales.length + orderGroups.size;
+    const allDates = [...salesDates, ...receivableDates].sort();
+    const first = allDates[0] ?? null;
+    const last = allDates[allDates.length - 1] ?? null;
+
     return {
-      orders: filteredSales.length,
+      orders,
       totalBought,
-      avgTicket: filteredSales.length ? totalBought / filteredSales.length : 0,
+      avgTicket: orders ? totalBought / orders : 0,
       qtyItems,
       first, last,
     };
-  }, [filteredSales, itemsBySale]);
+  }, [filteredSales, filteredReceivables, itemsBySale]);
 
   const totalsFinance = useMemo(() => {
     const totalBilled = filteredReceivables.reduce((s, r) => s + Number(r.amount), 0);
@@ -199,10 +213,17 @@ export default function Reports() {
   type StatementRow = { date: string; kind: "compra" | "pagamento"; desc: string; debit: number; credit: number };
   const statement = useMemo<StatementRow[]>(() => {
     const rows: StatementRow[] = [];
+    const linkedReceivableIds = new Set(filteredSales.map((s: any) => s.receivable_id).filter(Boolean));
     filteredSales.forEach((s) => rows.push({
       date: s.sale_date, kind: "compra",
       desc: `Venda #${s.id.slice(0, 8)} · ${s.payment_method ?? "—"}${s.installments ? ` (${s.installments}x)` : ""}`,
       debit: Number(s.total), credit: 0,
+    }));
+    // Receivables sem venda associada → cada parcela entra como compra
+    filteredReceivables.filter((r) => !linkedReceivableIds.has(r.id)).forEach((r) => rows.push({
+      date: r.created_at.slice(0, 10), kind: "compra",
+      desc: `Parcela venc. ${fmtDate(r.due_date)}${r.description ? ` · ${r.description}` : ""}`,
+      debit: Number(r.amount), credit: 0,
     }));
     payments.forEach((p) => {
       const r = receivables.find((x) => x.id === p.receivable_id);
@@ -218,7 +239,7 @@ export default function Reports() {
     });
     rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     return rows;
-  }, [filteredSales, payments, receivables, proofs, from, to]);
+  }, [filteredSales, filteredReceivables, payments, receivables, proofs, from, to]);
 
   const statementWithBalance = useMemo(() => {
     let bal = 0;
@@ -229,10 +250,16 @@ export default function Reports() {
   const monthly = useMemo(() => {
     const m = new Map<string, { month: string; compras: number; pagamentos: number }>();
     const key = (d: string) => d.slice(0, 7);
+    const linkedReceivableIds = new Set(filteredSales.map((s: any) => s.receivable_id).filter(Boolean));
     filteredSales.forEach((s) => {
       const k = key(s.sale_date);
       const e = m.get(k) ?? { month: k, compras: 0, pagamentos: 0 };
       e.compras += Number(s.total); m.set(k, e);
+    });
+    filteredReceivables.filter((r) => !linkedReceivableIds.has(r.id)).forEach((r) => {
+      const k = key(r.created_at.slice(0, 10));
+      const e = m.get(k) ?? { month: k, compras: 0, pagamentos: 0 };
+      e.compras += Number(r.amount); m.set(k, e);
     });
     payments.forEach((p) => {
       const pf = proofs[p.proof_id];
@@ -244,7 +271,7 @@ export default function Reports() {
       e.pagamentos += Number(p.amount_paid); m.set(k, e);
     });
     return Array.from(m.values()).sort((a, b) => (a.month < b.month ? -1 : 1));
-  }, [filteredSales, payments, proofs, from, to]);
+  }, [filteredSales, filteredReceivables, payments, proofs, from, to]);
 
   const topProducts = useMemo(() => {
     const m = new Map<string, number>();
