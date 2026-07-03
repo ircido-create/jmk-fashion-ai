@@ -1,49 +1,27 @@
-## Tela de Conciliação de Clientes
+## Objetivo
 
-Adiciona uma nova aba **"Conciliação"** na página `/clientes` que lista pares de cadastros suspeitos de serem o mesmo cliente e permite mesclar com um clique.
+Você quer garantir que, quando um cliente paga a MAIS do que a parcela atual, o excedente é usado pra abater a próxima parcela (mais antiga em aberto).
 
-### Regras de detecção
-1. **Mesmo CPF/CNPJ** (só dígitos). Match forte.
-2. **Nome truncado é prefixo de outro** (≥10 caracteres, sem acento/caixa). Ex.: `APARECIDA PAIX` ↔ `APARECIDA PAIXAO DOS SANTOS`.
+Boa notícia: a lógica em `src/lib/reconcile.ts` já faz isso. Ela soma todos os pagamentos do cliente num "pool" e vai consumindo parcelas da mais antiga pra mais nova:
 
-Também mostro no relatório os **2 duplicados exatos** já detectados (`GUILHERME OMAR PARLETTA`, `RUTH DA SILVA LUCAS PINTO`) como caso da regra 2 (prefixo = nome inteiro).
+- Se o pool cobre a parcela inteira → marca como **quitada** (`settle`) e continua com o que sobrou.
+- Se sobra só uma parte → **reduz** o valor da próxima parcela (`reduce`) e ela continua pendente com valor menor.
+- Se ainda sobrar depois de quitar tudo → vai pra lista `leftovers` (crédito sem parcela pra abater).
 
-### UI (nova aba na página Clientes)
-Cada par suspeito aparece como um card:
+O que falta é **prova de que funciona** e deixar isso visível.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Possível duplicidade — motivo: nome truncado                │
-│                                                              │
-│  [ ] Manter                    [ ] Manter (canônico)         │
-│  APARECIDA PAIX                APARECIDA PAIXAO DOS SANTOS   │
-│  Apelido: —                    Apelido: CIDA VILMA           │
-│  CPF: —                        CPF: —                        │
-│  Vendas: 0 · Receber: 0        Vendas: 3 · Receber: R$ 240   │
-│                                                              │
-│                        [ Mesclar ]   [ Ignorar ]             │
-└─────────────────────────────────────────────────────────────┘
-```
+## Plano
 
-- O lado marcado como **canônico** é sugerido automaticamente (o que tem mais dados: apelido, CPF, vendas, receber). Você pode inverter antes de mesclar.
-- **Mesclar** transfere para o canônico:
-  - `sales.customer_id`
-  - `accounts_receivable.customer_id`
-  - Preenche no canônico os campos que estiverem vazios (apelido, CPF, telefone, email, endereço, notas) usando o valor do duplicado.
-  - Apaga o registro duplicado.
-- **Ignorar** guarda um par ignorado (nova tabela `customer_merge_ignored` com os dois ids) para não voltar a aparecer.
+1. **Adicionar teste unitário** em `src/test/reconcile.test.ts` cobrindo três casos:
+   - Pagamento único = parcela → 1 `settle`.
+   - Pagamento único > parcela1 mas < parcela1+parcela2 → 1 `settle` (parcela1) + 1 `reduce` (parcela2 com valor reduzido).
+   - Pagamento >> soma de todas as parcelas → todas `settle` + entrada em `leftovers` com o troco.
 
-### Backend
-- Nova tabela `customer_merge_ignored (customer_a_id, customer_b_id)` com RLS para `authenticated`.
-- Nova Edge Function `merge-customers` que recebe `{ keep_id, drop_id }`, roda as atualizações em transação e devolve contagem de linhas migradas. Usa `service_role` para garantir consistência mesmo com RLS.
-- A listagem dos pares é feita no cliente: busca todos os clientes uma vez e aplica as duas regras em memória (356 registros → trivial).
+2. **Rodar `bunx vitest run`** pra confirmar que passa.
 
-### Arquivos afetados
-- `src/pages/Customers.tsx` — adicionar `<Tabs>` com "Lista" (atual) e "Conciliação" (nova).
-- `src/components/customers/Reconciliation.tsx` — nova, contém a lógica de detecção e os cards.
-- `supabase/functions/merge-customers/index.ts` — nova edge function.
-- Migration: cria `customer_merge_ignored` com RLS/GRANTs.
+3. **Sem mudanças na UI ou no banco.** O componente de conciliação de extrato já renderiza tanto `settle` quanto `reduce`, e o `leftovers` já aparece na seção "Sobras".
 
-### Fora do escopo
-- Não uso apelido↔nome como regra de match agora (você deixou de fora). Se depois quiser adicionar, é só uma linha na detecção.
-- Não altero a página `/clientes` além de introduzir as abas.
+## Fora do escopo
+
+- Não vou criar "crédito" em parcela negativa (você não pediu essa opção).
+- Não vou mexer em `merge-customers`, `Receivable.tsx`, nem no fluxo de conciliação de duplicados.
