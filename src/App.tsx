@@ -26,6 +26,7 @@ import PreSaleDetail from "./pages/PreSaleDetail";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import Install from "./pages/Install";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
