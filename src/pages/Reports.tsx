@@ -75,8 +75,8 @@ export default function Reports() {
   // Carrega lista de clientes uma vez
   useEffect(() => {
     (async () => {
-      const rows = await fetchAllRows<Customer>((from, to) =>
-        supabase.from("customers").select("id, name, nickname, tax_id, phone, email, address, created_at").order("name").range(from, to)
+      const rows = await fetchAll<Customer>((sb) =>
+        sb.from("customers").select("id, name, nickname, tax_id, phone, email, address, created_at").order("name")
       );
       setCustomers(rows);
     })();
