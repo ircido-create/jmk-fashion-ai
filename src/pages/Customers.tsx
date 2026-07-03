@@ -13,6 +13,8 @@ import { z } from "zod";
 import { Link } from "react-router-dom";
 import { usePagination } from "@/hooks/usePagination";
 import { digitsOnly, formatTaxId, isValidTaxIdLength } from "@/lib/taxId";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import CustomerReconciliation from "@/components/customers/Reconciliation";
 
 interface Customer { id: string; name: string; nickname: string | null; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
 
@@ -174,40 +176,55 @@ export default function Customers() {
         }
       />
 
-      <GlassCard>
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome, telefone, e-mail ou CPF/CNPJ..." className="glass-input pl-10" />
-        </div>
+      <Tabs defaultValue="lista" className="w-full">
+        <TabsList className="mb-3">
+          <TabsTrigger value="lista">Lista</TabsTrigger>
+          <TabsTrigger value="conciliacao">Conciliação</TabsTrigger>
+        </TabsList>
 
-        <div className="space-y-2">
-          {paged.map((c) => (
-            <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur hover:bg-white/60 dark:hover:bg-white/10 transition-all">
-              <Link to={`/clientes/${c.id}`} className="min-w-0 flex-1 group">
-                <div className="font-medium truncate flex items-center gap-1 group-hover:text-primary transition-colors">
-                  {c.name}
-                  {c.nickname && (
-                    <span className="text-xs text-muted-foreground font-normal">({c.nickname})</span>
-                  )}
-                  <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <div className="text-xs text-muted-foreground truncate">
-                  {c.tax_id ? formatTaxId(c.tax_id) : "—"} {c.phone ? `• ${c.phone}` : ""} {c.email ? `• ${c.email}` : ""}
-                </div>
-                {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
-              </Link>
-              <div className="flex gap-1">
-                <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
-                <Button size="icon" variant="ghost" onClick={() => remove(c.id)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
-              </div>
+        <TabsContent value="lista">
+          <GlassCard>
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome, telefone, e-mail ou CPF/CNPJ..." className="glass-input pl-10" />
             </div>
-          ))}
-          {filtered.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground text-sm">Nenhum cliente</div>
-          )}
-        </div>
-        <Controls />
-      </GlassCard>
+
+            <div className="space-y-2">
+              {paged.map((c) => (
+                <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur hover:bg-white/60 dark:hover:bg-white/10 transition-all">
+                  <Link to={`/clientes/${c.id}`} className="min-w-0 flex-1 group">
+                    <div className="font-medium truncate flex items-center gap-1 group-hover:text-primary transition-colors">
+                      {c.name}
+                      {c.nickname && (
+                        <span className="text-xs text-muted-foreground font-normal">({c.nickname})</span>
+                      )}
+                      <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {c.tax_id ? formatTaxId(c.tax_id) : "—"} {c.phone ? `• ${c.phone}` : ""} {c.email ? `• ${c.email}` : ""}
+                    </div>
+                    {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
+                  </Link>
+                  <div className="flex gap-1">
+                    <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => remove(c.id)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  </div>
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground text-sm">Nenhum cliente</div>
+              )}
+            </div>
+            <Controls />
+          </GlassCard>
+        </TabsContent>
+
+        <TabsContent value="conciliacao">
+          <GlassCard>
+            <CustomerReconciliation />
+          </GlassCard>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
