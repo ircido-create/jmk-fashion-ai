@@ -62,6 +62,16 @@ export interface ReconciliationResult {
   };
 }
 
+export interface ManualPaymentResult {
+  actions: ReconciliationAction[];
+  leftovers: ReconciliationResult["leftovers"];
+  totals: {
+    fullySettled: number;
+    partiallyReduced: number;
+    paidSum: number;
+  };
+}
+
 const norm = (s: string) =>
   (s ?? "")
     .toString()
@@ -212,6 +222,78 @@ export function reconcile(
       partiallyReduced,
       paidSum,
       unmatched: unmatched.length,
+    },
+  };
+}
+
+/**
+ * Baixa manual: aplica um valor recebido nas parcelas informadas, sempre na ordem:
+ * 1) parcelas selecionadas, por vencimento; 2) próximas parcelas do mesmo cliente, por vencimento.
+ */
+export function reconcileManualPayment(
+  receivables: ReceivableLite[],
+  amount: number,
+  selectedIds: string[]
+): ManualPaymentResult {
+  const selected = new Set(selectedIds);
+  const pendings = receivables.filter((r) => r.status !== "pago" && r.status !== "cancelado");
+  const sortByDueDate = (a: ReceivableLite, b: ReceivableLite) =>
+    a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : a.amount - b.amount;
+  const parcels = [
+    ...pendings.filter((r) => selected.has(r.id)).sort(sortByDueDate),
+    ...pendings.filter((r) => !selected.has(r.id)).sort(sortByDueDate),
+  ];
+
+  const actions: ReconciliationAction[] = [];
+  let pool = round2(amount);
+
+  for (const r of parcels) {
+    if (pool <= 0.005) break;
+    const left = round2(Number(r.amount) || 0);
+    if (left <= 0.005) continue;
+
+    if (pool + 0.005 >= left) {
+      actions.push({
+        kind: "settle",
+        receivable_id: r.id,
+        customer_name: r.customer_name,
+        due_date: r.due_date,
+        original_amount: Number(r.amount),
+        amount_paid: left,
+        payment_indices: [0],
+      });
+      pool = round2(pool - left);
+    } else {
+      actions.push({
+        kind: "reduce",
+        receivable_id: r.id,
+        customer_name: r.customer_name,
+        due_date: r.due_date,
+        original_amount: Number(r.amount),
+        amount_paid: pool,
+        new_amount: round2(left - pool),
+        payment_indices: [0],
+      });
+      pool = 0;
+    }
+  }
+
+  const leftovers: ReconciliationResult["leftovers"] = pool > 0.005
+    ? [{
+        customer_name: parcels[0]?.customer_name ?? "",
+        customer_id: parcels[0]?.customer_id ?? null,
+        amount: pool,
+        payment_indices: [0],
+      }]
+    : [];
+
+  return {
+    actions,
+    leftovers,
+    totals: {
+      fullySettled: actions.filter((a) => a.kind === "settle").length,
+      partiallyReduced: actions.filter((a) => a.kind === "reduce").length,
+      paidSum: round2(actions.reduce((s, a) => s + a.amount_paid, 0)),
     },
   };
 }
