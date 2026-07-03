@@ -13,6 +13,8 @@ import { z } from "zod";
 import { Link } from "react-router-dom";
 import { usePagination } from "@/hooks/usePagination";
 import { digitsOnly, formatTaxId, isValidTaxIdLength } from "@/lib/taxId";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import CustomerReconciliation from "@/components/customers/Reconciliation";
 
 interface Customer { id: string; name: string; nickname: string | null; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
 
