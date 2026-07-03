@@ -12,7 +12,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { formatTaxId, digitsOnly } from "@/lib/taxId";
-import { fetchAllRows } from "@/lib/fetchAll";
+import { fetchAll } from "@/lib/fetchAll";
 import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid,
