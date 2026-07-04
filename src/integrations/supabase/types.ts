@@ -976,6 +976,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      decrement_variant_stock: {
+        Args: { qty: number; variant_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
