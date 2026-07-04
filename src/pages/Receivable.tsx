@@ -280,6 +280,7 @@ export default function Receivable() {
     window.open(data.signedUrl, "_blank");
   };
 
+  const debouncedSearch = useDebouncedValue(search, 300);
   const filtered = (() => {
     const base = (() => {
       switch (filter) {
@@ -291,7 +292,6 @@ export default function Receivable() {
         default: return list;
       }
     })();
-    const debouncedSearch = useDebouncedValue(search, 300);
     const q = debouncedSearch.trim().toLowerCase();
     if (!q) return base;
     return base.filter((r) =>
