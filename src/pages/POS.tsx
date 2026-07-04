@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, Printer, ChevronRight, ChevronLeft, Receipt } from "lucide-react";
+import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, Printer, ChevronRight, ChevronLeft, Receipt, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 type PaymentMethod = "dinheiro" | "debito" | "credito" | "pix" | "fiado";
@@ -66,6 +66,10 @@ export default function POS() {
   // Step 2
   const [customerId, setCustomerId] = useState<string>("");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
 
   // Step 3
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
@@ -501,7 +505,22 @@ export default function POS() {
 
           {step === 2 && (
             <GlassCard className="p-4">
-              <Label className="mb-2 block">Selecionar cliente</Label>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="block">Selecionar cliente</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    setNewCustomerName(customerSearch);
+                    setNewCustomerPhone("");
+                    setNewCustomerOpen(true);
+                  }}
+                >
+                  <UserPlus className="h-4 w-4 mr-1" /> Novo cliente
+                </Button>
+              </div>
               <div className="flex items-center gap-2 mb-3">
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
@@ -532,8 +551,20 @@ export default function POS() {
                   </button>
                 ))}
                 {filteredCustomers.length === 0 && (
-                  <div className="text-center text-sm text-muted-foreground py-6">
-                    Nenhum cliente encontrado
+                  <div className="text-center py-6 space-y-3">
+                    <div className="text-sm text-muted-foreground">Nenhum cliente encontrado</div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={() => {
+                        setNewCustomerName(customerSearch);
+                        setNewCustomerPhone("");
+                        setNewCustomerOpen(true);
+                      }}
+                    >
+                      <UserPlus className="h-4 w-4 mr-1" /> Adicionar novo cliente
+                    </Button>
                   </div>
                 )}
               </div>
@@ -906,6 +937,64 @@ export default function POS() {
             </Button>
             <Button onClick={printReceipt} className="bg-gradient-primary text-primary-foreground">
               <Printer className="h-4 w-4 mr-1" /> Imprimir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
+        <DialogContent className="glass-card border-white/40 max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo cliente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="mb-1 block">Nome *</Label>
+              <Input
+                autoFocus
+                value={newCustomerName}
+                onChange={(e) => setNewCustomerName(e.target.value)}
+                placeholder="Nome do cliente"
+                className="glass-input"
+              />
+            </div>
+            <div>
+              <Label className="mb-1 block">Telefone</Label>
+              <Input
+                value={newCustomerPhone}
+                onChange={(e) => setNewCustomerPhone(e.target.value)}
+                placeholder="(00) 00000-0000"
+                className="glass-input"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewCustomerOpen(false)} disabled={creatingCustomer}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                const name = newCustomerName.trim();
+                if (!name) { toast.error("Informe o nome"); return; }
+                setCreatingCustomer(true);
+                const { data, error } = await supabase
+                  .from("customers")
+                  .insert({ name, phone: newCustomerPhone.trim() || null })
+                  .select("id, name, phone")
+                  .single();
+                setCreatingCustomer(false);
+                if (error || !data) { toast.error(error?.message || "Falha ao cadastrar"); return; }
+                setCustomers((prev) => [...prev, data as Customer].sort((a, b) => a.name.localeCompare(b.name)));
+                setCustomerId(data.id);
+                setCustomerSearch("");
+                setNewCustomerOpen(false);
+                toast.success("Cliente cadastrado");
+              }}
+              disabled={creatingCustomer}
+              className="bg-gradient-primary text-primary-foreground"
+            >
+              {creatingCustomer ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <UserPlus className="h-4 w-4 mr-1" />}
+              Cadastrar
             </Button>
           </DialogFooter>
         </DialogContent>
