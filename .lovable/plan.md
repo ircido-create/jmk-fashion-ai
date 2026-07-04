@@ -1,43 +1,99 @@
-## Diagnóstico
+# Plano de Otimização de Performance
 
-Verifiquei o banco: os produtos citados (VESTIDO LISTRADO TRICO e JAQUETA RAFAELA) estão com **quantidade = 1** neste momento, e só existem 2 vendas registradas (nenhuma delas dessas peças). Ou seja, o carrinho abandonado **não gravou nada** no estoque — não há trigger, edge function, nem código no `POS.tsx` que rode ao fechar/recarregar a página.
+Fiz um diagnóstico rápido antes de propor mudanças. Segue o resultado e o que faz sentido aplicar **agora** (sem quebrar nada) vs. o que **não vale o custo/risco** neste estado do projeto.
 
-O que existe hoje no `POS.tsx` (e no `Sales.tsx`) é um problema **latente e perigoso** na hora de finalizar a venda: quando um item é adicionado ao carrinho, o app guarda `maxQty` = quantidade do estoque naquele instante. Ao finalizar, ele grava `quantity = maxQty − vendido`, **sobrescrevendo** o valor atual do banco. Se você abrir o PDV, deixar o carrinho aberto por um tempo, importar romaneio/editar estoque em outra aba e depois finalizar, esse `maxQty` fica desatualizado e pode reverter/zerar o estoque real.
+---
 
-Também notei que **VESTIDO LISTRADO TRICO tem 3 variações duplicadas** (todas 42 / UNICO, 1 peça cada). Isso confunde o PDV — ao vender 1, só uma linha é baixada e as outras 2 continuam aparecendo.
+## 1) Diagnóstico atual
 
-## Plano
+**Banco de dados (Lovable Cloud):**
+- Tabelas são pequenas: `accounts_receivable` 646, `customers` 330, `product_variants` 132, `products` 70, `accounts_payable` 64, `sales` 6, `sale_items` 4. Nenhuma perto de "milhares".
+- Consultas mais lentas rodam em **9–30 ms**. Não há query lenta real. Índices FK principais já existem (`sale_items.sale_id`, `receivable_payments.receivable_id`, `pre_sales.customer_id`, `customers.tax_id`, `customers(lower(nickname))`).
+- Faltam apenas 3 índices úteis para o padrão de ordenação/filtro atual (ver seção 3).
 
-### 1. Baixa de estoque atômica (correção principal)
+**Front-end:**
+- `src/App.tsx` importa **as 23 páginas de forma estática** — todo o app entra no bundle inicial. Esse é o maior gargalo real de "tempo até a tela".
+- Páginas grandes: `Receivable.tsx` (1325 linhas), `POS.tsx` (1029), `Conversations.tsx` (999), `Reports.tsx` (717), `Inventory.tsx` (676).
+- Várias páginas usam `fetchAll` (paginação até acabar) para tabelas hoje pequenas — vai escalar mal, mas ainda não é problema.
 
-Criar uma função no banco `public.decrement_variant_stock(variant_id uuid, qty int)` que:
-- lê o `quantity` atual da variação,
-- grava `GREATEST(0, quantity − qty)` na mesma linha,
-- retorna o novo valor.
+**Conclusão honesta:** o app **não está lento por causa de banco**. Está lento (potencialmente) por causa de bundle inicial. Vou focar aí — é onde há ganho real e baixo risco.
 
-Assim a baixa sempre parte do valor **real** do banco, não de um `maxQty` que o navegador guardou minutos atrás.
+---
 
-Substituir em `src/pages/POS.tsx` e `src/pages/Sales.tsx` o trecho:
+## 2) O que vou fazer (alto impacto, baixo risco)
 
-```ts
-const newQty = Math.max(0, it.maxQty - it.quantity);
-await supabase.from("product_variants").update({ quantity: newQty }).eq("id", it.variantId);
+### A. Code-splitting por rota (impacto alto)
+- Trocar todos os `import Page from ...` em `src/App.tsx` por `lazy(() => import(...))`.
+- Envolver `<Routes>` em `<Suspense fallback={<PageSkeleton/>}>`.
+- Criar `src/components/layout/PageSkeleton.tsx` para não mostrar tela em branco.
+- **Ganho estimado:** bundle inicial cai ~60–75% (só Dashboard + libs comuns), TTI e LCP caem proporcionalmente em 3G/mobile.
+
+### B. QueryClient com defaults saudáveis
+- Configurar `staleTime: 30s`, `gcTime: 5min`, `refetchOnWindowFocus: false`, `retry: 1`.
+- Efeito: menos refetch redundante quando o usuário volta pra aba.
+
+### C. Debounce nas buscas (300ms)
+- Criar hook `useDebouncedValue` e aplicar em `Customers`, `Sales`, `Inventory`, `Receivable`, `Payable`, `Conversations`, `PreSales`.
+- Hoje o filtro roda a cada tecla; com 300+ registros já dá pra sentir.
+
+### D. Índices que faltam no Postgres
+```sql
+CREATE INDEX IF NOT EXISTS idx_accounts_receivable_customer_due
+  ON public.accounts_receivable (customer_id, due_date DESC);
+CREATE INDEX IF NOT EXISTS idx_accounts_receivable_status_due
+  ON public.accounts_receivable (status, due_date);
+CREATE INDEX IF NOT EXISTS idx_accounts_payable_status_due
+  ON public.accounts_payable (status, due_date);
+CREATE INDEX IF NOT EXISTS idx_sales_date
+  ON public.sales (sale_date DESC);
+CREATE INDEX IF NOT EXISTS idx_sales_customer
+  ON public.sales (customer_id);
+CREATE INDEX IF NOT EXISTS idx_product_variants_product
+  ON public.product_variants (product_id);
+CREATE INDEX IF NOT EXISTS idx_customers_name_lower
+  ON public.customers (lower(name));
 ```
+**Ganho:** invisível hoje, mas evita degradação futura quando as tabelas crescerem.
 
-por uma chamada `supabase.rpc("decrement_variant_stock", { variant_id, qty })`, executada **somente** depois de `sales` + `sale_items` inserirem sem erro (comportamento que já existe).
+### E. Limpeza de imports mortos
+- Rodar `rg` por `import` não usado nas 5 páginas maiores e remover. Mudança cosmética; sem impacto funcional.
 
-### 2. Limpeza das variações duplicadas do VESTIDO LISTRADO TRICO
+---
 
-Consolidar as 3 linhas 42/UNICO em uma só com quantidade 3 (soma) e apagar as outras duas, para o PDV mostrar corretamente e a baixa atingir a única linha existente.
+## 3) O que **NÃO** vou fazer agora (e por quê)
 
-### 3. Verificação
+- **Virtualização de listas** (`react-window`): útil só acima de ~500 itens visíveis. Nenhuma tela chega perto. Adicionar dependência e reescrever renderização por prevenção não compensa.
+- **`React.memo` / `useMemo` / `useCallback` massivos:** sem profiler mostrando re-render caro, virariam ruído. Aplico pontualmente quando/se aparecer.
+- **Refatorar `fetchAll` para paginação server-side:** as tabelas ainda cabem em memória sem dor. Faço quando `customers`/`accounts_receivable` passarem de ~2k linhas.
+- **Web workers para relatórios:** `Reports.tsx` hoje agrega em memória sem travar. Fazer isso só quando houver > 10k linhas por chamada.
+- **Reescrever RLS:** políticas atuais estão OK; mexer sem necessidade é risco de regressão de segurança.
+- **Comprimir imagens automaticamente:** as imagens são de produto vindas do storage/URL do usuário; não são bundled assets.
 
-Depois do deploy, abrir o PDV com VESTIDO TRICO / JAQUETA RAFAELA, fechar a página sem finalizar e reconferir o estoque no banco — deve continuar 1. Se você conseguir reproduzir o "zera ao fechar" mesmo assim, me avisa com o horário exato do teste que eu puxo os logs do banco naquele minuto.
+---
 
-## Escopo técnico
+## 4) Detalhes técnicos
 
-- Migração: cria `public.decrement_variant_stock(uuid, int)` com `SECURITY DEFINER`, `SET search_path = public`, `GRANT EXECUTE` para `authenticated` e `service_role`.
-- Migração: `UPDATE` consolidando o vestido trico + `DELETE` das duplicatas.
-- `src/pages/POS.tsx`: troca do bloco de baixa (linhas 358–363) por chamada RPC.
-- `src/pages/Sales.tsx`: mesma troca (linhas 186–192).
-- Nenhuma mudança em UI, RLS de outras tabelas, ou edge functions.
+**Arquivos a editar:**
+- `src/App.tsx` — lazy routes + Suspense + QueryClient config.
+- `src/components/layout/PageSkeleton.tsx` (novo) — fallback visual.
+- `src/hooks/useDebouncedValue.ts` (novo).
+- `src/pages/Customers.tsx`, `Sales.tsx`, `Inventory.tsx`, `Receivable.tsx`, `Payable.tsx`, `Conversations.tsx`, `PreSales.tsx` — aplicar debounce no state de busca (mudança de ~2 linhas cada).
+- 1 migração SQL com os índices `IF NOT EXISTS` acima.
+
+**Segurança:** nada mexe em RLS, auth, políticas, validações ou logs. Zero mudança de schema além de índices.
+
+**Verificação:** build TypeScript + navegação nas rotas principais via preview para confirmar que nada quebrou.
+
+---
+
+## 5) Ganho estimado
+
+| Área | Antes | Depois (esperado) |
+|---|---|---|
+| Bundle JS inicial | ~1 arquivo com 23 páginas | Dashboard + shared libs (~60–75% menor) |
+| Tempo até 1ª interação (mobile) | alto | baixo |
+| Refetch ao trocar de aba | sempre | só se >30s |
+| Digitação em busca (300 clientes) | trava leve por tecla | fluido (debounce) |
+| Escala do banco | OK hoje | OK até dezenas de milhares |
+
+Confirma que posso seguir com essas mudanças?
