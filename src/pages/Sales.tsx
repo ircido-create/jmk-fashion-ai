@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Loader2, Search } from "lucide-react";
+import { Plus, Trash2, Loader2, Search, Printer } from "lucide-react";
+import { printReceipt } from "@/lib/receipt";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 
@@ -21,7 +22,9 @@ interface Customer { id: string; name: string; phone: string | null; }
 interface SaleRow {
   id: string; sale_date: string; total: number; notes: string | null;
   customer_id: string | null;
-  customers: { name: string } | null;
+  payment_method: string | null;
+  installments: number | null;
+  customers: { name: string; phone: string | null } | null;
   sale_items: { id: string; product_name: string; variant_label: string | null; quantity: number; unit_price: number }[];
 }
 
@@ -62,12 +65,12 @@ export default function Sales() {
 
   const load = async () => {
     const [s, p, c] = await Promise.all([
-      supabase.from("sales").select("*, customers(name), sale_items(*)").order("sale_date", { ascending: false }).limit(100),
+      supabase.from("sales").select("*, customers(name, phone), sale_items(*)").order("sale_date", { ascending: false }).limit(100),
       supabase.from("products").select("id, name, price, cost, product_variants(id, size, color, quantity)").eq("active", true).order("name"),
       fetchAll<Customer>((sb) => sb.from("customers").select("id, name, phone").order("name")),
     ]);
     if (s.error) toast.error(s.error.message);
-    setSales((s.data ?? []) as SaleRow[]);
+    setSales((s.data ?? []) as unknown as SaleRow[]);
     setProducts((p.data ?? []) as Product[]);
     setCustomers(c as Customer[]);
   };
@@ -354,8 +357,34 @@ export default function Sales() {
                     {s.sale_items.map((it) => `${it.quantity}× ${it.product_name}`).join(" • ")}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex flex-col items-end gap-1">
                   <div className="text-lg font-semibold text-primary">{fmtBRL(Number(s.total))}</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const ok = printReceipt({
+                        number: s.id.slice(0, 8).toUpperCase(),
+                        date: new Date(s.sale_date),
+                        customer: s.customers
+                          ? { name: s.customers.name, phone: s.customers.phone }
+                          : null,
+                        items: s.sale_items.map((it) => ({
+                          productName: it.product_name,
+                          variantLabel: it.variant_label,
+                          quantity: it.quantity,
+                          unitPrice: Number(it.unit_price),
+                        })),
+                        subtotal: Number(s.total),
+                        payment: (s.payment_method ?? "dinheiro") as any,
+                        installments: s.installments ?? 1,
+                        reprint: true,
+                      });
+                      if (!ok) toast.error("Bloqueador de pop-up impediu a impressão");
+                    }}
+                  >
+                    <Printer className="h-3.5 w-3.5 mr-1" /> Reimprimir cupom
+                  </Button>
                 </div>
               </div>
             </div>
