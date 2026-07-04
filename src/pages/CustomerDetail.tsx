@@ -77,6 +77,11 @@ export default function CustomerDetail() {
     [pendingReceivables, selected]
   );
 
+  const totalDebt = useMemo(
+    () => pendingReceivables.reduce((s, r) => s + Number(r.amount), 0),
+    [pendingReceivables]
+  );
+
   const toggle = (id: string) => {
     setSelected(prev => {
       const n = new Set(prev);
@@ -223,7 +228,7 @@ export default function CustomerDetail() {
             <Stat label="Pagos em dia" value={trust.paidOnTime} icon={<TrendingUp className="h-3.5 w-3.5 text-success" />} />
             <Stat label="Pagos em atraso" value={trust.paidLate} icon={<TrendingDown className="h-3.5 w-3.5 text-warning" />} />
             <Stat label="Em aberto vencidos" value={trust.openOverdue} icon={<TrendingDown className="h-3.5 w-3.5 text-destructive" />} />
-            <Stat label="Pendentes no prazo" value={trust.openPending} icon={<ShoppingBag className="h-3.5 w-3.5 text-primary" />} />
+            <Stat label="Saldo em aberto" value={fmtBRL(totalDebt)} icon={<Wallet className="h-3.5 w-3.5 text-primary" />} accent />
           </div>
         </div>
 
@@ -417,11 +422,11 @@ export default function CustomerDetail() {
   );
 }
 
-function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+function Stat({ label, value, icon, accent }: { label: string; value: React.ReactNode; icon: React.ReactNode; accent?: boolean }) {
   return (
     <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
       <div className="text-[11px] text-muted-foreground flex items-center gap-1">{icon} {label}</div>
-      <div className="text-xl font-semibold mt-0.5">{value}</div>
+      <div className={`text-xl font-semibold mt-0.5 ${accent ? "text-primary" : ""}`}>{value}</div>
     </div>
   );
 }
