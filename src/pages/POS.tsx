@@ -340,8 +340,34 @@ export default function POS() {
         .single();
       if (saleErr) throw saleErr;
 
-      // 3) Itens
-      const items = cart.map((it) => ({
+      // 3) Itens — revalida variant_id contra o banco (pode ter mudado após consolidações)
+      const variantIds = Array.from(new Set(cart.map((it) => it.variantId).filter(Boolean))) as string[];
+      const validIds = new Set<string>();
+      if (variantIds.length) {
+        const { data: existing } = await supabase
+          .from("product_variants")
+          .select("id")
+          .in("id", variantIds);
+        (existing ?? []).forEach((v: any) => validIds.add(v.id));
+      }
+      const resolvedCart = await Promise.all(
+        cart.map(async (it) => {
+          if (!it.variantId || validIds.has(it.variantId)) return it;
+          // Tenta achar variação equivalente (mesmo produto + size/color) que ainda existe
+          const [size, color] = (it.variantLabel || "").split(" / ");
+          const { data: alt } = await supabase
+            .from("product_variants")
+            .select("id, quantity")
+            .eq("product_id", it.productId)
+            .eq("size", size || null)
+            .eq("color", color || null)
+            .limit(1)
+            .maybeSingle();
+          return { ...it, variantId: alt?.id ?? null };
+        }),
+      );
+
+      const items = resolvedCart.map((it) => ({
         sale_id: sale.id,
         product_id: it.productId,
         variant_id: it.variantId,
@@ -355,7 +381,7 @@ export default function POS() {
       if (itErr) throw itErr;
 
       // 4) Baixa estoque (atômico via RPC, a partir do valor atual do banco)
-      for (const it of cart) {
+      for (const it of resolvedCart) {
         if (it.variantId) {
           await supabase.rpc("decrement_variant_stock", { variant_id: it.variantId, qty: it.quantity });
         }
