@@ -228,7 +228,7 @@ export default function CustomerDetail() {
             <Stat label="Pagos em dia" value={trust.paidOnTime} icon={<TrendingUp className="h-3.5 w-3.5 text-success" />} />
             <Stat label="Pagos em atraso" value={trust.paidLate} icon={<TrendingDown className="h-3.5 w-3.5 text-warning" />} />
             <Stat label="Em aberto vencidos" value={trust.openOverdue} icon={<TrendingDown className="h-3.5 w-3.5 text-destructive" />} />
-            <Stat label="Pendentes no prazo" value={trust.openPending} icon={<ShoppingBag className="h-3.5 w-3.5 text-primary" />} />
+            <Stat label="Saldo em aberto" value={fmtBRL(totalDebt)} icon={<Wallet className="h-3.5 w-3.5 text-primary" />} accent />
           </div>
         </div>
 
