@@ -422,11 +422,11 @@ export default function CustomerDetail() {
   );
 }
 
-function Stat({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+function Stat({ label, value, icon, accent }: { label: string; value: React.ReactNode; icon: React.ReactNode; accent?: boolean }) {
   return (
     <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
       <div className="text-[11px] text-muted-foreground flex items-center gap-1">{icon} {label}</div>
-      <div className="text-xl font-semibold mt-0.5">{value}</div>
+      <div className={`text-xl font-semibold mt-0.5 ${accent ? "text-primary" : ""}`}>{value}</div>
     </div>
   );
 }
