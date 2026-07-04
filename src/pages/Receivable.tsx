@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
@@ -279,6 +280,7 @@ export default function Receivable() {
     window.open(data.signedUrl, "_blank");
   };
 
+  const debouncedSearch = useDebouncedValue(search, 300);
   const filtered = (() => {
     const base = (() => {
       switch (filter) {
@@ -290,7 +292,7 @@ export default function Receivable() {
         default: return list;
       }
     })();
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     if (!q) return base;
     return base.filter((r) =>
       (r.customers?.name ?? "").toLowerCase().includes(q) ||

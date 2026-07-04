@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
@@ -104,6 +105,7 @@ export default function Sales() {
 
   const total = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
 
+  const debouncedQuery = useDebouncedValue(query, 300);
   const filteredSales = useMemo(() => {
     const now = new Date();
     let from: Date | null = null;
@@ -116,7 +118,7 @@ export default function Sales() {
       from = new Date(now);
       from.setDate(now.getDate() - 30);
     }
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     return sales.filter((s) => {
       if (from && new Date(s.sale_date) < from) return false;
       if (!q) return true;
@@ -126,7 +128,7 @@ export default function Sales() {
       );
       return inCustomer || inItems;
     });
-  }, [sales, period, query]);
+  }, [sales, period, debouncedQuery]);
 
   const periodTotal = useMemo(
     () => filteredSales.reduce((s, x) => s + Number(x.total || 0), 0),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -340,8 +341,9 @@ export default function Inventory() {
 
   const suppliers = Array.from(new Set(list.map((p) => p.supplier).filter((s): s is string => !!s && s.trim() !== ""))).sort();
 
+  const debouncedSearch = useDebouncedValue(search, 300);
   const filtered = list.filter((p) => {
-    const q = search.toLowerCase();
+    const q = debouncedSearch.toLowerCase();
     const matchesSearch =
       p.name.toLowerCase().includes(q) ||
       (p.category ?? "").toLowerCase().includes(q) ||
