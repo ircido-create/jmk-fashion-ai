@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, Printer, ChevronRight, ChevronLeft, Receipt } from "lucide-react";
+import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, Printer, ChevronRight, ChevronLeft, Receipt, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 type PaymentMethod = "dinheiro" | "debito" | "credito" | "pix" | "fiado";
