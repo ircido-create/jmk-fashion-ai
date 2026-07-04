@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
@@ -134,13 +135,14 @@ export default function Customers() {
   };
 
 
-  const searchDigits = digitsOnly(search);
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const searchDigits = digitsOnly(debouncedSearch);
   const filtered = list.filter((c) => {
-    const q = search.toLowerCase();
+    const q = debouncedSearch.toLowerCase();
     return (
       c.name.toLowerCase().includes(q) ||
       (c.nickname ?? "").toLowerCase().includes(q) ||
-      (c.phone ?? "").includes(search) ||
+      (c.phone ?? "").includes(debouncedSearch) ||
       (c.email ?? "").toLowerCase().includes(q) ||
       (searchDigits.length >= 3 && (c.tax_id ?? "").includes(searchDigits))
     );

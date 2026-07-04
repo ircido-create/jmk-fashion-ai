@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { GlassCard } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -527,14 +528,15 @@ export default function Conversations() {
     setActive({ ...active, customer_id: customerId!, customer: { name: regName } });
   };
 
+  const debouncedSearch = useDebouncedValue(search, 300);
   const filtered = useMemo(() => conversations.filter((c) => {
-    const q = search.toLowerCase();
+    const q = debouncedSearch.toLowerCase();
     const name = isPlaceholderName(c.customer?.name) ? "" : (c.customer?.name ?? "");
     return (
       c.customer_phone.toLowerCase().includes(q) ||
       name.toLowerCase().includes(q)
     );
-  }), [conversations, search]);
+  }), [conversations, debouncedSearch]);
 
   const formatRecTime = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, "0");
