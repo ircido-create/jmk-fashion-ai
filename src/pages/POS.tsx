@@ -255,6 +255,17 @@ export default function POS() {
     });
   };
 
+  const setUnitPrice = (idx: number, raw: string) => {
+    const normalized = String(raw).replace(",", ".");
+    const parsed = Number(normalized);
+    setCart((c) => {
+      if (!Number.isFinite(parsed) || parsed < 0) return c;
+      const next = [...c];
+      next[idx] = { ...next[idx], unitPrice: Math.round(parsed * 100) / 100 };
+      return next;
+    });
+  };
+
   const removeItem = (idx: number) => setCart((c) => c.filter((_, i) => i !== idx));
 
   const resetAll = () => {
