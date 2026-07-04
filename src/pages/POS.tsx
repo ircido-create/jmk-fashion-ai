@@ -222,12 +222,34 @@ export default function POS() {
       const next = [...c];
       const item = { ...next[idx] };
       const q = item.quantity + delta;
-      if (q < 1) return c;
+      if (q < 1) {
+        if (typeof window !== "undefined" && window.confirm(`Remover "${item.productName}" do carrinho?`)) {
+          return c.filter((_, i) => i !== idx);
+        }
+        return c;
+      }
       if (q > item.maxQty) {
-        toast.error(`Estoque máximo: ${item.maxQty}`);
+        toast.error(`Apenas ${item.maxQty} unidade(s) em estoque`);
         return c;
       }
       item.quantity = q;
+      next[idx] = item;
+      return next;
+    });
+  };
+
+  const setQtyExact = (idx: number, raw: string) => {
+    const parsed = Math.floor(Number(raw));
+    setCart((c) => {
+      const next = [...c];
+      const item = { ...next[idx] };
+      if (!Number.isFinite(parsed) || parsed < 1) return c;
+      if (parsed > item.maxQty) {
+        toast.error(`Apenas ${item.maxQty} unidade(s) em estoque`);
+        item.quantity = item.maxQty;
+      } else {
+        item.quantity = parsed;
+      }
       next[idx] = item;
       return next;
     });
@@ -797,16 +819,29 @@ export default function POS() {
                         variant="outline"
                         className="h-6 w-6"
                         onClick={() => updateQty(i, -1)}
+                        disabled={it.quantity <= 1}
                         aria-label="Diminuir quantidade"
                       >
                         <Minus className="h-3 w-3" />
                       </Button>
-                      <span className="text-sm w-6 text-center">{it.quantity}</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={it.maxQty}
+                        value={it.quantity}
+                        onChange={(e) => setQtyExact(i, e.target.value)}
+                        onBlur={(e) => {
+                          if (!e.target.value || Number(e.target.value) < 1) setQtyExact(i, "1");
+                        }}
+                        className="h-6 w-12 px-1 text-center text-sm glass-input"
+                        aria-label="Quantidade"
+                      />
                       <Button
                         size="icon"
                         variant="outline"
                         className="h-6 w-6"
                         onClick={() => updateQty(i, 1)}
+                        disabled={it.quantity >= it.maxQty}
                         aria-label="Aumentar quantidade"
                       >
                         <Plus className="h-3 w-3" />
