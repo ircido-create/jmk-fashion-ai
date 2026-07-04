@@ -357,8 +357,34 @@ export default function Sales() {
                     {s.sale_items.map((it) => `${it.quantity}× ${it.product_name}`).join(" • ")}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex flex-col items-end gap-1">
                   <div className="text-lg font-semibold text-primary">{fmtBRL(Number(s.total))}</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const ok = printReceipt({
+                        number: s.id.slice(0, 8).toUpperCase(),
+                        date: new Date(s.sale_date),
+                        customer: s.customers
+                          ? { name: s.customers.name, phone: s.customers.phone }
+                          : null,
+                        items: s.sale_items.map((it) => ({
+                          productName: it.product_name,
+                          variantLabel: it.variant_label,
+                          quantity: it.quantity,
+                          unitPrice: Number(it.unit_price),
+                        })),
+                        subtotal: Number(s.total),
+                        payment: (s.payment_method ?? "dinheiro") as any,
+                        installments: s.installments ?? 1,
+                        reprint: true,
+                      });
+                      if (!ok) toast.error("Bloqueador de pop-up impediu a impressão");
+                    }}
+                  >
+                    <Printer className="h-3.5 w-3.5 mr-1" /> Reimprimir cupom
+                  </Button>
                 </div>
               </div>
             </div>
