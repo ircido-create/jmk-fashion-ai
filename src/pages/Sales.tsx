@@ -183,11 +183,10 @@ export default function Sales() {
       const { error: itErr } = await supabase.from("sale_items").insert(items);
       if (itErr) throw itErr;
 
-      // 4) Decrementa estoque (variações)
+      // 4) Decrementa estoque (atômico via RPC, a partir do valor atual do banco)
       for (const it of cart) {
         if (it.variantId) {
-          const newQty = Math.max(0, it.maxQty - it.quantity);
-          await supabase.from("product_variants").update({ quantity: newQty }).eq("id", it.variantId);
+          await supabase.rpc("decrement_variant_stock", { variant_id: it.variantId, qty: it.quantity });
         }
       }
 
