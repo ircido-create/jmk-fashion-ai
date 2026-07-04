@@ -22,7 +22,9 @@ interface Customer { id: string; name: string; phone: string | null; }
 interface SaleRow {
   id: string; sale_date: string; total: number; notes: string | null;
   customer_id: string | null;
-  customers: { name: string } | null;
+  payment_method: string | null;
+  installments: number | null;
+  customers: { name: string; phone: string | null } | null;
   sale_items: { id: string; product_name: string; variant_label: string | null; quantity: number; unit_price: number }[];
 }
 
