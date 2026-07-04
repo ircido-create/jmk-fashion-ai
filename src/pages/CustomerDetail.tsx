@@ -77,6 +77,11 @@ export default function CustomerDetail() {
     [pendingReceivables, selected]
   );
 
+  const totalDebt = useMemo(
+    () => pendingReceivables.reduce((s, r) => s + Number(r.amount), 0),
+    [pendingReceivables]
+  );
+
   const toggle = (id: string) => {
     setSelected(prev => {
       const n = new Set(prev);
