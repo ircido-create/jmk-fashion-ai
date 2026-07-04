@@ -255,6 +255,17 @@ export default function POS() {
     });
   };
 
+  const setUnitPrice = (idx: number, raw: string) => {
+    const normalized = String(raw).replace(",", ".");
+    const parsed = Number(normalized);
+    setCart((c) => {
+      if (!Number.isFinite(parsed) || parsed < 0) return c;
+      const next = [...c];
+      next[idx] = { ...next[idx], unitPrice: Math.round(parsed * 100) / 100 };
+      return next;
+    });
+  };
+
   const removeItem = (idx: number) => setCart((c) => c.filter((_, i) => i !== idx));
 
   const resetAll = () => {
@@ -847,7 +858,22 @@ export default function POS() {
                         <Plus className="h-3 w-3" />
                       </Button>
                     </div>
-                    <div className="text-sm font-semibold">{fmtBRL(it.unitPrice * it.quantity)}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground">R$</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={it.unitPrice}
+                        onChange={(e) => setUnitPrice(i, e.target.value)}
+                        onBlur={(e) => {
+                          if (!e.target.value || Number(e.target.value) < 0) setUnitPrice(i, "0");
+                        }}
+                        className="h-6 w-20 px-1 text-right text-sm glass-input"
+                        aria-label="Preço unitário"
+                      />
+                      <span className="text-sm font-semibold ml-1">= {fmtBRL(it.unitPrice * it.quantity)}</span>
+                    </div>
                   </div>
                 </div>
               ))}
