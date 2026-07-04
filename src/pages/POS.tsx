@@ -505,7 +505,22 @@ export default function POS() {
 
           {step === 2 && (
             <GlassCard className="p-4">
-              <Label className="mb-2 block">Selecionar cliente</Label>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="block">Selecionar cliente</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    setNewCustomerName(customerSearch);
+                    setNewCustomerPhone("");
+                    setNewCustomerOpen(true);
+                  }}
+                >
+                  <UserPlus className="h-4 w-4 mr-1" /> Novo cliente
+                </Button>
+              </div>
               <div className="flex items-center gap-2 mb-3">
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
@@ -536,8 +551,20 @@ export default function POS() {
                   </button>
                 ))}
                 {filteredCustomers.length === 0 && (
-                  <div className="text-center text-sm text-muted-foreground py-6">
-                    Nenhum cliente encontrado
+                  <div className="text-center py-6 space-y-3">
+                    <div className="text-sm text-muted-foreground">Nenhum cliente encontrado</div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={() => {
+                        setNewCustomerName(customerSearch);
+                        setNewCustomerPhone("");
+                        setNewCustomerOpen(true);
+                      }}
+                    >
+                      <UserPlus className="h-4 w-4 mr-1" /> Adicionar novo cliente
+                    </Button>
                   </div>
                 )}
               </div>
