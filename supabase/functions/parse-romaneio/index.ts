@@ -164,7 +164,14 @@ Deno.serve(async (req) => {
     let lastErr = "";
     for (const a of attempts) {
       attemptsUsed++;
-      const aiResp = await callAI(a.model, a.reinforce);
+      let aiResp: Response;
+      try {
+        aiResp = await callAI(a.model, a.reinforce);
+      } catch (e) {
+        lastErr = "fetch: " + ((e as Error).name === "TimeoutError" ? "timeout 55s" : (e as Error).message);
+        console.error("AI gateway fetch failed", lastErr);
+        continue;
+      }
       if (!aiResp.ok) {
         const errText = await aiResp.text();
         lastErr = errText.slice(0, 200);
