@@ -146,14 +146,17 @@ Deno.serve(async (req) => {
           tools: [tool],
           tool_choice: { type: "function", function: { name: "extract_romaneio" } },
         }),
+        // Evita que uma única chamada consuma o timeout de 150s da edge function
+        signal: AbortSignal.timeout(55_000),
       });
       return resp;
     };
 
+    // Ordem: flash primeiro (rápido) e pro como fallback com prompt reforçado.
+    // Mantemos no máximo 2 tentativas para caber no limite de 150s.
     const attempts: Array<{ model: string; reinforce: boolean }> = [
-      { model: "google/gemini-2.5-pro", reinforce: false },
-      { model: "google/gemini-2.5-pro", reinforce: true },
       { model: "google/gemini-2.5-flash", reinforce: true },
+      { model: "google/gemini-2.5-pro", reinforce: true },
     ];
 
     let extracted: any = null;
