@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     const isGroup = Boolean(payload.isGroup) || fromGroup.includes("@g.us") || remoteJid.includes("@g.us");
     const senderNumber = onlyDigits(payload.fromNumber) || onlyDigits(participant) || onlyDigits(remoteJidAlt);
     const conversationKey = isGroup
-      ? (fromGroup || (remoteJid.includes("@g.us") ? remoteJid : "") || `grupo-${senderNumber || payload.id || Date.now()}`)
+      ? ((remoteJid.includes("@g.us") ? remoteJid : "") || fromGroup || `grupo-${senderNumber || payload.id || Date.now()}`)
       : senderNumber;
     if (!conversationKey) return new Response("ok", { headers: corsHeaders });
 
