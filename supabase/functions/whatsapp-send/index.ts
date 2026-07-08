@@ -61,8 +61,14 @@ Deno.serve(async (req) => {
 
     if (!res.ok) {
       console.error("BubbleWhats send error:", res.status, text);
-      return new Response(JSON.stringify({ error: result }), {
-        status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const upstreamDown = res.status >= 500 || res.status === 502 || res.status === 503 || res.status === 504;
+      return new Response(JSON.stringify({
+        success: false,
+        error: upstreamDown ? "BubbleWhats indisponível no momento (upstream 502). Tente novamente em instantes." : result,
+        upstream_status: res.status,
+      }), {
+        status: 200, // evita 502 no cliente/tela em branco
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
