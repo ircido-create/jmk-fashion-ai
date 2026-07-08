@@ -76,8 +76,11 @@ Deno.serve(async (req) => {
       });
     }
     if (kind === "sticker") {
-      return new Response(JSON.stringify({ error: "BubbleWhats não suporta figurinha via API" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({
+        success: false,
+        error: "BubbleWhats não suporta enviar figurinhas via API. Envie como imagem.",
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
