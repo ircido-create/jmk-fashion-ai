@@ -881,6 +881,38 @@ export default function Conversations() {
                             : "bg-white/90 dark:bg-card/90 backdrop-blur rounded-bl-sm",
                         )}
                       >
+                        {m.quoted_thumbnail_path && (
+                          <a
+                            href={mediaUrls[m.quoted_thumbnail_path] ?? "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={cn(
+                              "flex gap-2 items-center rounded-lg p-1.5 border-l-4 mb-1",
+                              isOut
+                                ? "bg-primary-foreground/10 border-primary-foreground/60"
+                                : "bg-primary/5 border-primary/60",
+                            )}
+                          >
+                            {mediaUrls[m.quoted_thumbnail_path] ? (
+                              <img
+                                src={mediaUrls[m.quoted_thumbnail_path]}
+                                alt="status respondido"
+                                className="h-14 w-14 rounded object-cover flex-shrink-0"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 rounded bg-muted/50 animate-pulse flex-shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold opacity-80">
+                                {m.quoted_is_status ? "↩️ Respondeu ao status" : "↩️ Respondendo"}
+                              </div>
+                              <div className="text-[11px] opacity-70 truncate">
+                                {m.quoted_caption || "Foto"}
+                              </div>
+                            </div>
+                          </a>
+                        )}
                         {m.media_path && <MediaBubble msg={m} signedUrl={url} />}
                         {showText && (
                           <div className="whitespace-pre-wrap break-words px-1">{m.content}</div>
