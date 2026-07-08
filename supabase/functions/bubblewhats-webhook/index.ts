@@ -263,7 +263,38 @@ Deno.serve(async (req) => {
             const conv = await getOrCreateConversation(senderNumber, senderAlias || null);
             const firstName = (senderAlias || "").split(" ")[0]?.trim();
             const greet = firstName ? `${firstName}, a Paz de Deus!` : "A Paz de Deus!";
-            const msg = `${greet} É lindo, não é? 😍 Quer que eu reserve este item para você? 🙏`;
+
+            // Verifica estoque dos itens atualmente no status (não expirados)
+            let outOfStock = false;
+            try {
+              const { data: activePosts } = await supabase
+                .from("status_posts")
+                .select("product_id, variant_id")
+                .gt("expires_at", new Date().toISOString());
+              if (activePosts && activePosts.length > 0) {
+                const variantIds = activePosts.map((p: any) => p.variant_id).filter(Boolean);
+                const productIds = activePosts.map((p: any) => p.product_id).filter(Boolean);
+                let totalStock = 0;
+                if (variantIds.length > 0) {
+                  const { data: vars } = await supabase
+                    .from("product_variants").select("quantity").in("id", variantIds);
+                  totalStock += (vars ?? []).reduce((s: number, v: any) => s + (v.quantity ?? 0), 0);
+                }
+                const productsWithoutVariant = activePosts
+                  .filter((p: any) => !p.variant_id && p.product_id)
+                  .map((p: any) => p.product_id);
+                if (productsWithoutVariant.length > 0) {
+                  const { data: vars2 } = await supabase
+                    .from("product_variants").select("quantity").in("product_id", productsWithoutVariant);
+                  totalStock += (vars2 ?? []).reduce((s: number, v: any) => s + (v.quantity ?? 0), 0);
+                }
+                outOfStock = totalStock <= 0;
+              }
+            } catch (e) { console.error("stock check err:", e); }
+
+            const msg = outOfStock
+              ? `${greet} Que bom que gostou! 😍 Infelizmente esta peça está temporariamente esgotada, mas posso te avisar assim que voltar. Quer que eu te reserve na próxima leva? 🙏`
+              : `${greet} É lindo, não é? 😍 Quer que eu reserve este item para você? 🙏`;
             const send = await sendText(senderNumber, msg);
             if (send.ok && conv) {
               await supabase.from("whatsapp_messages").insert({
