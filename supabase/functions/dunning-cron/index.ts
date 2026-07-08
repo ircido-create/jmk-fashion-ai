@@ -1,4 +1,4 @@
-// Cobrança automática diária - envia mensagem cordial a inadimplentes
+// Cobrança automática diária via BubbleWhats
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -15,14 +15,14 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const { data: cfg } = await supabase.from("whatsapp_config").select("*").maybeSingle();
-    if (!cfg?.enabled || !cfg.access_token || !cfg.phone_number_id) {
-      return new Response(JSON.stringify({ skipped: "WhatsApp não configurado" }), {
+    const deviceId = Deno.env.get("BUBBLEWHATS_DEVICE_ID");
+    const bwToken = Deno.env.get("BUBBLEWHATS_TOKEN");
+    if (!deviceId || !bwToken) {
+      return new Response(JSON.stringify({ skipped: "BubbleWhats não configurado" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Marca como vencido e busca inadimplentes
     const today = new Date().toISOString().slice(0, 10);
     await supabase
       .from("accounts_receivable")
@@ -37,11 +37,11 @@ Deno.serve(async (req) => {
       .not("customer_id", "is", null);
 
     let sent = 0;
+    const url = `https://${deviceId}.bubblewhats.com/send-message`;
     for (const r of overdue ?? []) {
       const cust: any = (r as any).customers;
       if (!cust?.phone) continue;
 
-      // Evita duplicar no mesmo dia
       const { count } = await supabase
         .from("dunning_logs")
         .select("*", { count: "exact", head: true })
@@ -55,19 +55,11 @@ Deno.serve(async (req) => {
       })();
       const msg = `Olá, ${cust.name} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${dueBR}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸`;
 
-      const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
+      const jid = String(cust.phone).replace(/\D/g, "");
       const res = await fetch(url, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${cfg.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: cust.phone,
-          type: "text",
-          text: { body: msg },
-        }),
+        headers: { Authorization: bwToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ jid, message: msg }),
       });
 
       if (res.ok) {
@@ -78,7 +70,7 @@ Deno.serve(async (req) => {
         });
         sent++;
       } else {
-        console.error("Falha envio:", cust.phone, await res.text());
+        console.error("Falha envio BubbleWhats:", jid, res.status, await res.text());
       }
     }
 
