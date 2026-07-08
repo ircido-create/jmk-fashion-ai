@@ -75,8 +75,10 @@ const isPlaceholderName = (name?: string | null) => {
   return false;
 };
 const displayName = (c: { display_name?: string | null; customer?: { name: string } | null; customer_phone: string }) => {
+  // Prioriza o nome cadastrado no sistema (quando não for placeholder/telefone)
+  if (c.customer?.name && !isPlaceholderName(c.customer.name)) return c.customer.name;
   if (c.display_name && c.display_name.trim()) return c.display_name;
-  return isPlaceholderName(c.customer?.name) ? c.customer_phone : (c.customer!.name);
+  return c.customer_phone;
 };
 
 function MediaBubble({
