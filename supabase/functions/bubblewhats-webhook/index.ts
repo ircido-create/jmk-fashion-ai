@@ -213,6 +213,23 @@ Deno.serve(async (req) => {
 
     // ---- IA MÔNICA ----
     const ai = await loadAISettings();
+
+    // Pausa global da IA
+    if (ai?.ai_paused) {
+      console.log("Monica pausada globalmente — pulando resposta");
+      return new Response(JSON.stringify({ ok: true, skippedAI: "paused" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Whitelist de contatos que a Mônica nunca deve responder
+    const { data: blocked } = await supabase
+      .from("ai_blocked_contacts")
+      .select("phone")
+      .eq("phone", senderNumber)
+      .maybeSingle();
+    if (blocked) {
+      console.log("Contato na whitelist — Mônica não responde:", senderNumber);
+      return new Response(JSON.stringify({ ok: true, skippedAI: "blocked" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const { data: history } = await supabase
       .from("whatsapp_messages")
       .select("direction, content, media_type, media_filename, created_at")

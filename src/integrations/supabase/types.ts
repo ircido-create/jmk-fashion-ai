@@ -97,8 +97,30 @@ export type Database = {
           },
         ]
       }
+      ai_blocked_contacts: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          phone: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          phone: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          phone?: string
+        }
+        Relationships: []
+      }
       ai_settings: {
         Row: {
+          ai_paused: boolean
           id: string
           persona: string
           pix_key: string | null
@@ -108,6 +130,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_paused?: boolean
           id?: string
           persona?: string
           pix_key?: string | null
@@ -117,6 +140,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_paused?: boolean
           id?: string
           persona?: string
           pix_key?: string | null

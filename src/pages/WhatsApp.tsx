@@ -26,6 +26,13 @@ interface AISettings {
   id?: string;
   persona: string;
   system_prompt: string;
+  ai_paused?: boolean;
+}
+
+interface BlockedContact {
+  id: string;
+  phone: string;
+  note: string | null;
 }
 
 export default function WhatsApp() {
@@ -42,19 +49,59 @@ export default function WhatsApp() {
   const [testMsg, setTestMsg] = useState("Olá! Mensagem de teste da JMK 💕");
   const [copied, setCopied] = useState(false);
   const [configuringGroups, setConfiguringGroups] = useState(false);
+  const [blocked, setBlocked] = useState<BlockedContact[]>([]);
+  const [newBlockedPhone, setNewBlockedPhone] = useState("");
+  const [newBlockedNote, setNewBlockedNote] = useState("");
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/bubblewhats-webhook`;
 
   const load = async () => {
     setLoading(true);
-    const [{ data: c }, { data: a }] = await Promise.all([
+    const [{ data: c }, { data: a }, { data: bl }] = await Promise.all([
       supabase.from("whatsapp_config").select("*").maybeSingle(),
       supabase.from("ai_settings").select("*").maybeSingle(),
+      supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
     ]);
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
+    setBlocked((bl ?? []) as BlockedContact[]);
     setLoading(false);
+  };
+
+  const toggleAIPaused = async (value: boolean) => {
+    setAI({ ...ai, ai_paused: value });
+    if (!ai.id) return;
+    const { error } = await supabase.from("ai_settings").update({ ai_paused: value }).eq("id", ai.id);
+    if (error) {
+      toast({ title: "Erro ao alterar pausa", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: value ? "Mônica pausada — não responderá ninguém" : "Mônica reativada 💕" });
+    }
+  };
+
+  const addBlocked = async () => {
+    const phone = newBlockedPhone.replace(/\D/g, "");
+    if (!phone) return;
+    const { error } = await supabase.from("ai_blocked_contacts").insert({
+      phone, note: newBlockedNote.trim() || null,
+    });
+    if (error) {
+      toast({ title: "Erro ao adicionar", description: error.message, variant: "destructive" });
+      return;
+    }
+    setNewBlockedPhone(""); setNewBlockedNote("");
+    toast({ title: "Contato adicionado à lista de silêncio" });
+    load();
+  };
+
+  const removeBlocked = async (id: string) => {
+    const { error } = await supabase.from("ai_blocked_contacts").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Erro ao remover", description: error.message, variant: "destructive" });
+      return;
+    }
+    load();
   };
 
   useEffect(() => { load(); }, []);
@@ -260,6 +307,17 @@ export default function WhatsApp() {
           <Sparkles className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-display font-bold">Personalidade da IA</h2>
         </div>
+
+        <div className="flex items-center justify-between gap-4 p-3 rounded-lg border border-border/50 bg-muted/30 mb-4">
+          <div>
+            <div className="text-sm font-medium">Pausar Mônica (não responde ninguém)</div>
+            <p className="text-xs text-muted-foreground">
+              Quando ativo, a IA para de responder mensagens recebidas. As conversas continuam sendo salvas.
+            </p>
+          </div>
+          <Switch checked={!!ai.ai_paused} onCheckedChange={toggleAIPaused} />
+        </div>
+
         <div>
           <Label>Prompt do sistema</Label>
           <Textarea
@@ -273,6 +331,46 @@ export default function WhatsApp() {
             às dívidas do cliente quando reconhece o telefone.
           </p>
         </div>
+      </GlassCard>
+
+      <GlassCard>
+        <div className="flex items-center gap-3 mb-4">
+          <AlertTriangle className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-display font-bold">Contatos silenciados</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          A Mônica <strong>nunca</strong> vai responder mensagens destes números — mas elas continuam aparecendo nas conversas para você responder manualmente.
+        </p>
+
+        <div className="grid md:grid-cols-[1fr_1fr_auto] gap-2 mb-4">
+          <Input
+            placeholder="Telefone (ex: 5511999999999)"
+            value={newBlockedPhone}
+            onChange={(e) => setNewBlockedPhone(e.target.value)}
+          />
+          <Input
+            placeholder="Observação (opcional)"
+            value={newBlockedNote}
+            onChange={(e) => setNewBlockedNote(e.target.value)}
+          />
+          <Button onClick={addBlocked} variant="outline">Adicionar</Button>
+        </div>
+
+        {blocked.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhum contato silenciado.</p>
+        ) : (
+          <ul className="divide-y divide-border/50 rounded-lg border border-border/50">
+            {blocked.map((b) => (
+              <li key={b.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                <div>
+                  <div className="font-mono">{b.phone}</div>
+                  {b.note && <div className="text-xs text-muted-foreground">{b.note}</div>}
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => removeBlocked(b.id)}>Remover</Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </GlassCard>
 
       <div className="flex gap-3">
