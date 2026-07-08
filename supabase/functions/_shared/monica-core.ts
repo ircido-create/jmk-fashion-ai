@@ -647,7 +647,7 @@ function missingFields(c: any | null): string[] {
 }
 
 // Tenta auto-cadastrar a partir do texto + último campo solicitado (do histórico)
-async function autoUpdateCustomer(phone: string, customer: any | null, userMsg: string, lastAskedField: string | null) {
+async function autoUpdateCustomer(phone: string, customer: any | null, userMsg: string, lastAskedField: string | null, contactAlias?: string | null) {
   const updates: any = {};
   const text = userMsg.trim();
 
@@ -656,7 +656,7 @@ async function autoUpdateCustomer(phone: string, customer: any | null, userMsg: 
     updates.email = email;
   }
 
-  const nameMissing = !customer?.name || customer.name === customer.phone || /^\+?\d[\d\s().-]*$/.test((customer?.name ?? "").trim());
+  const nameMissing = !customer?.name || customer.name === customer.phone || /^\+?\d[\d\s().-]*$/.test((customer?.name ?? "").trim()) || customer?.name === "(sem nome)";
 
   // Só infere nome quando a IA acabou de pedir o nome — nunca da primeira mensagem espontânea
   if (lastAskedField === "nome" && nameMissing) {
@@ -667,6 +667,15 @@ async function autoUpdateCustomer(phone: string, customer: any | null, userMsg: 
     // Heurística geral — só endereço (nunca nome) sem ter sido pedido
     if ((!customer?.address || customer.address.trim() === "") && looksLikeAddress(text)) {
       updates.address = text;
+    }
+  }
+
+  // Fallback: se ainda não temos nome real, usa o nome salvo na agenda do celular (fromAlias/pushName)
+  // Ex.: "Irma Sílvia Piedade". Evita nomes iguais ao número, business name da loja, etc.
+  if (!updates.name && nameMissing && contactAlias) {
+    const alias = contactAlias.trim();
+    if (looksLikeName(alias) && alias.replace(/\D/g, "").length < 6) {
+      updates.name = alias;
     }
   }
 
@@ -881,7 +890,7 @@ function sanitizeReplyByGender(text: string, gender: "F" | "M" | "U"): string {
   return out;
 }
 
-export async function buildContext(phone: string, userMsg: string, history: any[]) {
+export async function buildContext(phone: string, userMsg: string, history: any[], contactAlias?: string | null) {
   const supplierMentioned = await detectSupplier(userMsg);
   const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
   const focusedResult = await detectFocusedProduct(history);
@@ -917,7 +926,7 @@ export async function buildContext(phone: string, userMsg: string, history: any[
   }
 
   const lastAsked = detectLastAskedField(history);
-  const customer = await autoUpdateCustomer(phone, rawCustomer, userMsg, lastAsked);
+  const customer = await autoUpdateCustomer(phone, rawCustomer, userMsg, lastAsked, contactAlias);
 
   const missing = missingFields(customer);
 
