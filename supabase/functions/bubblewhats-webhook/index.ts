@@ -230,6 +230,45 @@ Deno.serve(async (req) => {
     const caption: string = (payload.caption ?? "").toString();
     if (!text && caption) text = caption;
 
+    // ---- CITAÇÃO / RESPOSTA A STATUS ----
+    // Detecta se o cliente respondeu a um status do WhatsApp postado por NÓS.
+    // Estrutura: messageContext.message.extendedTextMessage.contextInfo.quotedMessage.imageMessage
+    // Status = participant do contextInfo aponta para o NOSSO número (toNumber).
+    let quotedThumbnailPath: string | null = null;
+    let quotedThumbnailBytes: Uint8Array | null = null;
+    let quotedIsStatus = false;
+    let quotedCaption: string | null = null;
+    try {
+      const ctxInfo = payload.messageContext?.message?.extendedTextMessage?.contextInfo
+        ?? payload.messageContext?.message?.imageMessage?.contextInfo
+        ?? payload.messageContext?.message?.conversation?.contextInfo;
+      const quoted = ctxInfo?.quotedMessage;
+      const quotedImg = quoted?.imageMessage;
+      const quotedParticipant = onlyDigits(ctxInfo?.participant);
+      const ownNumber = onlyDigits(payload.toNumber);
+      if (quotedImg) {
+        quotedIsStatus =
+          (ctxInfo?.remoteJid?.toString().includes("status@broadcast") ?? false) ||
+          (!!quotedParticipant && !!ownNumber && quotedParticipant === ownNumber);
+        quotedCaption = (quotedImg.caption ?? "").toString() || null;
+        // jpegThumbnail é base64 (sem prefixo data:)
+        const thumbB64: string | undefined = quotedImg.jpegThumbnail;
+        if (thumbB64 && !isGroup) {
+          try {
+            const bin = atob(thumbB64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            quotedThumbnailBytes = bytes;
+            quotedThumbnailPath = await saveInboundMedia(
+              bytes,
+              "image/jpeg",
+              `quoted/${conversationKey.replace(/[^\w.-]/g, "_")}`,
+            );
+          } catch (e) { console.error("quoted thumb save err:", e); }
+        }
+      }
+    } catch (e) { console.error("quoted parse err:", e); }
+
     // ---- MÍDIA RECEBIDA ----
     const mediaUrl: string | undefined = payload.url || undefined;
     const mimetype: string | undefined = payload.mimetype || undefined;
@@ -283,6 +322,9 @@ Deno.serve(async (req) => {
       media_path: mediaPath,
       media_type: mediaKind,
       media_mime: mimetype ?? null,
+      quoted_thumbnail_path: quotedThumbnailPath,
+      quoted_is_status: quotedIsStatus,
+      quoted_caption: quotedCaption,
     }).select("id").single();
     await supabase.from("whatsapp_conversations")
       .update({ last_message_at: new Date().toISOString() })
@@ -333,13 +375,18 @@ Deno.serve(async (req) => {
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
     const ctx = await buildContext(conversationKey, text, history ?? []);
+    // Se a cliente respondeu ao nosso status, injeta a miniatura para a IA "ver" a peça.
+    const quotedImageForAI = quotedIsStatus && quotedThumbnailBytes
+      ? { bytes: quotedThumbnailBytes, mime: "image/jpeg" }
+      : null;
     const reply = await callAI(
       ai?.system_prompt ?? "",
       history ?? [],
       text,
       ctx,
       isFirstMessage,
-      { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name }
+      { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name },
+      quotedImageForAI,
     );
 
     // ---- FOTOS quando a cliente pediu ----

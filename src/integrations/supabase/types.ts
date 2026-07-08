@@ -1010,6 +1010,9 @@ export type Database = {
           media_mime: string | null
           media_path: string | null
           media_type: string | null
+          quoted_caption: string | null
+          quoted_is_status: boolean
+          quoted_thumbnail_path: string | null
         }
         Insert: {
           content: string
@@ -1021,6 +1024,9 @@ export type Database = {
           media_mime?: string | null
           media_path?: string | null
           media_type?: string | null
+          quoted_caption?: string | null
+          quoted_is_status?: boolean
+          quoted_thumbnail_path?: string | null
         }
         Update: {
           content?: string
@@ -1032,6 +1038,9 @@ export type Database = {
           media_mime?: string | null
           media_path?: string | null
           media_type?: string | null
+          quoted_caption?: string | null
+          quoted_is_status?: boolean
+          quoted_thumbnail_path?: string | null
         }
         Relationships: [
           {

@@ -898,7 +898,7 @@ function formatProducts(list: any[]) {
     .join("\n");
 }
 
-export async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean, pix: { key?: string | null; type?: string | null; recipient?: string | null }) {
+export async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean, pix: { key?: string | null; type?: string | null; recipient?: string | null }, quotedImage?: { bytes: Uint8Array; mime: string } | null) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY ausente");
 
@@ -1077,13 +1077,30 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
     isReligious,
   });
 
+  // Se a cliente respondeu ao nosso status, monta o conteúdo do usuário com a imagem para a IA "ver".
+  let userContent: any = userMsg;
+  if (quotedImage) {
+    let bin = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < quotedImage.bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, quotedImage.bytes.subarray(i, i + CHUNK) as any);
+    }
+    const b64 = btoa(bin);
+    const dataUrl = `data:${quotedImage.mime};base64,${b64}`;
+    const statusHint = `[A cliente respondeu ao NOSSO status do WhatsApp com esta foto (miniatura em anexo). Compare visualmente com as peças ativas do status listadas no contexto e diga se a peça está disponível no estoque (use tamanhos/quantidades das variações). Se você não conseguir identificar a peça na foto com certeza, pergunte gentilmente qual foi o modelo.]\n\nMensagem da cliente: ${userMsg}`;
+    userContent = [
+      { type: "text", text: statusHint },
+      { type: "image_url", image_url: { url: dataUrl } },
+    ];
+  }
+
   const messages = [
     { role: "system", content: SALES_FOCUS + "\n\n" + systemPrompt + "\n\n" + contextText },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
     })),
-    { role: "user", content: userMsg },
+    { role: "user", content: userContent },
   ];
 
   // Tenta o modelo principal; em caso de 429 faz retry com backoff; em caso de 402

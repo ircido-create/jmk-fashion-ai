@@ -50,6 +50,9 @@ interface Message {
   media_type: "image" | "audio" | "document" | "video" | "sticker" | null;
   media_mime: string | null;
   media_filename: string | null;
+  quoted_thumbnail_path?: string | null;
+  quoted_is_status?: boolean | null;
+  quoted_caption?: string | null;
 }
 
 const fileToBase64 = (file: Blob): Promise<string> =>
@@ -224,7 +227,10 @@ export default function Conversations() {
   };
 
   const fetchSignedUrls = async (msgs: Message[]) => {
-    const paths = msgs.map((m) => m.media_path).filter((p): p is string => !!p && !mediaUrls[p]);
+    const paths = [
+      ...msgs.map((m) => m.media_path),
+      ...msgs.map((m) => m.quoted_thumbnail_path ?? null),
+    ].filter((p): p is string => !!p && !mediaUrls[p]);
     if (paths.length === 0) return;
     const { data } = await supabase.functions.invoke("whatsapp-media-url", { body: { paths } });
     const urls = (data as any)?.urls ?? {};
@@ -875,6 +881,38 @@ export default function Conversations() {
                             : "bg-white/90 dark:bg-card/90 backdrop-blur rounded-bl-sm",
                         )}
                       >
+                        {m.quoted_thumbnail_path && (
+                          <a
+                            href={mediaUrls[m.quoted_thumbnail_path] ?? "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={cn(
+                              "flex gap-2 items-center rounded-lg p-1.5 border-l-4 mb-1",
+                              isOut
+                                ? "bg-primary-foreground/10 border-primary-foreground/60"
+                                : "bg-primary/5 border-primary/60",
+                            )}
+                          >
+                            {mediaUrls[m.quoted_thumbnail_path] ? (
+                              <img
+                                src={mediaUrls[m.quoted_thumbnail_path]}
+                                alt="status respondido"
+                                className="h-14 w-14 rounded object-cover flex-shrink-0"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 rounded bg-muted/50 animate-pulse flex-shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold opacity-80">
+                                {m.quoted_is_status ? "↩️ Respondeu ao status" : "↩️ Respondendo"}
+                              </div>
+                              <div className="text-[11px] opacity-70 truncate">
+                                {m.quoted_caption || "Foto"}
+                              </div>
+                            </div>
+                          </a>
+                        )}
                         {m.media_path && <MediaBubble msg={m} signedUrl={url} />}
                         {showText && (
                           <div className="whitespace-pre-wrap break-words px-1">{m.content}</div>
