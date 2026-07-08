@@ -196,17 +196,31 @@ Deno.serve(async (req) => {
     const senderLabel = senderAlias || senderNumber || "Participante";
     const inboundContentBase = text?.trim() || (mediaKind ? labelByKind[mediaKind] : "");
     const inboundContent = isGroup && inboundContentBase ? `${senderLabel}: ${inboundContentBase}` : inboundContentBase;
-    await supabase.from("whatsapp_messages").insert({
+    const { data: insertedMsg } = await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "inbound",
       content: inboundContent,
       media_path: mediaPath,
       media_type: mediaKind,
       media_mime: mimetype ?? null,
-    });
+    }).select("id").single();
     await supabase.from("whatsapp_conversations")
       .update({ last_message_at: new Date().toISOString() })
       .eq("id", conv.id);
+
+    // ---- ANÁLISE DE COMPROVANTE (imagem/PDF) via Lovable AI ----
+    if (mediaBytes && mediaPath && (mediaKind === "image" || mediaKind === "document") && !isGroup) {
+      // Roda em background para não atrasar a resposta
+      analyzeAndSavePaymentProof({
+        bytes: mediaBytes,
+        mime: mimetype!,
+        mediaPath,
+        conversationId: conv.id,
+        customerId: (conv as any).customer_id ?? null,
+        whatsappMessageId: insertedMsg?.id ?? null,
+        fileSize: mediaBytes.length,
+      }).catch((e) => console.error("analyzeAndSavePaymentProof err:", e));
+    }
 
     // Se não temos texto (foto sem caption) ou é grupo, não chama a IA
     if (!text || isGroup) return new Response(JSON.stringify({ ok: true, skippedAI: isGroup ? "group" : "no-text" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
