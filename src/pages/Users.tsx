@@ -177,6 +177,48 @@ export default function Users() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo usuário</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nome</Label>
+              <Input value={newFullName} onChange={(e) => setNewFullName(e.target.value)} placeholder="Nome completo" />
+            </div>
+            <div>
+              <Label>E-mail</Label>
+              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@exemplo.com" />
+            </div>
+            <div>
+              <Label>Senha (mín. 6)</Label>
+              <Input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant={newRole === "admin" ? "default" : "outline"}
+                onClick={() => setNewRole("admin")}
+                className={newRole === "admin" ? "bg-gradient-primary text-primary-foreground" : ""}>
+                <Shield className="h-3 w-3 mr-1" /> Admin
+              </Button>
+              <Button size="sm" variant={newRole === "vendedor" ? "default" : "outline"}
+                onClick={() => setNewRole("vendedor")}
+                className={newRole === "vendedor" ? "bg-gradient-primary text-primary-foreground" : ""}>
+                <User className="h-3 w-3 mr-1" /> Vendedor
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={createUser} disabled={creating}>
+              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Criar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
