@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
           if (!already) {
             const conv = await getOrCreateConversation(senderNumber, senderAlias || null);
             const firstName = (senderAlias || "").split(" ")[0]?.trim();
-            const greet = firstName ? `${firstName}, a Paz de Deus!` : "A Paz de Deus!";
+            const greet = firstName ? `Bacana, ${firstName}!` : "Bacana!";
 
             // Verifica estoque dos itens atualmente no status (não expirados)
             let outOfStock = false;
@@ -273,7 +273,6 @@ Deno.serve(async (req) => {
                 .gt("expires_at", new Date().toISOString());
               if (activePosts && activePosts.length > 0) {
                 const variantIds = activePosts.map((p: any) => p.variant_id).filter(Boolean);
-                const productIds = activePosts.map((p: any) => p.product_id).filter(Boolean);
                 let totalStock = 0;
                 if (variantIds.length > 0) {
                   const { data: vars } = await supabase
@@ -293,8 +292,8 @@ Deno.serve(async (req) => {
             } catch (e) { console.error("stock check err:", e); }
 
             const msg = outOfStock
-              ? `${greet} Que bom que gostou! 😍 Infelizmente esta peça está temporariamente esgotada, mas posso te avisar assim que voltar. Quer que eu te reserve na próxima leva? 🙏`
-              : `${greet} É lindo, não é? 😍 Quer que eu reserve este item para você? 🙏`;
+              ? `${greet}\n\nQue pena, essa peça já esgotou 😥 Quer que eu te avise assim que voltar ou te mostre algo parecido?`
+              : `${greet}\n\nMe fala o tamanho e a cor que você gostaria pra eu separar aqui.`;
             const send = await sendText(senderNumber, msg);
             if (send.ok && conv) {
               await supabase.from("whatsapp_messages").insert({
