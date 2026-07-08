@@ -909,7 +909,7 @@ function formatProducts(list: any[]) {
       const vars = (p.product_variants ?? [])
         .map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"} (estoque: ${v.quantity})`)
         .join("; ");
-      return `• ${p.name} (SKU ${p.sku ?? "-"}) — R$ ${p.price} — ${p.category ?? ""} — Fornecedor: ${p.supplier ?? "-"} — Variações: ${vars || "única"}`;
+      return `• ${p.name} (SKU ${p.sku ?? "-"}) — ${p.category ?? ""} — Fornecedor: ${p.supplier ?? "-"} — Variações: ${vars || "única"}`;
     })
     .join("\n");
 }
