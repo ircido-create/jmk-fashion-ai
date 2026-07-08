@@ -49,6 +49,9 @@ export default function WhatsApp() {
   const [testMsg, setTestMsg] = useState("Olá! Mensagem de teste da JMK 💕");
   const [copied, setCopied] = useState(false);
   const [configuringGroups, setConfiguringGroups] = useState(false);
+  const [blocked, setBlocked] = useState<BlockedContact[]>([]);
+  const [newBlockedPhone, setNewBlockedPhone] = useState("");
+  const [newBlockedNote, setNewBlockedNote] = useState("");
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/bubblewhats-webhook`;
