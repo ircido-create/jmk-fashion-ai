@@ -196,7 +196,7 @@ export default function Conversations() {
   const loadConversations = async () => {
     const { data } = await supabase
       .from("whatsapp_conversations")
-      .select("id, customer_phone, customer_id, last_message_at, customers(name)")
+      .select("id, customer_phone, customer_id, last_message_at, display_name, customers(name)")
       .order("last_message_at", { ascending: false });
 
     const list: Conversation[] = (data ?? []).map((c: any) => ({
@@ -204,6 +204,7 @@ export default function Conversations() {
       customer_phone: c.customer_phone,
       customer_id: c.customer_id,
       last_message_at: c.last_message_at,
+      display_name: c.display_name,
       customer: c.customers,
     }));
 
