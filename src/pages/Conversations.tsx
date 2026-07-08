@@ -50,6 +50,9 @@ interface Message {
   media_type: "image" | "audio" | "document" | "video" | "sticker" | null;
   media_mime: string | null;
   media_filename: string | null;
+  quoted_thumbnail_path?: string | null;
+  quoted_is_status?: boolean | null;
+  quoted_caption?: string | null;
 }
 
 const fileToBase64 = (file: Blob): Promise<string> =>
