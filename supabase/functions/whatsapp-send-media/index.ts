@@ -131,13 +131,16 @@ Deno.serve(async (req) => {
     if (kind === "image") {
       endpoint = `${base}/send-image`;
       payload.imageUrl = publicUrl;
+      payload.image = publicUrl; // fallback: alguns builds do BubbleWhats leem "image"
       if (caption) payload.caption = caption.slice(0, 1024);
     } else if (kind === "audio") {
       endpoint = `${base}/send-audio`;
       payload.audiourl = publicUrl;
+      payload.audio = publicUrl;
     } else {
       endpoint = `${base}/send-doc`;
       payload.docurl = publicUrl;
+      payload.document = publicUrl;
       payload.filename = safeName;
     }
 
@@ -148,10 +151,14 @@ Deno.serve(async (req) => {
     });
     const raw = await sendRes.text();
     let sendJson: any; try { sendJson = JSON.parse(raw); } catch { sendJson = { raw }; }
-    if (!sendRes.ok) {
+    if (!sendRes.ok || sendJson?.status === false) {
       console.error("BubbleWhats media send error:", sendRes.status, raw);
-      return new Response(JSON.stringify({ error: sendJson }), {
-        status: sendRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const upstreamDown = sendRes.status >= 500;
+      const msg = typeof sendJson?.response === "string"
+        ? sendJson.response
+        : (upstreamDown ? "BubbleWhats indisponível no momento. Tente novamente em instantes." : "Falha ao enviar mídia via BubbleWhats.");
+      return new Response(JSON.stringify({ success: false, error: msg, upstream_status: sendRes.status }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
