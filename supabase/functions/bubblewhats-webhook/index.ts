@@ -130,8 +130,8 @@ async function analyzeAndSavePaymentProof(opts: {
   bytes: Uint8Array; mime: string; mediaPath: string;
   conversationId: string; customerId: string | null;
   whatsappMessageId: string | null; fileSize: number;
-}) {
-  if (!LOVABLE_API_KEY) { console.warn("LOVABLE_API_KEY ausente — pulando análise"); return; }
+}): Promise<{ is_payment_proof: boolean; amount: number | null; summary: string | null } | null> {
+  if (!LOVABLE_API_KEY) { console.warn("LOVABLE_API_KEY ausente — pulando análise"); return null; }
   const b64 = toBase64(opts.bytes);
   const dataUrl = `data:${opts.mime};base64,${b64}`;
   const isPdf = opts.mime.toLowerCase().includes("pdf");
@@ -164,11 +164,11 @@ async function analyzeAndSavePaymentProof(opts: {
       response_format: { type: "json_object" },
     }),
   });
-  if (!res.ok) { console.error("AI proof analysis error:", res.status, (await res.text()).slice(0, 300)); return; }
+  if (!res.ok) { console.error("AI proof analysis error:", res.status, (await res.text()).slice(0, 300)); return null; }
   const j = await res.json();
   const raw = j?.choices?.[0]?.message?.content ?? "{}";
   let parsed: any = {};
-  try { parsed = JSON.parse(raw); } catch { console.warn("AI proof raw not JSON:", raw.slice(0, 200)); return; }
+  try { parsed = JSON.parse(raw); } catch { console.warn("AI proof raw not JSON:", raw.slice(0, 200)); return null; }
 
   // Salva na tabela payment_proofs (usa o mesmo arquivo do bucket whatsapp-media)
   const { error } = await supabase.from("payment_proofs").insert({
@@ -190,6 +190,12 @@ async function analyzeAndSavePaymentProof(opts: {
   });
   if (error) console.error("payment_proofs insert err:", error);
   else console.log("Comprovante salvo:", parsed.is_payment_proof, parsed.amount);
+
+  return {
+    is_payment_proof: !!parsed.is_payment_proof,
+    amount: parsed.amount ?? null,
+    summary: parsed.summary ?? null,
+  };
 }
 
 
@@ -331,17 +337,37 @@ Deno.serve(async (req) => {
       .eq("id", conv.id);
 
     // ---- ANÁLISE DE COMPROVANTE (imagem/PDF) via Lovable AI ----
+    // Executa SÍNCRONO para poder curto-circuitar a resposta caso seja comprovante.
+    let proofResult: { is_payment_proof: boolean; amount: number | null; summary: string | null } | null = null;
     if (mediaBytes && mediaPath && (mediaKind === "image" || mediaKind === "document") && !isGroup) {
-      // Roda em background para não atrasar a resposta
-      analyzeAndSavePaymentProof({
-        bytes: mediaBytes,
-        mime: mimetype!,
-        mediaPath,
-        conversationId: conv.id,
-        customerId: (conv as any).customer_id ?? null,
-        whatsappMessageId: insertedMsg?.id ?? null,
-        fileSize: mediaBytes.length,
-      }).catch((e) => console.error("analyzeAndSavePaymentProof err:", e));
+      try {
+        proofResult = await analyzeAndSavePaymentProof({
+          bytes: mediaBytes,
+          mime: mimetype!,
+          mediaPath,
+          conversationId: conv.id,
+          customerId: (conv as any).customer_id ?? null,
+          whatsappMessageId: insertedMsg?.id ?? null,
+          fileSize: mediaBytes.length,
+        });
+      } catch (e) {
+        console.error("analyzeAndSavePaymentProof err:", e);
+      }
+    }
+
+    // Se for comprovante de pagamento, responde SEMPRE com "Deus abençoe 🙏" e não chama a IA.
+    if (proofResult?.is_payment_proof) {
+      const fixedReply = "Recebi seu comprovante, muito obrigada! Deus abençoe 🙏";
+      await sendText(conversationKey, fixedReply);
+      await supabase.from("whatsapp_messages").insert({
+        conversation_id: conv.id,
+        direction: "outbound",
+        content: fixedReply,
+      });
+      await supabase.from("whatsapp_conversations")
+        .update({ last_message_at: new Date().toISOString() })
+        .eq("id", conv.id);
+      return new Response(JSON.stringify({ ok: true, paymentProof: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Se não temos texto (foto sem caption) ou é grupo, não chama a IA
