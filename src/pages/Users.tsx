@@ -95,11 +95,12 @@ export default function Users() {
 
   return (
     <div>
-      <PageHeader title="Usuários" description="Gestão de acesso ao sistema">
+      <PageHeader title="Usuários" description="Gestão de acesso ao sistema" actions={
         <Button onClick={() => setCreateOpen(true)} className="bg-gradient-primary text-primary-foreground">
           <UserPlus className="h-4 w-4 mr-2" /> Novo usuário
         </Button>
-      </PageHeader>
+      } />
+
 
 
       <GlassCard>
