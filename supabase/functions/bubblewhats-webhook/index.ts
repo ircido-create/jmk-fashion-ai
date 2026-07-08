@@ -188,9 +188,10 @@ Deno.serve(async (req) => {
     if (!conv) return new Response("ok", { headers: corsHeaders });
 
     // Grava inbound
+    const isPdf = (mimetype ?? "").toLowerCase().includes("pdf");
     const labelByKind: Record<string, string> = {
       image: "[📷 Imagem]", audio: "[🎤 Áudio]",
-      document: "[📎 Documento]", video: "[🎥 Vídeo]",
+      document: isPdf ? "[📄 PDF]" : "[📎 Documento]", video: "[🎥 Vídeo]",
     };
     const senderLabel = senderAlias || senderNumber || "Participante";
     const inboundContentBase = text?.trim() || (mediaKind ? labelByKind[mediaKind] : "");
