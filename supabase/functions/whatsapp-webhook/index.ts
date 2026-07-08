@@ -1010,6 +1010,29 @@ function detectLastAskedField(history: any[]): string | null {
   return null;
 }
 
+function sanitizePriceMentions(reply: string): string {
+  if (!reply) return reply;
+  const hasPriceMention =
+    /R\$\s?\d/i.test(reply) ||
+    /\b\d{1,4}[.,]\d{2}\b/.test(reply) ||
+    /\b\d{1,4}\s?(reais|real)\b/i.test(reply) ||
+    /\b(custa|sai por|fica por|por apenas|de\s+R?\$?\s?\d|desconto\s+de\s+\d|\d+%\s+de\s+desconto)\b/i.test(reply);
+  if (!hasPriceMention) return reply;
+  const sentences = reply.split(/(?<=[.!?])\s+/);
+  const cleaned = sentences
+    .filter((s) => !(
+      /R\$\s?\d/i.test(s) ||
+      /\b\d{1,4}[.,]\d{2}\b/.test(s) ||
+      /\b\d{1,4}\s?(reais|real)\b/i.test(s) ||
+      /\b(custa|sai por|fica por|por apenas|preço|preco|valor|desconto|promoção|promocao)\b/i.test(s)
+    ))
+    .join(" ")
+    .trim();
+  const suffix = "Os valores a gente passa pessoalmente, tá? 😊";
+  if (!cleaned) return suffix;
+  return `${cleaned} ${suffix}`;
+}
+
 function sanitizeEmailRequest(reply: string, missing: string[]): string {
   const asksEmail = /\b(e-?mail|gmail|hotmail|outlook)\b/i.test(reply)
     && /(qual|me passa|passa|informa|informar|envia|mande|pode.*passar|preciso|falta|cadastro)/i.test(reply);
