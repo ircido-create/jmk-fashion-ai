@@ -110,8 +110,9 @@ export default function Dashboard() {
             <BarChart data={chart}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
               <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => brl(Number(v))} />
               <Tooltip
+                formatter={(v: any) => brl(Number(v))}
                 contentStyle={{
                   background: "hsl(var(--card))",
                   border: "1px solid hsl(var(--border))",
