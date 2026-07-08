@@ -168,8 +168,11 @@ Deno.serve(async (req) => {
       try {
         aiResp = await callAI(a.model, a.reinforce);
       } catch (e) {
-        lastErr = "fetch: " + ((e as Error).name === "TimeoutError" ? "timeout 55s" : (e as Error).message);
+        const isTimeout = (e as Error).name === "TimeoutError";
+        lastErr = "fetch: " + (isTimeout ? "timeout 120s" : (e as Error).message);
         console.error("AI gateway fetch failed", lastErr);
+        // Se estourou timeout, não tenta de novo (ficaria sem margem no limite de 150s)
+        if (isTimeout) break;
         continue;
       }
       if (!aiResp.ok) {
