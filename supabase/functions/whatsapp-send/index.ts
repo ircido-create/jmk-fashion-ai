@@ -46,7 +46,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const jid = String(to).replace(/\D/g, "");
+    // Preserva JID completo para grupos (contém "@g.us"); só limpa dígitos para números pessoais
+    const rawTo = String(to).trim();
+    const isGroup = rawTo.includes("@g.us");
+    const jid = isGroup ? rawTo : rawTo.replace(/\D/g, "");
+    const convKey = jid; // chave usada para localizar/gravar a conversa (mesma do webhook)
     const url = `https://${deviceId}.bubblewhats.com/send-message`;
     const res = await fetch(url, {
       method: "POST",
