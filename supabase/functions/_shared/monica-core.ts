@@ -1171,7 +1171,7 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   }
 
   const messages = [
-    { role: "system", content: SALES_FOCUS + "\n\n" + systemPrompt + "\n\n" + contextText + "\n\nREGRA FINAL: está proibido pedir e-mail/email. Se faltar cadastro, peça somente nome ou endereço." },
+    { role: "system", content: SALES_FOCUS + "\n\n" + systemPrompt + "\n\n" + contextText + "\n\nREGRA FINAL: está PROIBIDO pedir nome, nome completo, endereço, rua, CEP, bairro ou e-mail. Esses dados são coletados pessoalmente." },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
