@@ -744,20 +744,21 @@ function sanitizePriceMentions(reply: string): string {
   return `${cleaned} ${suffix}`;
 }
 
-function sanitizeEmailRequest(reply: string, missing: string[]): string {
-  const asksEmail = /\b(e-?mail|gmail|hotmail|outlook)\b/i.test(reply)
-    && /(qual|me passa|passa|informa|informar|envia|mande|pode.*passar|preciso|falta|cadastro)/i.test(reply);
-  if (!asksEmail) return reply;
-
-  if (missing.includes("nome")) return "Me passa seu nome, por favor? 💕";
-  if (missing.includes("endereço")) return "Me passa seu endereço, por favor? 💕";
+function sanitizeEmailRequest(reply: string, _missing: string[]): string {
+  // Remove qualquer solicitação de e-mail, nome ou endereço da resposta.
+  // Esses dados são coletados pessoalmente pela equipe — a Mônica NÃO pede na conversa.
+  const asksPersonalData =
+    /\b(e-?mail|gmail|hotmail|outlook)\b/i.test(reply) ||
+    /\b(nome completo|seu nome|teu nome|qual.*nome)\b/i.test(reply) ||
+    /\b(endere[çc]o|rua|cep|bairro)\b/i.test(reply);
+  if (!asksPersonalData) return reply;
 
   const cleaned = reply
     .split(/(?<=[.!?])\s+|\n+/)
-    .filter((sentence) => !/\b(e-?mail|gmail|hotmail|outlook)\b/i.test(sentence))
+    .filter((sentence) => !/\b(e-?mail|gmail|hotmail|outlook|nome completo|seu nome|teu nome|qual.*nome|endere[çc]o|rua|cep|bairro)\b/i.test(sentence))
     .join(" ")
     .trim();
-  return cleaned || "Perfeito 💕 Vou seguir seu atendimento por aqui pelo WhatsApp.";
+  return cleaned || "Perfeito 💕 Me diz qual peça você quer ver que já te mostro 😊";
 }
 
 // ============================================================
