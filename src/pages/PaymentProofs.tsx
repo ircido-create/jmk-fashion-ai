@@ -73,7 +73,6 @@ export default function PaymentProofs() {
       <PageHeader
         title="Comprovantes"
         description="Comprovantes de pagamento recebidos das clientes — analisados automaticamente pela Mônica"
-        icon={FileText}
       />
 
       <GlassCard>
