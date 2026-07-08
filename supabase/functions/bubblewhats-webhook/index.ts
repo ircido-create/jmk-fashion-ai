@@ -30,6 +30,14 @@ function classifyKind(mime?: string): "image" | "audio" | "video" | "document" |
   return "document";
 }
 
+function onlyDigits(value: unknown): string {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function cleanJid(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 async function bwPost(path: string, body: unknown): Promise<{ ok: boolean; status: number; text: string }> {
   const res = await fetch(`${BW_BASE}${path}`, {
     method: "POST",
@@ -100,9 +108,17 @@ Deno.serve(async (req) => {
     const payload = await req.json();
     console.log("bubblewhats-webhook payload:", JSON.stringify(payload).slice(0, 400));
 
-    const fromNumber: string = String(payload.fromNumber ?? "").replace(/\D/g, "");
-    const isGroup = Boolean(payload.isGroup);
-    if (!fromNumber) return new Response("ok", { headers: corsHeaders });
+    const messageKey = payload.messageContext?.key ?? {};
+    const remoteJid = cleanJid(messageKey.remoteJid);
+    const remoteJidAlt = cleanJid(messageKey.remoteJidAlt);
+    const participant = cleanJid(messageKey.participant);
+    const fromGroup = cleanJid(payload.fromGroup);
+    const isGroup = Boolean(payload.isGroup) || fromGroup.includes("@g.us") || remoteJid.includes("@g.us");
+    const senderNumber = onlyDigits(payload.fromNumber) || onlyDigits(participant) || onlyDigits(remoteJidAlt);
+    const conversationKey = isGroup
+      ? (fromGroup || (remoteJid.includes("@g.us") ? remoteJid : "") || `grupo-${senderNumber || payload.id || Date.now()}`)
+      : senderNumber;
+    if (!conversationKey) return new Response("ok", { headers: corsHeaders });
 
     let text: string = (payload.body ?? "").toString();
     const caption: string = (payload.caption ?? "").toString();
@@ -121,7 +137,7 @@ Deno.serve(async (req) => {
         if (res.ok) {
           mediaBytes = new Uint8Array(await res.arrayBuffer());
           mediaKind = classifyKind(mimetype);
-          mediaPath = await saveInboundMedia(mediaBytes, mimetype, fromNumber);
+          mediaPath = await saveInboundMedia(mediaBytes, mimetype, conversationKey.replace(/[^\w.-]/g, "_"));
 
           // Áudio: transcreve para alimentar a IA
           if (mediaKind === "audio" && !text) {
@@ -142,7 +158,7 @@ Deno.serve(async (req) => {
     }
 
     // Cria/pega conversa
-    const conv = await getOrCreateConversation(fromNumber);
+    const conv = await getOrCreateConversation(conversationKey);
     if (!conv) return new Response("ok", { headers: corsHeaders });
 
     // Grava inbound
@@ -150,7 +166,9 @@ Deno.serve(async (req) => {
       image: "[📷 Imagem]", audio: "[🎤 Áudio]",
       document: "[📎 Documento]", video: "[🎥 Vídeo]",
     };
-    const inboundContent = text?.trim() || (mediaKind ? labelByKind[mediaKind] : "");
+    const senderLabel = cleanJid(payload.fromAlias) || senderNumber || "Participante";
+    const inboundContentBase = text?.trim() || (mediaKind ? labelByKind[mediaKind] : "");
+    const inboundContent = isGroup && inboundContentBase ? `${senderLabel}: ${inboundContentBase}` : inboundContentBase;
     await supabase.from("whatsapp_messages").insert({
       conversation_id: conv.id,
       direction: "inbound",
@@ -176,7 +194,7 @@ Deno.serve(async (req) => {
       .limit(20);
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
-    const ctx = await buildContext(fromNumber, text, history ?? []);
+    const ctx = await buildContext(conversationKey, text, history ?? []);
     const reply = await callAI(
       ai?.system_prompt ?? "",
       history ?? [],
@@ -192,7 +210,7 @@ Deno.serve(async (req) => {
       const photos = await findPhotoMatches(text, ctx.supplierMentioned, history ?? []);
       let sent = 0;
       for (const ph of photos) {
-        const r = await sendImage(fromNumber, ph.url, ph.caption);
+        const r = await sendImage(conversationKey, ph.url, ph.caption);
         if (r.ok) {
           sent++;
           // baixa a imagem e loga
@@ -201,7 +219,7 @@ Deno.serve(async (req) => {
             if (ir.ok) {
               const bs = new Uint8Array(await ir.arrayBuffer());
               const mm = (ir.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
-              await logOutboundMedia(conv.id, fromNumber, bs, mm, "image", ph.caption);
+              await logOutboundMedia(conv.id, conversationKey, bs, mm, "image", ph.caption);
             }
           } catch { /* noop */ }
         }
@@ -224,13 +242,13 @@ Deno.serve(async (req) => {
     if (clientSentAudio || clientAskedForAudio) {
       const voice = await synthesizeVoice(finalReply);
       if (voice) {
-        audioSent = await sendVoiceNote(fromNumber, voice.bytes, voice.mime);
-        if (audioSent) await logOutboundMedia(conv.id, fromNumber, voice.bytes, voice.mime, "audio", finalReply);
+        audioSent = await sendVoiceNote(conversationKey, voice.bytes, voice.mime);
+        if (audioSent) await logOutboundMedia(conv.id, conversationKey, voice.bytes, voice.mime, "audio", finalReply);
       }
     }
 
     if (!audioSent) {
-      await sendText(fromNumber, finalReply);
+      await sendText(conversationKey, finalReply);
       await supabase.from("whatsapp_messages").insert({
         conversation_id: conv.id,
         direction: "outbound",
