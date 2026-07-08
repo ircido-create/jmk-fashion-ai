@@ -102,10 +102,6 @@ Deno.serve(async (req) => {
 
     const fromNumber: string = String(payload.fromNumber ?? "").replace(/\D/g, "");
     const isGroup = Boolean(payload.isGroup);
-    if (isGroup) {
-      // Ignora grupos por padrão
-      return new Response(JSON.stringify({ ignored: "group" }), { headers: corsHeaders });
-    }
     if (!fromNumber) return new Response("ok", { headers: corsHeaders });
 
     let text: string = (payload.body ?? "").toString();
