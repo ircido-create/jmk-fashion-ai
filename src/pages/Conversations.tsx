@@ -74,8 +74,10 @@ const isPlaceholderName = (name?: string | null) => {
   if (/^\+?[0-9 ().-]+$/.test(n)) return true; // só dígitos/telefone
   return false;
 };
-const displayName = (c: { customer?: { name: string } | null; customer_phone: string }) =>
-  isPlaceholderName(c.customer?.name) ? c.customer_phone : (c.customer!.name);
+const displayName = (c: { display_name?: string | null; customer?: { name: string } | null; customer_phone: string }) => {
+  if (c.display_name && c.display_name.trim()) return c.display_name;
+  return isPlaceholderName(c.customer?.name) ? c.customer_phone : (c.customer!.name);
+};
 
 function MediaBubble({
   msg, signedUrl,
