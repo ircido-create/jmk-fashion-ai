@@ -966,7 +966,7 @@ Me manda o comprovante quando pagar ${pixSign}"
         : "")
     : (customerGender === "M" ? ", irmão" : customerGender === "F" ? ", irmã" : "");
   const religiousBlock = isReligious
-    ? `\n🙏 ATENÇÃO: A mensagem do cliente é uma SAUDAÇÃO RELIGIOSA ("paz de Deus", "glória a Deus", "Deus abençoe", etc.). REGRA OBRIGATÓRIA: SEMPRE comece a resposta com "Amém!" — NUNCA use "Paz", "A paz", "Paz de Deus" ou variações ao responder. NUNCA use "querida" nem "querido" em resposta a saudação religiosa — use SEMPRE "irmão"/"irmã" (com o primeiro nome do cliente quando conhecido). NÃO invente nome do cliente. Resposta correta e BREVE (1 frase): "Amém${religiousVocative}! Como posso te ajudar hoje?".`
+    ? `\n🙏 ATENÇÃO: A mensagem do cliente é uma SAUDAÇÃO RELIGIOSA (ex.: "a paz de Deus", "paz Deus", "paz do Senhor", "paz e bem", "glória a Deus", "Deus abençoe", "louvado seja Deus", "salve Maria", "shalom", "Jesus te ama"). REGRA ABSOLUTA E OBRIGATÓRIA: a resposta DEVE começar OBRIGATORIAMENTE com a palavra "Amém" (aceita "Amém!" ou "Amém${religiousVocative}!"). É PROIBIDO responder saudação religiosa com "Paz", "A paz", "Paz de Deus", "Paz do Senhor", "Oi", "Olá", "Bom dia" ou qualquer variação — SEMPRE "Amém" primeiro. NUNCA use "querida"/"querido" em resposta religiosa; use "irmão"/"irmã" (com o primeiro nome do cliente quando conhecido). NÃO invente nome. Resposta ideal e BREVE (1 frase): "Amém${religiousVocative}! Como posso te ajudar hoje?".`
     : "";
 
   // Mensagem ambígua/curta → pedir esclarecimento em vez de chutar
