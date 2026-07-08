@@ -1316,7 +1316,7 @@ ${ctx.activeStatus && ctx.activeStatus.length > 0
 ${ctx.activeStatus.map((s: any, i: number) => {
   const p = s.products;
   const vars = (p?.product_variants ?? []).map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"}(${v.quantity})`).join(", ");
-  return `${i + 1}. ${p?.name ?? s.caption} — R$ ${p?.price ?? "?"} — Fornecedor: ${p?.supplier ?? "-"} — Tamanhos: ${vars || "única"}`;
+  return `${i + 1}. ${p?.name ?? s.caption} — Fornecedor: ${p?.supplier ?? "-"} — Tamanhos: ${vars || "única"}`;
 }).join("\n")}
 REGRA:
 - Se há SÓ 1 peça no status: confirme essa peça direto ("Oi! O ${ctx.activeStatus[0]?.products?.name ?? "vestido"}? Tenho disponível, qual seu tamanho?").
