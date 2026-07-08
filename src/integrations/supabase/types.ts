@@ -312,39 +312,84 @@ export type Database = {
       }
       payment_proofs: {
         Row: {
+          ai_amount: number | null
+          ai_bank: string | null
+          ai_is_payment_proof: boolean | null
+          ai_payer_name: string | null
+          ai_summary: string | null
+          ai_transaction_id: string | null
+          bucket: string
           created_at: string
           created_by: string | null
+          customer_id: string | null
           description: string | null
           file_size: number | null
           id: string
           mime_type: string | null
           original_filename: string | null
           payment_date: string
+          source: string
           storage_path: string
+          whatsapp_message_id: string | null
         }
         Insert: {
+          ai_amount?: number | null
+          ai_bank?: string | null
+          ai_is_payment_proof?: boolean | null
+          ai_payer_name?: string | null
+          ai_summary?: string | null
+          ai_transaction_id?: string | null
+          bucket?: string
           created_at?: string
           created_by?: string | null
+          customer_id?: string | null
           description?: string | null
           file_size?: number | null
           id?: string
           mime_type?: string | null
           original_filename?: string | null
           payment_date?: string
+          source?: string
           storage_path: string
+          whatsapp_message_id?: string | null
         }
         Update: {
+          ai_amount?: number | null
+          ai_bank?: string | null
+          ai_is_payment_proof?: boolean | null
+          ai_payer_name?: string | null
+          ai_summary?: string | null
+          ai_transaction_id?: string | null
+          bucket?: string
           created_at?: string
           created_by?: string | null
+          customer_id?: string | null
           description?: string | null
           file_size?: number | null
           id?: string
           mime_type?: string | null
           original_filename?: string | null
           payment_date?: string
+          source?: string
           storage_path?: string
+          whatsapp_message_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payment_proofs_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_proofs_whatsapp_message_id_fkey"
+            columns: ["whatsapp_message_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pre_sale_items: {
         Row: {
