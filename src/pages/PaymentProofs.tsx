@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload } from "lucide-react";
+import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload, Trash2 } from "lucide-react";
 import { z } from "zod";
 
 interface Proof {
