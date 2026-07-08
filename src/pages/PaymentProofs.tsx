@@ -453,12 +453,23 @@ export default function PaymentProofs() {
 
                 <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground">
                   <span>{new Date(p.created_at).toLocaleString("pt-BR")}</span>
-                  {url && (
-                    <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      Abrir <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {url && (
+                      <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                        Abrir <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => deleteProof(p)}
+                      className="inline-flex items-center gap-1 text-destructive hover:underline"
+                      aria-label="Excluir comprovante"
+                    >
+                      <Trash2 className="h-3 w-3" /> Excluir
+                    </button>
+                  </div>
                 </div>
+
               </GlassCard>
             );
           })}
