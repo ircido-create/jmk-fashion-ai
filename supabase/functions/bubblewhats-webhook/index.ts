@@ -21,6 +21,7 @@ const corsHeaders = {
 const DEVICE_ID = Deno.env.get("BUBBLEWHATS_DEVICE_ID")!;
 const BW_TOKEN = Deno.env.get("BUBBLEWHATS_TOKEN")!;
 const BW_BASE = `https://${DEVICE_ID}.bubblewhats.com`;
+let groupWebhookConfigEnsured = false;
 
 function classifyKind(mime?: string): "image" | "audio" | "video" | "document" | null {
   if (!mime) return null;
@@ -47,6 +48,19 @@ async function bwPost(path: string, body: unknown): Promise<{ ok: boolean; statu
   const text = await res.text();
   if (!res.ok) console.error(`BubbleWhats ${path} ${res.status}: ${text.slice(0, 300)}`);
   return { ok: res.ok, status: res.status, text };
+}
+
+async function ensureGroupWebhookConfig() {
+  if (groupWebhookConfigEnsured) return;
+  const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/bubblewhats-webhook`;
+  const res = await bwPost("/config", {
+    receiveMessagesWebhook: webhookUrl,
+    receiveMessagesFromGroups: true,
+  });
+  if (res.ok) {
+    groupWebhookConfigEnsured = true;
+    console.log("BubbleWhats group webhook enabled");
+  }
 }
 
 async function sendText(to: string, message: string) {
@@ -107,6 +121,7 @@ Deno.serve(async (req) => {
   try {
     const payload = await req.json();
     console.log("bubblewhats-webhook payload:", JSON.stringify(payload).slice(0, 2000));
+    await ensureGroupWebhookConfig();
 
     const messageKey = payload.messageContext?.key ?? {};
     const remoteJid = cleanJid(messageKey.remoteJid);

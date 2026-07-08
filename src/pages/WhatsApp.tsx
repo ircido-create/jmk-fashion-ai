@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle } from "lucide-react";
+import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle, Settings } from "lucide-react";
 
 interface Config {
   id?: string;
@@ -41,9 +41,10 @@ export default function WhatsApp() {
   const [testTo, setTestTo] = useState("");
   const [testMsg, setTestMsg] = useState("Olá! Mensagem de teste da JMK 💕");
   const [copied, setCopied] = useState(false);
+  const [configuringGroups, setConfiguringGroups] = useState(false);
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const webhookUrl = `https://${projectId}.supabase.co/functions/v1/whatsapp-webhook`;
+  const webhookUrl = `https://${projectId}.supabase.co/functions/v1/bubblewhats-webhook`;
 
   const load = async () => {
     setLoading(true);
@@ -104,6 +105,23 @@ export default function WhatsApp() {
     else toast({ title: `Cobrança executada`, description: `${(data as any)?.sent ?? 0} mensagens enviadas` });
   };
 
+  const configureBubbleWhatsGroups = async () => {
+    setConfiguringGroups(true);
+    const { data, error } = await supabase.functions.invoke("bubblewhats-configure-groups", {
+      body: {},
+    });
+    setConfiguringGroups(false);
+    if (error || (data as any)?.error) {
+      toast({
+        title: "Falha ao ativar grupos",
+        description: error?.message ?? (data as any)?.details ?? (data as any)?.error,
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: "Grupos ativados no BubbleWhats ✅" });
+    }
+  };
+
   const copyWebhook = () => {
     navigator.clipboard.writeText(webhookUrl);
     setCopied(true);
@@ -127,7 +145,7 @@ export default function WhatsApp() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="WhatsApp + IA" description="Atendimento automático via API Oficial Meta" />
+      <PageHeader title="WhatsApp + IA" description="Atendimento automático via BubbleWhats" />
 
       {cfg.last_error_at && (
         <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
@@ -163,8 +181,8 @@ export default function WhatsApp() {
               <MessageSquare className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
-              <h2 className="text-lg font-display font-bold">Conexão Meta WhatsApp</h2>
-              <p className="text-xs text-muted-foreground">API Cloud v21.0 (oficial)</p>
+              <h2 className="text-lg font-display font-bold">Conexão BubbleWhats</h2>
+              <p className="text-xs text-muted-foreground">Webhook e automações do aparelho conectado</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -217,13 +235,23 @@ export default function WhatsApp() {
         </div>
 
         <div className="mt-6 p-4 rounded-2xl bg-white/40 backdrop-blur">
-          <Label className="text-xs">URL do Webhook (cole no painel Meta → Webhooks)</Label>
+          <Label className="text-xs">URL do Webhook BubbleWhats (receiveMessagesWebhook)</Label>
           <div className="flex gap-2 mt-1">
             <Input readOnly value={webhookUrl} className="font-mono text-xs" />
             <Button variant="outline" size="icon" onClick={copyWebhook} aria-label="Copiar webhook">
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3"
+            onClick={configureBubbleWhatsGroups}
+            disabled={configuringGroups}
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            {configuringGroups ? "Ativando…" : "Ativar recebimento de grupos"}
+          </Button>
         </div>
       </GlassCard>
 
