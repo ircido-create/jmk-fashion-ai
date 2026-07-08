@@ -1,12 +1,9 @@
-// WhatsApp webhook (Meta Cloud API) - recebe mensagens e responde com a IA Monica (RAG)
+// Núcleo compartilhado da IA "Mônica" — RAG, contexto, LLM, TTS, mídia.
+// Consumido pelos webhooks (BubbleWhats hoje; Meta legado).
+// Não tem Deno.serve nem faz I/O ao carregar.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-const supabase = createClient(
+export const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
