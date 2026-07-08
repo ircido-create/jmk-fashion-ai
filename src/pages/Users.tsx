@@ -73,9 +73,34 @@ export default function Users() {
     setPwUser(null); setPwValue("");
   };
 
+  const createUser = async () => {
+    if (!newEmail || newPassword.length < 6) {
+      toast.error("E-mail e senha (mín. 6) obrigatórios");
+      return;
+    }
+    setCreating(true);
+    const { data, error } = await supabase.functions.invoke("admin-create-user", {
+      body: { email: newEmail.trim(), password: newPassword, full_name: newFullName.trim() || newEmail, role: newRole },
+    });
+    setCreating(false);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || error?.message || "Falha ao criar");
+      return;
+    }
+    toast.success(`Usuário ${newEmail} criado`);
+    setCreateOpen(false);
+    setNewEmail(""); setNewPassword(""); setNewFullName(""); setNewRole("vendedor");
+    load();
+  };
+
   return (
     <div>
-      <PageHeader title="Usuários" description="Gestão de acesso ao sistema" />
+      <PageHeader title="Usuários" description="Gestão de acesso ao sistema">
+        <Button onClick={() => setCreateOpen(true)} className="bg-gradient-primary text-primary-foreground">
+          <UserPlus className="h-4 w-4 mr-2" /> Novo usuário
+        </Button>
+      </PageHeader>
+
 
       <GlassCard>
         {loading ? (
