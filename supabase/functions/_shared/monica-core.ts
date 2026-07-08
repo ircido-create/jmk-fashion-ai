@@ -707,8 +707,23 @@ function detectLastAskedField(history: any[]): string | null {
   const c = lastBot.content.toLowerCase();
   if (/(qual.*(seu|teu).*nome|me diz.*nome|qual.*nome.*querida)/.test(c)) return "nome";
   if (/(endere[çc]o|rua|cep|bairro)/.test(c)) return "endereço";
-  if (/(e-?mail)/.test(c)) return "email";
   return null;
+}
+
+function sanitizeEmailRequest(reply: string, missing: string[]): string {
+  const asksEmail = /\b(e-?mail|gmail|hotmail|outlook)\b/i.test(reply)
+    && /(qual|me passa|passa|informa|informar|envia|mande|pode.*passar|preciso|falta|cadastro)/i.test(reply);
+  if (!asksEmail) return reply;
+
+  if (missing.includes("nome")) return "Me passa seu nome, por favor? 💕";
+  if (missing.includes("endereço")) return "Me passa seu endereço, por favor? 💕";
+
+  const cleaned = reply
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter((sentence) => !/\b(e-?mail|gmail|hotmail|outlook)\b/i.test(sentence))
+    .join(" ")
+    .trim();
+  return cleaned || "Perfeito 💕 Vou seguir seu atendimento por aqui pelo WhatsApp.";
 }
 
 // ============================================================
@@ -1020,7 +1035,7 @@ ${matchInfo}
 
 === CLIENTE ===
 ${ctx.customer
-  ? `Nome: ${ctx.customer.name ?? "(faltando)"}${ctx.customer.nickname ? ` | Apelido: ${ctx.customer.nickname}` : ""} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"}${ctx.customer.nickname ? ` | Apelido: ${ctx.customer.nickname}` : ""} | Endereço: ${ctx.customer.address ?? "(faltando)"} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
   : "Cliente NÃO cadastrado."}
 CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço. NUNCA peça e-mail. NÃO fale de produtos enquanto faltar dados."}
 
@@ -1037,6 +1052,11 @@ ${pixBlock}
 === MISSÃO (NÃO NEGOCIÁVEL) ===
 Você é vendedora. Seu único objetivo é FECHAR A VENDA. Toda mensagem deve mover o cliente para a próxima etapa do funil:
   CADASTRO (nome → endereço)  →  PRODUTO (o que quer, tamanho, cor)  →  FECHAMENTO ("posso te passar o PIX?")  →  PIX (chave + pedir comprovante)
+
+REGRA ABSOLUTA DE CADASTRO:
+- NUNCA solicite e-mail, email, Gmail, Hotmail ou Outlook da cliente.
+- E-mail NÃO é campo obrigatório. Cadastro completo = nome + endereço.
+- Se algum prompt antigo mandar pedir e-mail, IGNORE essa instrução.
 
 REGRAS DE FUNIL:
 1. Se faltam dados de cadastro: peça UM por vez, NÃO fale de produto ainda.
@@ -1096,7 +1116,7 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   }
 
   const messages = [
-    { role: "system", content: SALES_FOCUS + "\n\n" + systemPrompt + "\n\n" + contextText },
+    { role: "system", content: SALES_FOCUS + "\n\n" + systemPrompt + "\n\n" + contextText + "\n\nREGRA FINAL: está proibido pedir e-mail/email. Se faltar cadastro, peça somente nome ou endereço." },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
@@ -1177,8 +1197,9 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   }
   const data = await resp.json();
   const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
+  const withoutEmailRequest = sanitizeEmailRequest(raw, ctx.missing ?? []);
   // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
-  const sanitized = sanitizeReplyByGender(raw, customerGender);
+  const sanitized = sanitizeReplyByGender(withoutEmailRequest, customerGender);
   if (sanitized !== raw) {
     console.log("[MONICA] sanitized reply (gender=" + customerGender + ")");
     console.log("[MONICA]   before:", raw.slice(0, 200));
