@@ -227,7 +227,10 @@ export default function Conversations() {
   };
 
   const fetchSignedUrls = async (msgs: Message[]) => {
-    const paths = msgs.map((m) => m.media_path).filter((p): p is string => !!p && !mediaUrls[p]);
+    const paths = [
+      ...msgs.map((m) => m.media_path),
+      ...msgs.map((m) => m.quoted_thumbnail_path ?? null),
+    ].filter((p): p is string => !!p && !mediaUrls[p]);
     if (paths.length === 0) return;
     const { data } = await supabase.functions.invoke("whatsapp-media-url", { body: { paths } });
     const urls = (data as any)?.urls ?? {};
