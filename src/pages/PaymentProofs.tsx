@@ -213,6 +213,25 @@ export default function PaymentProofs() {
     }
   };
 
+  const deleteProof = async (p: Proof) => {
+    if (!confirm(`Excluir este comprovante${p.customer?.name ? ` de ${p.customer.name}` : ""}? Esta ação não pode ser desfeita.`)) return;
+    try {
+      const bucket = p.bucket ?? "payment-proofs";
+      const noFile = p.storage_path.startsWith("manual/no-file/");
+      if (!noFile) {
+        const { error: sErr } = await supabase.storage.from(bucket).remove([p.storage_path]);
+        if (sErr) console.warn("storage remove:", sErr.message);
+      }
+      const { error } = await supabase.from("payment_proofs").delete().eq("id", p.id);
+      if (error) throw error;
+      setProofs((prev) => prev.filter((x) => x.id !== p.id));
+      toast({ title: "Comprovante excluído" });
+    } catch (e: any) {
+      toast({ title: "Erro ao excluir", description: e?.message ?? "Tente novamente", variant: "destructive" });
+    }
+  };
+
+
   return (
     <div className="space-y-6">
       <PageHeader
