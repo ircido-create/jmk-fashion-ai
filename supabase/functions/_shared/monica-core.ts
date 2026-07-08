@@ -641,7 +641,8 @@ function missingFields(c: any | null): string[] {
   const looksLikePhone = /^\+?\d[\d\s().-]*$/.test(nameStr);
   if (!nameStr || nameStr === c?.phone || looksLikePhone) miss.push("nome");
   if (!c?.address || c.address.trim() === "") miss.push("endereço");
-  if (!c?.email || c.email.trim() === "") miss.push("email");
+  // E-mail não é mais solicitado às clientes
+
   return miss;
 }
 
@@ -1021,7 +1022,7 @@ ${matchInfo}
 ${ctx.customer
   ? `Nome: ${ctx.customer.name ?? "(faltando)"}${ctx.customer.nickname ? ` | Apelido: ${ctx.customer.nickname}` : ""} | Endereço: ${ctx.customer.address ?? "(faltando)"} | E-mail: ${ctx.customer.email ?? "(faltando)"} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
   : "Cliente NÃO cadastrado."}
-CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço → email. NÃO fale de produtos enquanto faltar dados."}
+CAMPOS FALTANDO: ${ctx.missing.length === 0 ? "nenhum (cadastro completo — NÃO pergunte dados pessoais)" : ctx.missing.join(", ") + " — peça APENAS UM por mensagem, na ordem: nome → endereço. NUNCA peça e-mail. NÃO fale de produtos enquanto faltar dados."}
 
 === DÍVIDAS PENDENTES (FONTE DA VERDADE — ignore datas/valores do histórico) ===
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
@@ -1035,7 +1036,7 @@ ${pixBlock}
   const SALES_FOCUS = `
 === MISSÃO (NÃO NEGOCIÁVEL) ===
 Você é vendedora. Seu único objetivo é FECHAR A VENDA. Toda mensagem deve mover o cliente para a próxima etapa do funil:
-  CADASTRO (nome → endereço → email)  →  PRODUTO (o que quer, tamanho, cor)  →  FECHAMENTO ("posso te passar o PIX?")  →  PIX (chave + pedir comprovante)
+  CADASTRO (nome → endereço)  →  PRODUTO (o que quer, tamanho, cor)  →  FECHAMENTO ("posso te passar o PIX?")  →  PIX (chave + pedir comprovante)
 
 REGRAS DE FUNIL:
 1. Se faltam dados de cadastro: peça UM por vez, NÃO fale de produto ainda.
