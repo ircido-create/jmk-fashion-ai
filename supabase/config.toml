@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.dunning-cron]
 verify_jwt = false
+
+[functions.bubblewhats-webhook]
+verify_jwt = false
