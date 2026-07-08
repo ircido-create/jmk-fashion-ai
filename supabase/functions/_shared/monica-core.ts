@@ -380,13 +380,22 @@ export async function findPhotoMatches(
   return out;
 }
 
-export async function getOrCreateConversation(phone: string) {
+export async function getOrCreateConversation(phone: string, displayName?: string | null) {
   const { data: existing } = await supabase
     .from("whatsapp_conversations")
     .select("*")
     .eq("customer_phone", phone)
     .maybeSingle();
-  if (existing) return existing;
+  if (existing) {
+    if (displayName && existing.display_name !== displayName) {
+      await supabase
+        .from("whatsapp_conversations")
+        .update({ display_name: displayName })
+        .eq("id", existing.id);
+      (existing as any).display_name = displayName;
+    }
+    return existing;
+  }
 
   const { data: customer } = await supabase
     .from("customers")
@@ -396,7 +405,11 @@ export async function getOrCreateConversation(phone: string) {
 
   const { data: created } = await supabase
     .from("whatsapp_conversations")
-    .insert({ customer_phone: phone, customer_id: customer?.id ?? null })
+    .insert({
+      customer_phone: phone,
+      customer_id: customer?.id ?? null,
+      display_name: displayName ?? null,
+    })
     .select()
     .single();
   return created;

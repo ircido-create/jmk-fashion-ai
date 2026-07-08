@@ -35,6 +35,7 @@ interface Conversation {
   customer_phone: string;
   customer_id: string | null;
   last_message_at: string;
+  display_name?: string | null;
   customer?: { name: string } | null;
   lastMessage?: string;
 }
@@ -73,8 +74,10 @@ const isPlaceholderName = (name?: string | null) => {
   if (/^\+?[0-9 ().-]+$/.test(n)) return true; // só dígitos/telefone
   return false;
 };
-const displayName = (c: { customer?: { name: string } | null; customer_phone: string }) =>
-  isPlaceholderName(c.customer?.name) ? c.customer_phone : (c.customer!.name);
+const displayName = (c: { display_name?: string | null; customer?: { name: string } | null; customer_phone: string }) => {
+  if (c.display_name && c.display_name.trim()) return c.display_name;
+  return isPlaceholderName(c.customer?.name) ? c.customer_phone : (c.customer!.name);
+};
 
 function MediaBubble({
   msg, signedUrl,
@@ -193,7 +196,7 @@ export default function Conversations() {
   const loadConversations = async () => {
     const { data } = await supabase
       .from("whatsapp_conversations")
-      .select("id, customer_phone, customer_id, last_message_at, customers(name)")
+      .select("id, customer_phone, customer_id, last_message_at, display_name, customers(name)")
       .order("last_message_at", { ascending: false });
 
     const list: Conversation[] = (data ?? []).map((c: any) => ({
@@ -201,6 +204,7 @@ export default function Conversations() {
       customer_phone: c.customer_phone,
       customer_id: c.customer_id,
       last_message_at: c.last_message_at,
+      display_name: c.display_name,
       customer: c.customers,
     }));
 
@@ -687,7 +691,7 @@ export default function Conversations() {
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate text-sm">{isPlaceholderName(active.customer?.name) ? active.customer_phone : active.customer!.name}</div>
+                  <div className="font-medium truncate text-sm">{displayName(active)}</div>
                   <div className="text-[11px] text-muted-foreground truncate">{active.customer_phone}</div>
                 </div>
                 <Button

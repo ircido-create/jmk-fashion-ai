@@ -900,6 +900,7 @@ export type Database = {
           created_at: string
           customer_id: string | null
           customer_phone: string
+          display_name: string | null
           id: string
           last_message_at: string
         }
@@ -907,6 +908,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_phone: string
+          display_name?: string | null
           id?: string
           last_message_at?: string
         }
@@ -914,6 +916,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_phone?: string
+          display_name?: string | null
           id?: string
           last_message_at?: string
         }
