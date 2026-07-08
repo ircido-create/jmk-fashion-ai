@@ -346,6 +346,7 @@ export default function Inventory() {
     const q = debouncedSearch.toLowerCase();
     const matchesSearch =
       p.name.toLowerCase().includes(q) ||
+      (p.sku ?? "").toLowerCase().includes(q) ||
       (p.category ?? "").toLowerCase().includes(q) ||
       (p.supplier ?? "").toLowerCase().includes(q);
     const matchesSupplier = supplierFilter === "all" || p.supplier === supplierFilter;
