@@ -46,7 +46,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const jid = String(to).replace(/\D/g, "");
+    // Preserva JID completo para grupos (contém "@g.us"); só limpa dígitos para números pessoais
+    const rawTo = String(to).trim();
+    const isGroup = rawTo.includes("@g.us");
+    const jid = isGroup ? rawTo : rawTo.replace(/\D/g, "");
+    const convKey = jid; // chave usada para localizar/gravar a conversa (mesma do webhook)
     const url = `https://${deviceId}.bubblewhats.com/send-message`;
     const res = await fetch(url, {
       method: "POST",
@@ -81,15 +85,18 @@ Deno.serve(async (req) => {
       let { data: conv } = await admin
         .from("whatsapp_conversations")
         .select("*")
-        .eq("customer_phone", jid)
+        .eq("customer_phone", convKey)
+        .order("created_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
       if (!conv) {
-        const { data: customer } = await admin
-          .from("customers").select("id").eq("phone", jid).maybeSingle();
+        const { data: customer } = isGroup
+          ? { data: null as { id: string } | null }
+          : await admin.from("customers").select("id").eq("phone", convKey).maybeSingle();
         const { data: created } = await admin
           .from("whatsapp_conversations")
-          .insert({ customer_phone: jid, customer_id: customer?.id ?? null })
+          .insert({ customer_phone: convKey, customer_id: customer?.id ?? null })
           .select().single();
         conv = created;
       }
