@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
           tool_choice: { type: "function", function: { name: "extract_romaneio" } },
         }),
         // Evita que uma única chamada consuma o timeout de 150s da edge function
-        signal: AbortSignal.timeout(55_000),
+        signal: AbortSignal.timeout(120_000),
       });
       return resp;
     };
