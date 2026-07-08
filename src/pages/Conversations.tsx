@@ -35,6 +35,7 @@ interface Conversation {
   customer_phone: string;
   customer_id: string | null;
   last_message_at: string;
+  display_name?: string | null;
   customer?: { name: string } | null;
   lastMessage?: string;
 }
