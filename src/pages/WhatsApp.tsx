@@ -58,13 +58,50 @@ export default function WhatsApp() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: c }, { data: a }] = await Promise.all([
+    const [{ data: c }, { data: a }, { data: bl }] = await Promise.all([
       supabase.from("whatsapp_config").select("*").maybeSingle(),
       supabase.from("ai_settings").select("*").maybeSingle(),
+      supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
     ]);
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
+    setBlocked((bl ?? []) as BlockedContact[]);
     setLoading(false);
+  };
+
+  const toggleAIPaused = async (value: boolean) => {
+    setAI({ ...ai, ai_paused: value });
+    if (!ai.id) return;
+    const { error } = await supabase.from("ai_settings").update({ ai_paused: value }).eq("id", ai.id);
+    if (error) {
+      toast({ title: "Erro ao alterar pausa", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: value ? "Mônica pausada — não responderá ninguém" : "Mônica reativada 💕" });
+    }
+  };
+
+  const addBlocked = async () => {
+    const phone = newBlockedPhone.replace(/\D/g, "");
+    if (!phone) return;
+    const { error } = await supabase.from("ai_blocked_contacts").insert({
+      phone, note: newBlockedNote.trim() || null,
+    });
+    if (error) {
+      toast({ title: "Erro ao adicionar", description: error.message, variant: "destructive" });
+      return;
+    }
+    setNewBlockedPhone(""); setNewBlockedNote("");
+    toast({ title: "Contato adicionado à lista de silêncio" });
+    load();
+  };
+
+  const removeBlocked = async (id: string) => {
+    const { error } = await supabase.from("ai_blocked_contacts").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Erro ao remover", description: error.message, variant: "destructive" });
+      return;
+    }
+    load();
   };
 
   useEffect(() => { load(); }, []);
