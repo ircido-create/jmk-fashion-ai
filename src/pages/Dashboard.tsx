@@ -69,13 +69,15 @@ export default function Dashboard() {
     setChart(data);
   };
 
+  const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
   const cards = [
-    { label: "A Receber", value: `R$ ${stats.receivable.toFixed(2)}`, icon: TrendingUp, gradient: "from-emerald-400 to-teal-500" },
-    { label: "A Pagar", value: `R$ ${stats.payable.toFixed(2)}`, icon: TrendingDown, gradient: "from-rose-400 to-pink-500" },
-    { label: "Vencidos", value: `R$ ${stats.overdueAmount.toFixed(2)}`, sub: `${stats.overdue} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
-    { label: "Clientes", value: stats.customers, icon: Users, gradient: "from-violet-400 to-purple-500" },
-    { label: "Produtos", value: stats.products, icon: Package, gradient: "from-fuchsia-400 to-pink-500" },
-    { label: "Estoque baixo", value: stats.lowStock, icon: DollarSign, gradient: "from-blue-400 to-indigo-500" },
+    { label: "A Receber", value: brl(stats.receivable), icon: TrendingUp, gradient: "from-emerald-400 to-teal-500" },
+    { label: "A Pagar", value: brl(stats.payable), icon: TrendingDown, gradient: "from-rose-400 to-pink-500" },
+    { label: "Vencidos", value: brl(stats.overdueAmount), sub: `${stats.overdue} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
+    { label: "Clientes", value: stats.customers.toLocaleString("pt-BR"), icon: Users, gradient: "from-violet-400 to-purple-500" },
+    { label: "Produtos", value: stats.products.toLocaleString("pt-BR"), icon: Package, gradient: "from-fuchsia-400 to-pink-500" },
+    { label: "Estoque baixo", value: stats.lowStock.toLocaleString("pt-BR"), icon: DollarSign, gradient: "from-blue-400 to-indigo-500" },
   ];
 
   return (
