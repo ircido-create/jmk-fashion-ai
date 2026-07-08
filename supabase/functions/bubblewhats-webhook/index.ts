@@ -102,10 +102,6 @@ Deno.serve(async (req) => {
 
     const fromNumber: string = String(payload.fromNumber ?? "").replace(/\D/g, "");
     const isGroup = Boolean(payload.isGroup);
-    if (isGroup) {
-      // Ignora grupos por padrão
-      return new Response(JSON.stringify({ ignored: "group" }), { headers: corsHeaders });
-    }
     if (!fromNumber) return new Response("ok", { headers: corsHeaders });
 
     let text: string = (payload.body ?? "").toString();
@@ -167,8 +163,8 @@ Deno.serve(async (req) => {
       .update({ last_message_at: new Date().toISOString() })
       .eq("id", conv.id);
 
-    // Se não temos texto (foto sem caption), não chama a IA
-    if (!text) return new Response("ok", { headers: corsHeaders });
+    // Se não temos texto (foto sem caption) ou é grupo, não chama a IA
+    if (!text || isGroup) return new Response(JSON.stringify({ ok: true, skippedAI: isGroup ? "group" : "no-text" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     // ---- IA MÔNICA ----
     const ai = await loadAISettings();
