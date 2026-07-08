@@ -114,6 +114,86 @@ async function logOutboundMedia(convId: string, to: string, bytes: Uint8Array, m
   }
 }
 
+// ================= ANÁLISE DE COMPROVANTE =================
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as any);
+  }
+  return btoa(bin);
+}
+
+async function analyzeAndSavePaymentProof(opts: {
+  bytes: Uint8Array; mime: string; mediaPath: string;
+  conversationId: string; customerId: string | null;
+  whatsappMessageId: string | null; fileSize: number;
+}) {
+  if (!LOVABLE_API_KEY) { console.warn("LOVABLE_API_KEY ausente — pulando análise"); return; }
+  const b64 = toBase64(opts.bytes);
+  const dataUrl = `data:${opts.mime};base64,${b64}`;
+  const isPdf = opts.mime.toLowerCase().includes("pdf");
+
+  const userContent: any[] = [
+    {
+      type: "text",
+      text: `Analise este arquivo enviado por uma cliente no WhatsApp e diga se é um comprovante de pagamento (PIX, transferência, boleto). Responda APENAS com um JSON válido no formato:
+{"is_payment_proof": boolean, "amount": number|null, "payer_name": string|null, "bank": string|null, "transaction_id": string|null, "summary": string}
+- amount em reais (número, sem R$).
+- summary curto em português (1 frase).
+- Se não for comprovante, is_payment_proof=false e explique brevemente no summary.`
+    },
+  ];
+  if (isPdf) {
+    userContent.push({ type: "file", file: { filename: "comprovante.pdf", file_data: dataUrl } });
+  } else {
+    userContent.push({ type: "image_url", image_url: { url: dataUrl } });
+  }
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: "Você é uma assistente que analisa comprovantes de pagamento brasileiros (PIX, TED, boleto). Sempre responda em JSON puro, sem markdown." },
+        { role: "user", content: userContent },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!res.ok) { console.error("AI proof analysis error:", res.status, (await res.text()).slice(0, 300)); return; }
+  const j = await res.json();
+  const raw = j?.choices?.[0]?.message?.content ?? "{}";
+  let parsed: any = {};
+  try { parsed = JSON.parse(raw); } catch { console.warn("AI proof raw not JSON:", raw.slice(0, 200)); return; }
+
+  // Salva na tabela payment_proofs (usa o mesmo arquivo do bucket whatsapp-media)
+  const { error } = await supabase.from("payment_proofs").insert({
+    storage_path: opts.mediaPath,
+    bucket: "whatsapp-media",
+    original_filename: opts.mediaPath.split("/").pop() ?? null,
+    mime_type: opts.mime,
+    file_size: opts.fileSize,
+    source: "monica",
+    customer_id: opts.customerId,
+    whatsapp_message_id: opts.whatsappMessageId,
+    ai_is_payment_proof: !!parsed.is_payment_proof,
+    ai_amount: parsed.amount ?? null,
+    ai_payer_name: parsed.payer_name ?? null,
+    ai_bank: parsed.bank ?? null,
+    ai_transaction_id: parsed.transaction_id ?? null,
+    ai_summary: parsed.summary ?? null,
+    description: parsed.summary ?? null,
+  });
+  if (error) console.error("payment_proofs insert err:", error);
+  else console.log("Comprovante salvo:", parsed.is_payment_proof, parsed.amount);
+}
+
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return new Response("ok", { headers: corsHeaders });
