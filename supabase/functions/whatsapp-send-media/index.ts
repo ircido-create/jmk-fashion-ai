@@ -1,5 +1,6 @@
-// Envio de mídia (imagem, áudio, documento) pelo painel via Meta Cloud API.
-// Recebe arquivo em base64, salva no bucket whatsapp-media, sobe na Meta e envia.
+// Envio de mídia (imagem, áudio, documento) via BubbleWhats.
+// A BubbleWhats exige URL PÚBLICA da mídia — subimos no bucket
+// whatsapp-media e passamos uma signed URL (temporária, publicamente acessível).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -18,23 +19,16 @@ function base64ToBytes(b64: string): Uint8Array {
 
 function extFromMime(mime: string, fallback = "bin"): string {
   const m: Record<string, string> = {
-    "image/jpeg": "jpg",
-    "image/jpg": "jpg",
-    "image/png": "png",
-    "image/webp": "webp",
-    "image/gif": "gif",
-    "audio/ogg": "ogg",
-    "audio/mpeg": "mp3",
-    "audio/mp3": "mp3",
-    "audio/mp4": "m4a",
-    "audio/aac": "aac",
-    "audio/webm": "webm",
-    "audio/wav": "wav",
+    "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+    "image/webp": "webp", "image/gif": "gif",
+    "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp3": "mp3",
+    "audio/mp4": "m4a", "audio/aac": "aac", "audio/webm": "webm", "audio/wav": "wav",
     "application/pdf": "pdf",
     "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/vnd.ms-excel": "xls",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/zip": "zip",
   };
   return m[mime] ?? fallback;
 }
@@ -81,19 +75,26 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (kind === "sticker") {
+      return new Response(JSON.stringify({ error: "BubbleWhats não suporta figurinha via API" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const deviceId = Deno.env.get("BUBBLEWHATS_DEVICE_ID");
+    const bwToken = Deno.env.get("BUBBLEWHATS_TOKEN");
+    if (!deviceId || !bwToken) {
+      return new Response(JSON.stringify({ error: "BubbleWhats não configurado" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: cfg } = await admin.from("whatsapp_config").select("*").maybeSingle();
-    if (!cfg?.enabled || !cfg.access_token || !cfg.phone_number_id) {
-      return new Response(JSON.stringify({ error: "WhatsApp não configurado" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
-    // 1) Salva no storage
+    // 1) Salva no storage (privado)
     const bytes = base64ToBytes(fileBase64);
     const ext = extFromMime(mimeType, kind === "image" ? "jpg" : kind === "audio" ? "ogg" : "bin");
     const safeName = filename?.replace(/[^\w.-]/g, "_") ?? `file.${ext}`;
@@ -108,56 +109,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2) Upload para Meta /media
-    const form = new FormData();
-    form.append("messaging_product", "whatsapp");
-    form.append("type", mimeType);
-    form.append("file", new Blob([bytes], { type: mimeType }), safeName);
-
-    const upMeta = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/media`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${cfg.access_token}` },
-      body: form,
-    });
-    if (!upMeta.ok) {
-      const t = await upMeta.text();
-      console.error("Meta media upload error:", upMeta.status, t);
-      return new Response(JSON.stringify({ error: `Meta upload falhou: ${t}` }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // 2) Gera URL pública temporária (7 dias)
+    const { data: signed, error: signErr } = await admin.storage
+      .from("whatsapp-media")
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+    if (signErr || !signed?.signedUrl) {
+      console.error("signed url error:", signErr);
+      return new Response(JSON.stringify({ error: "Falha ao gerar URL da mídia" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const upJson = await upMeta.json();
-    const mediaId = upJson.id;
+    const publicUrl = signed.signedUrl;
 
-    // 3) Envia mensagem
-    const payload: any = {
-      messaging_product: "whatsapp",
-      to,
-      type: kind,
-    };
+    // 3) Chama endpoint correto do BubbleWhats
+    const base = `https://${deviceId}.bubblewhats.com`;
+    let endpoint = "";
+    const payload: Record<string, unknown> = { jid: to };
     if (kind === "image") {
-      payload.image = { id: mediaId };
-      if (caption) payload.image.caption = caption.slice(0, 1024);
+      endpoint = `${base}/send-image`;
+      payload.imageUrl = publicUrl;
+      if (caption) payload.caption = caption.slice(0, 1024);
     } else if (kind === "audio") {
-      payload.audio = { id: mediaId };
-    } else if (kind === "document") {
-      payload.document = { id: mediaId, filename: safeName };
-      if (caption) payload.document.caption = caption.slice(0, 1024);
-    } else if (kind === "sticker") {
-      payload.sticker = { id: mediaId };
+      endpoint = `${base}/send-audio`;
+      payload.audiourl = publicUrl;
+    } else {
+      endpoint = `${base}/send-doc`;
+      payload.docurl = publicUrl;
+      payload.filename = safeName;
     }
 
-    const sendRes = await fetch(`https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`, {
+    const sendRes = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfg.access_token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: bwToken, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const sendJson = await sendRes.json();
+    const raw = await sendRes.text();
+    let sendJson: any; try { sendJson = JSON.parse(raw); } catch { sendJson = { raw }; }
     if (!sendRes.ok) {
-      console.error("Meta send error:", sendRes.status, sendJson);
+      console.error("BubbleWhats media send error:", sendRes.status, raw);
       return new Response(JSON.stringify({ error: sendJson }), {
         status: sendRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

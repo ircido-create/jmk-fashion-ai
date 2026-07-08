@@ -1,4 +1,5 @@
-// Envio manual de mensagem WhatsApp (admin/vendedor) via Meta Cloud API
+// Envio manual de mensagem WhatsApp via BubbleWhats API
+// Docs: https://{DEVICE_ID}.bubblewhats.com/send-message
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -37,53 +38,52 @@ Deno.serve(async (req) => {
       });
     }
 
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    const { data: cfg } = await admin.from("whatsapp_config").select("*").maybeSingle();
-    if (!cfg?.enabled || !cfg.access_token || !cfg.phone_number_id) {
-      return new Response(JSON.stringify({ error: "WhatsApp não configurado" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const deviceId = Deno.env.get("BUBBLEWHATS_DEVICE_ID");
+    const bwToken = Deno.env.get("BUBBLEWHATS_TOKEN");
+    if (!deviceId || !bwToken) {
+      return new Response(JSON.stringify({ error: "BubbleWhats não configurado" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const url = `https://graph.facebook.com/v21.0/${cfg.phone_number_id}/messages`;
+    const jid = String(to).replace(/\D/g, "");
+    const url = `https://${deviceId}.bubblewhats.com/send-message`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${cfg.access_token}`,
+        Authorization: bwToken,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body: message },
-      }),
+      body: JSON.stringify({ jid, message }),
     });
-    const result = await res.json();
+    const text = await res.text();
+    let result: any; try { result = JSON.parse(text); } catch { result = { raw: text }; }
 
     if (!res.ok) {
+      console.error("BubbleWhats send error:", res.status, text);
       return new Response(JSON.stringify({ error: result }), {
         status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Salvar no histórico de conversas (envio do operador)
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
     if (save_history) {
       let { data: conv } = await admin
         .from("whatsapp_conversations")
         .select("*")
-        .eq("customer_phone", to)
+        .eq("customer_phone", jid)
         .maybeSingle();
 
       if (!conv) {
         const { data: customer } = await admin
-          .from("customers").select("id").eq("phone", to).maybeSingle();
+          .from("customers").select("id").eq("phone", jid).maybeSingle();
         const { data: created } = await admin
           .from("whatsapp_conversations")
-          .insert({ customer_phone: to, customer_id: customer?.id ?? null })
+          .insert({ customer_phone: jid, customer_id: customer?.id ?? null })
           .select().single();
         conv = created;
       }
