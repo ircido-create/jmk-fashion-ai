@@ -22,6 +22,12 @@ export default function Users() {
   const [pwUser, setPwUser] = useState<UserRow | null>(null);
   const [pwValue, setPwValue] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newFullName, setNewFullName] = useState("");
+  const [newRole, setNewRole] = useState<"admin" | "vendedor">("vendedor");
+  const [creating, setCreating] = useState(false);
 
   const load = async () => {
     setLoading(true);
