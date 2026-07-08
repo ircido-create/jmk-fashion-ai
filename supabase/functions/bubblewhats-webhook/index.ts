@@ -375,13 +375,18 @@ Deno.serve(async (req) => {
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
     const ctx = await buildContext(conversationKey, text, history ?? []);
+    // Se a cliente respondeu ao nosso status, injeta a miniatura para a IA "ver" a peça.
+    const quotedImageForAI = quotedIsStatus && quotedThumbnailBytes
+      ? { bytes: quotedThumbnailBytes, mime: "image/jpeg" }
+      : null;
     const reply = await callAI(
       ai?.system_prompt ?? "",
       history ?? [],
       text,
       ctx,
       isFirstMessage,
-      { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name }
+      { key: ai?.pix_key, type: ai?.pix_key_type, recipient: ai?.pix_recipient_name },
+      quotedImageForAI,
     );
 
     // ---- FOTOS quando a cliente pediu ----
