@@ -890,7 +890,7 @@ function sanitizeReplyByGender(text: string, gender: "F" | "M" | "U"): string {
   return out;
 }
 
-export async function buildContext(phone: string, userMsg: string, history: any[]) {
+export async function buildContext(phone: string, userMsg: string, history: any[], contactAlias?: string | null) {
   const supplierMentioned = await detectSupplier(userMsg);
   const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
   const focusedResult = await detectFocusedProduct(history);
@@ -926,7 +926,7 @@ export async function buildContext(phone: string, userMsg: string, history: any[
   }
 
   const lastAsked = detectLastAskedField(history);
-  const customer = await autoUpdateCustomer(phone, rawCustomer, userMsg, lastAsked);
+  const customer = await autoUpdateCustomer(phone, rawCustomer, userMsg, lastAsked, contactAlias);
 
   const missing = missingFields(customer);
 
