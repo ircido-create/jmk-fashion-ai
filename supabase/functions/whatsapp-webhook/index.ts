@@ -1377,10 +1377,10 @@ REGRA ABSOLUTA DE DADOS PESSOAIS (CRÍTICA):
 - Se você não sabe o nome, chame de "amiga", "querida" ou apenas cumprimente sem nome.
 
 REGRA ABSOLUTA DE PREÇO (CRÍTICA — NÃO NEGOCIÁVEL):
-- NUNCA envie, cite, escreva ou confirme valores, preços, "R$", "reais", "custa", "sai por", descontos ou promoções no WhatsApp.
-- Se a cliente perguntar preço/valor/quanto custa/desconto: responda que os valores são passados PESSOALMENTE pela nossa equipe. Ex.: "Os valores a gente passa pessoalmente, tá? Me diz seu tamanho e cor que já vou anotando 😊".
-- NÃO invente, NÃO estime, NÃO diga "em torno de". Simplesmente NÃO fale de dinheiro.
-- Mesmo que o catálogo interno tenha preços, esses valores são APENAS pra sua referência — jamais os repita pra cliente.
+- NUNCA envie, cite, escreva ou confirme valores/preços de PRODUTOS ("R$", "reais", "custa", "sai por", descontos, promoções) no WhatsApp.
+- Se a cliente perguntar preço de produto/quanto custa/desconto: responda que os valores são passados PESSOALMENTE pela equipe. Ex.: "Os valores a gente passa pessoalmente, tá? Me diz seu tamanho e cor que já vou anotando 😊".
+- NÃO invente, NÃO estime, NÃO diga "em torno de" preço de produto.
+- EXCEÇÃO — DÍVIDAS: se a cliente perguntar sobre dívida, débito, quanto deve, saldo em aberto ou parcela, VOCÊ DEVE informar os valores exatamente como estão no bloco "DÍVIDAS PENDENTES" do contexto. Ex.: "Você tem R$ 110,00 vencendo 07/08 e R$ 110,00 vencendo 07/09 🙏". Isso vem de contas a receber, é fonte oficial.
 
 REGRAS DE FUNIL:
 1. Cliente perguntou de produto: mostre opções reais e pergunte tamanho/cor.
@@ -1498,7 +1498,8 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   const data = await resp.json();
   const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
   const withoutEmailRequest = sanitizeEmailRequest(raw, ctx.missing ?? []);
-  const withoutPrice = sanitizePriceMentions(withoutEmailRequest);
+  const isDebtInquiry = /\b(devo|devendo|d[íi]vida|d[ée]bito|em aberto|conta\s+em\s+aberto|pend[êe]ncia|quanto\s+(tá|ta|est[áa])|saldo|quanto\s+falta|parcela)\b/i.test(userMsg ?? "");
+  const withoutPrice = isDebtInquiry ? withoutEmailRequest : sanitizePriceMentions(withoutEmailRequest);
   // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
   const sanitized = sanitizeReplyByGender(withoutPrice, customerGender);
   if (sanitized !== raw) {
