@@ -82,48 +82,6 @@ async function clearMetaError() {
   }
 }
 
-// Baixa um media do WhatsApp Cloud API e retorna { bytes, base64, mimeType }
-async function downloadWhatsAppMedia(mediaId: string, cfg: any): Promise<{ bytes: Uint8Array; base64: string; mimeType: string } | null> {
-  try {
-    // 1) pega URL temporária
-    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
-      headers: { Authorization: `Bearer ${cfg.access_token}` },
-    });
-    if (!metaRes.ok) {
-      const errBody = await metaRes.text();
-      console.error("media meta error:", metaRes.status, errBody);
-      await recordMetaError(metaRes.status, errBody);
-      return null;
-    }
-    const meta = await metaRes.json();
-    const mediaUrl = meta?.url;
-    const mimeType = meta?.mime_type ?? "application/octet-stream";
-    if (!mediaUrl) return null;
-
-    // 2) baixa o binário
-    const fileRes = await fetch(mediaUrl, {
-      headers: { Authorization: `Bearer ${cfg.access_token}` },
-    });
-    if (!fileRes.ok) {
-      console.error("media file error:", fileRes.status);
-      return null;
-    }
-    const buf = await fileRes.arrayBuffer();
-
-    // 3) converte para base64 em chunks (evita stack overflow)
-    const bytes = new Uint8Array(buf);
-    let binary = "";
-    const CHUNK = 0x8000;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as any);
-    }
-    const base64 = btoa(binary);
-    return { bytes, base64, mimeType };
-  } catch (e) {
-    console.error("downloadWhatsAppMedia error:", e);
-    return null;
-  }
-}
 
 function inboundExt(mime: string): string {
   const m: Record<string, string> = {
