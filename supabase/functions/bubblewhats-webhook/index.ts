@@ -337,17 +337,37 @@ Deno.serve(async (req) => {
       .eq("id", conv.id);
 
     // ---- ANÁLISE DE COMPROVANTE (imagem/PDF) via Lovable AI ----
+    // Executa SÍNCRONO para poder curto-circuitar a resposta caso seja comprovante.
+    let proofResult: { is_payment_proof: boolean; amount: number | null; summary: string | null } | null = null;
     if (mediaBytes && mediaPath && (mediaKind === "image" || mediaKind === "document") && !isGroup) {
-      // Roda em background para não atrasar a resposta
-      analyzeAndSavePaymentProof({
-        bytes: mediaBytes,
-        mime: mimetype!,
-        mediaPath,
-        conversationId: conv.id,
-        customerId: (conv as any).customer_id ?? null,
-        whatsappMessageId: insertedMsg?.id ?? null,
-        fileSize: mediaBytes.length,
-      }).catch((e) => console.error("analyzeAndSavePaymentProof err:", e));
+      try {
+        proofResult = await analyzeAndSavePaymentProof({
+          bytes: mediaBytes,
+          mime: mimetype!,
+          mediaPath,
+          conversationId: conv.id,
+          customerId: (conv as any).customer_id ?? null,
+          whatsappMessageId: insertedMsg?.id ?? null,
+          fileSize: mediaBytes.length,
+        });
+      } catch (e) {
+        console.error("analyzeAndSavePaymentProof err:", e);
+      }
+    }
+
+    // Se for comprovante de pagamento, responde SEMPRE com "Deus abençoe 🙏" e não chama a IA.
+    if (proofResult?.is_payment_proof) {
+      const fixedReply = "Recebi seu comprovante, muito obrigada! Deus abençoe 🙏";
+      await sendText(conversationKey, fixedReply);
+      await supabase.from("whatsapp_messages").insert({
+        conversation_id: conv.id,
+        direction: "outbound",
+        content: fixedReply,
+      });
+      await supabase.from("whatsapp_conversations")
+        .update({ last_message_at: new Date().toISOString() })
+        .eq("id", conv.id);
+      return new Response(JSON.stringify({ ok: true, paymentProof: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Se não temos texto (foto sem caption) ou é grupo, não chama a IA
