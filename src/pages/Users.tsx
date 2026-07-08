@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { Shield, User, Loader2, KeyRound } from "lucide-react";
+import { Shield, User, Loader2, KeyRound, UserPlus } from "lucide-react";
+import { Label } from "@/components/ui/label";
 
 interface UserRow {
   id: string; full_name: string | null; email: string | null; active: boolean;
@@ -21,6 +22,12 @@ export default function Users() {
   const [pwUser, setPwUser] = useState<UserRow | null>(null);
   const [pwValue, setPwValue] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newFullName, setNewFullName] = useState("");
+  const [newRole, setNewRole] = useState<"admin" | "vendedor">("vendedor");
+  const [creating, setCreating] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -66,9 +73,35 @@ export default function Users() {
     setPwUser(null); setPwValue("");
   };
 
+  const createUser = async () => {
+    if (!newEmail || newPassword.length < 6) {
+      toast.error("E-mail e senha (mín. 6) obrigatórios");
+      return;
+    }
+    setCreating(true);
+    const { data, error } = await supabase.functions.invoke("admin-create-user", {
+      body: { email: newEmail.trim(), password: newPassword, full_name: newFullName.trim() || newEmail, role: newRole },
+    });
+    setCreating(false);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || error?.message || "Falha ao criar");
+      return;
+    }
+    toast.success(`Usuário ${newEmail} criado`);
+    setCreateOpen(false);
+    setNewEmail(""); setNewPassword(""); setNewFullName(""); setNewRole("vendedor");
+    load();
+  };
+
   return (
     <div>
-      <PageHeader title="Usuários" description="Gestão de acesso ao sistema" />
+      <PageHeader title="Usuários" description="Gestão de acesso ao sistema" actions={
+        <Button onClick={() => setCreateOpen(true)} className="bg-gradient-primary text-primary-foreground">
+          <UserPlus className="h-4 w-4 mr-2" /> Novo usuário
+        </Button>
+      } />
+
+
 
       <GlassCard>
         {loading ? (
@@ -144,6 +177,48 @@ export default function Users() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo usuário</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nome</Label>
+              <Input value={newFullName} onChange={(e) => setNewFullName(e.target.value)} placeholder="Nome completo" />
+            </div>
+            <div>
+              <Label>E-mail</Label>
+              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@exemplo.com" />
+            </div>
+            <div>
+              <Label>Senha (mín. 6)</Label>
+              <Input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant={newRole === "admin" ? "default" : "outline"}
+                onClick={() => setNewRole("admin")}
+                className={newRole === "admin" ? "bg-gradient-primary text-primary-foreground" : ""}>
+                <Shield className="h-3 w-3 mr-1" /> Admin
+              </Button>
+              <Button size="sm" variant={newRole === "vendedor" ? "default" : "outline"}
+                onClick={() => setNewRole("vendedor")}
+                className={newRole === "vendedor" ? "bg-gradient-primary text-primary-foreground" : ""}>
+                <User className="h-3 w-3 mr-1" /> Vendedor
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={createUser} disabled={creating}>
+              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Criar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
