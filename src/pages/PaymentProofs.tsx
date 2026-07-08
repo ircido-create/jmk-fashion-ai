@@ -337,9 +337,11 @@ export default function PaymentProofs() {
                 {saving ? "Salvando…" : "Salvar comprovante"}
               </Button>
             </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </PageHeader>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
 
       <GlassCard>
         <div className="flex items-center gap-2">
