@@ -936,14 +936,9 @@ function looksLikeName(text: string): boolean {
   return words.length >= 1 && words.length <= 6;
 }
 
-function missingFields(c: any | null): string[] {
-  const miss: string[] = [];
-  // Considera nome ausente se: vazio, igual ao telefone, ou só dígitos
-  const nameStr = (c?.name ?? "").trim();
-  const looksLikePhone = /^\+?\d[\d\s().-]*$/.test(nameStr);
-  if (!nameStr || nameStr === c?.phone || looksLikePhone) miss.push("nome");
-  if (!c?.address || c.address.trim() === "") miss.push("endereço");
-  return miss;
+function missingFields(_c: any | null): string[] {
+  // Regra do negócio: NUNCA pedir nome, endereço ou e-mail nas conversas.
+  return [];
 }
 
 // Tenta auto-cadastrar a partir do texto + último campo solicitado (do histórico)
