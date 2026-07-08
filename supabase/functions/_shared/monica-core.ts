@@ -54,33 +54,6 @@ async function loadAISettings() {
   return data;
 }
 
-// Registra falha de auth (token expirado) na tabela de config
-async function recordMetaError(status: number, body: string) {
-  try {
-    const isAuth = status === 401 || /OAuthException|expired|access token/i.test(body);
-    if (!isAuth) return;
-    const msg = body.slice(0, 500);
-    await supabase
-      .from("whatsapp_config")
-      .update({ last_error_at: new Date().toISOString(), last_error_message: msg })
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-    console.error("⚠️ TOKEN WHATSAPP EXPIRADO/INVÁLIDO — atualize em Configurações → WhatsApp");
-  } catch (e) {
-    console.error("recordMetaError failed:", e);
-  }
-}
-
-// Limpa marca de erro quando uma chamada à Meta volta a funcionar
-async function clearMetaError() {
-  try {
-    await supabase
-      .from("whatsapp_config")
-      .update({ last_error_at: null, last_error_message: null })
-      .not("last_error_at", "is", null);
-  } catch {
-    /* noop */
-  }
-}
 
 
 function inboundExt(mime: string): string {
