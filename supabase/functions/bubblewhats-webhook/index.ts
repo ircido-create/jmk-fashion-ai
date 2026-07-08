@@ -247,9 +247,9 @@ Deno.serve(async (req) => {
         const reactedId = String(reactedKey.id ?? "");
         const emoji = String(reactionMsg.text ?? "").trim();
         const isStatusReaction = reactedRemote.includes("status@broadcast") || reactedFromMe;
-        // Emojis considerados positivos (curtida/coração/etc.)
-        const positive = /[\u2764\u2665\uD83D[\uDC4D\uDC96\uDC97\uDC93\uDC95\uDC9A\uDC9B\uDC9C\uDC9D\uDC9E\uDC9F\uDE0D\uDE18\uDE0A\uDE01\uDE00\uDE42\uDE0B\uDD25\uDC4F\uDE4C]]|\uD83D\uDC4D|\uD83D\uDC96|\uD83D\uDD25|\uD83E\uDD70|\uD83E\uDD29|\u2665/u;
-        const isPositive = !emoji || positive.test(emoji) || /like|love|heart/i.test(emoji);
+        const POSITIVE_EMOJIS = ["👍","❤️","♥️","❤","🧡","💛","💚","💙","💜","🤎","🖤","🤍","💖","💗","💓","💕","💞","💘","💝","😍","🥰","😘","🤩","😻","🔥","👏","🙌","✨","🌹","💐","😊","🙏"];
+        const isPositive = !emoji || POSITIVE_EMOJIS.some(e => emoji.includes(e)) || /like|love|heart/i.test(emoji);
+
         if (isStatusReaction && isPositive && senderNumber) {
           const targetKey = reactedId || `status-${Date.now()}`;
           // Dedupe: já enviamos para esse cliente + esse item do status?
