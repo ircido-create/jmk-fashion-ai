@@ -844,6 +844,27 @@ export type Database = {
           },
         ]
       }
+      status_reaction_sent: {
+        Row: {
+          created_at: string
+          id: string
+          phone: string
+          target_key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          phone: string
+          target_key: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          phone?: string
+          target_key?: string
+        }
+        Relationships: []
+      }
       supplier_sites: {
         Row: {
           created_at: string
