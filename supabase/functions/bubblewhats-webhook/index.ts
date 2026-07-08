@@ -236,6 +236,56 @@ Deno.serve(async (req) => {
     const caption: string = (payload.caption ?? "").toString();
     if (!text && caption) text = caption;
 
+    // ---- REAÇÃO A STATUS (curtida em foto que postamos) ----
+    // BubbleWhats entrega em messageContext.message.reactionMessage
+    try {
+      const reactionMsg = payload.messageContext?.message?.reactionMessage;
+      if (reactionMsg && !isGroup) {
+        const reactedKey = reactionMsg.key ?? {};
+        const reactedRemote = String(reactedKey.remoteJid ?? "");
+        const reactedFromMe = Boolean(reactedKey.fromMe);
+        const reactedId = String(reactedKey.id ?? "");
+        const emoji = String(reactionMsg.text ?? "").trim();
+        const isStatusReaction = reactedRemote.includes("status@broadcast") || reactedFromMe;
+        // Emojis considerados positivos (curtida/coração/etc.)
+        const positive = /[\u2764\u2665\uD83D[\uDC4D\uDC96\uDC97\uDC93\uDC95\uDC9A\uDC9B\uDC9C\uDC9D\uDC9E\uDC9F\uDE0D\uDE18\uDE0A\uDE01\uDE00\uDE42\uDE0B\uDD25\uDC4F\uDE4C]]|\uD83D\uDC4D|\uD83D\uDC96|\uD83D\uDD25|\uD83E\uDD70|\uD83E\uDD29|\u2665/u;
+        const isPositive = !emoji || positive.test(emoji) || /like|love|heart/i.test(emoji);
+        if (isStatusReaction && isPositive && senderNumber) {
+          const targetKey = reactedId || `status-${Date.now()}`;
+          // Dedupe: já enviamos para esse cliente + esse item do status?
+          const { data: already } = await supabase
+            .from("status_reaction_sent")
+            .select("id")
+            .eq("phone", senderNumber)
+            .eq("target_key", targetKey)
+            .maybeSingle();
+          if (!already) {
+            const conv = await getOrCreateConversation(senderNumber, senderAlias || null);
+            const firstName = (senderAlias || "").split(" ")[0]?.trim();
+            const greet = firstName ? `${firstName}, a Paz de Deus!` : "A Paz de Deus!";
+            const msg = `${greet} É lindo, não é? 😍 Quer que eu reserve este item para você? 🙏`;
+            const send = await sendText(senderNumber, msg);
+            if (send.ok && conv) {
+              await supabase.from("whatsapp_messages").insert({
+                conversation_id: conv.id,
+                direction: "outbound",
+                content: msg,
+              });
+              await supabase.from("whatsapp_conversations")
+                .update({ last_message_at: new Date().toISOString() })
+                .eq("id", conv.id);
+            }
+            await supabase.from("status_reaction_sent").insert({ phone: senderNumber, target_key: targetKey });
+          }
+          return new Response(JSON.stringify({ ok: true, statusReaction: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    } catch (e) { console.error("reaction parse err:", e); }
+
+
+
     // ---- CITAÇÃO / RESPOSTA A STATUS ----
     // Detecta se o cliente respondeu a um status do WhatsApp postado por NÓS.
     // Estrutura: messageContext.message.extendedTextMessage.contextInfo.quotedMessage.imageMessage
