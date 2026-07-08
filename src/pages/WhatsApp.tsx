@@ -26,6 +26,13 @@ interface AISettings {
   id?: string;
   persona: string;
   system_prompt: string;
+  ai_paused?: boolean;
+}
+
+interface BlockedContact {
+  id: string;
+  phone: string;
+  note: string | null;
 }
 
 export default function WhatsApp() {
