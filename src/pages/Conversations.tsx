@@ -691,7 +691,7 @@ export default function Conversations() {
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate text-sm">{isPlaceholderName(active.customer?.name) ? active.customer_phone : active.customer!.name}</div>
+                  <div className="font-medium truncate text-sm">{displayName(active)}</div>
                   <div className="text-[11px] text-muted-foreground truncate">{active.customer_phone}</div>
                 </div>
                 <Button
