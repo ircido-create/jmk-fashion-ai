@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload } from "lucide-react";
+import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload, Trash2 } from "lucide-react";
 import { z } from "zod";
 
 interface Proof {
@@ -212,6 +212,25 @@ export default function PaymentProofs() {
       setSaving(false);
     }
   };
+
+  const deleteProof = async (p: Proof) => {
+    if (!confirm(`Excluir este comprovante${p.customer?.name ? ` de ${p.customer.name}` : ""}? Esta ação não pode ser desfeita.`)) return;
+    try {
+      const bucket = p.bucket ?? "payment-proofs";
+      const noFile = p.storage_path.startsWith("manual/no-file/");
+      if (!noFile) {
+        const { error: sErr } = await supabase.storage.from(bucket).remove([p.storage_path]);
+        if (sErr) console.warn("storage remove:", sErr.message);
+      }
+      const { error } = await supabase.from("payment_proofs").delete().eq("id", p.id);
+      if (error) throw error;
+      setProofs((prev) => prev.filter((x) => x.id !== p.id));
+      toast({ title: "Comprovante excluído" });
+    } catch (e: any) {
+      toast({ title: "Erro ao excluir", description: e?.message ?? "Tente novamente", variant: "destructive" });
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -434,12 +453,23 @@ export default function PaymentProofs() {
 
                 <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground">
                   <span>{new Date(p.created_at).toLocaleString("pt-BR")}</span>
-                  {url && (
-                    <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      Abrir <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {url && (
+                      <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                        Abrir <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => deleteProof(p)}
+                      className="inline-flex items-center gap-1 text-destructive hover:underline"
+                      aria-label="Excluir comprovante"
+                    >
+                      <Trash2 className="h-3 w-3" /> Excluir
+                    </button>
+                  </div>
                 </div>
+
               </GlassCard>
             );
           })}
