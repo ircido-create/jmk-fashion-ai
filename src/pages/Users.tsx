@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { Shield, User, Loader2, KeyRound } from "lucide-react";
+import { Shield, User, Loader2, KeyRound, UserPlus } from "lucide-react";
+import { Label } from "@/components/ui/label";
 
 interface UserRow {
   id: string; full_name: string | null; email: string | null; active: boolean;
