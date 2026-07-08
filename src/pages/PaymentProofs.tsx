@@ -218,15 +218,15 @@ export default function PaymentProofs() {
       <PageHeader
         title="Comprovantes"
         description="Comprovantes de pagamento recebidos das clientes — analisados automaticamente pela Mônica"
-      >
-        <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2"><Plus className="h-4 w-4" /> Novo comprovante</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Cadastrar comprovante manual</DialogTitle>
-            </DialogHeader>
+        actions={
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="gap-2"><Plus className="h-4 w-4" /> Novo comprovante</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Cadastrar comprovante manual</DialogTitle>
+              </DialogHeader>
 
             <div className="space-y-3">
               <div className="space-y-1.5">
