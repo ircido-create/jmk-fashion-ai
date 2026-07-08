@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json();
-    console.log("bubblewhats-webhook payload:", JSON.stringify(payload).slice(0, 400));
+    console.log("bubblewhats-webhook payload:", JSON.stringify(payload).slice(0, 2000));
 
     const messageKey = payload.messageContext?.key ?? {};
     const remoteJid = cleanJid(messageKey.remoteJid);
@@ -119,6 +119,17 @@ Deno.serve(async (req) => {
       ? ((remoteJid.includes("@g.us") ? remoteJid : "") || fromGroup || `grupo-${senderNumber || payload.id || Date.now()}`)
       : senderNumber;
     if (!conversationKey) return new Response("ok", { headers: corsHeaders });
+
+    // Nome do contato (salvo na agenda do celular conectado) e nome do grupo
+    const senderAlias = cleanJid(payload.fromAlias) || cleanJid(payload.pushName) || cleanJid(payload.messageContext?.pushName);
+    const groupName =
+      cleanJid(payload.groupName) ||
+      cleanJid(payload.groupSubject) ||
+      cleanJid(payload.chatName) ||
+      (fromGroup && !fromGroup.includes("@g.us") ? fromGroup : "");
+    const displayName = isGroup
+      ? (groupName || `Grupo ${senderAlias || senderNumber || ""}`.trim())
+      : (senderAlias || senderNumber);
 
     let text: string = (payload.body ?? "").toString();
     const caption: string = (payload.caption ?? "").toString();
@@ -157,8 +168,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Cria/pega conversa
-    const conv = await getOrCreateConversation(conversationKey);
+    // Cria/pega conversa (armazena/atualiza nome do grupo ou do contato)
+    const conv = await getOrCreateConversation(conversationKey, displayName || null);
     if (!conv) return new Response("ok", { headers: corsHeaders });
 
     // Grava inbound
@@ -166,7 +177,7 @@ Deno.serve(async (req) => {
       image: "[📷 Imagem]", audio: "[🎤 Áudio]",
       document: "[📎 Documento]", video: "[🎥 Vídeo]",
     };
-    const senderLabel = cleanJid(payload.fromAlias) || senderNumber || "Participante";
+    const senderLabel = senderAlias || senderNumber || "Participante";
     const inboundContentBase = text?.trim() || (mediaKind ? labelByKind[mediaKind] : "");
     const inboundContent = isGroup && inboundContentBase ? `${senderLabel}: ${inboundContentBase}` : inboundContentBase;
     await supabase.from("whatsapp_messages").insert({
