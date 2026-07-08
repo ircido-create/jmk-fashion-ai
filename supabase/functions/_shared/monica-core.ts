@@ -800,7 +800,7 @@ async function detectFocusedProduct(
 // ============================================================
 function isReligiousGreeting(text: string): boolean {
   const t = norm(text);
-  return /\b(paz\s*d?e?\s*deus|apddeus|ap\s*d\s*deus|amem|gloria\s*a?\s*deus|deus\s*te?\s*aben[çc]oe|deus\s*aben[çc]oe|paz\s*do\s*senhor|jesus\s*te?\s*ama)\b/.test(t);
+  return /\b(paz\s*d?e?\s*deus|apddeus|ap\s*d\s*deus|amem|gloria\s*a?\s*deus|deus\s*te?\s*aben[çc]oe|deus\s*aben[çc]oe|deus\s*(seja\s*)?louvado|louvado\s*seja(\s*deus)?|paz\s*do\s*senhor|paz\s*e\s*bem|paz\s*seja(\s*com\s*(voce|voces|todos))?|boa\s*paz|shalom|jesus\s*te?\s*ama|salve\s*maria|em\s*nome\s*de\s*jesus)\b/.test(t);
 }
 
 function isUnclearMessage(text: string): boolean {
