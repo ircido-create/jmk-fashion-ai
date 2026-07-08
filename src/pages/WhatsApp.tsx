@@ -307,6 +307,17 @@ export default function WhatsApp() {
           <Sparkles className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-display font-bold">Personalidade da IA</h2>
         </div>
+
+        <div className="flex items-center justify-between gap-4 p-3 rounded-lg border border-border/50 bg-muted/30 mb-4">
+          <div>
+            <div className="text-sm font-medium">Pausar Mônica (não responde ninguém)</div>
+            <p className="text-xs text-muted-foreground">
+              Quando ativo, a IA para de responder mensagens recebidas. As conversas continuam sendo salvas.
+            </p>
+          </div>
+          <Switch checked={!!ai.ai_paused} onCheckedChange={toggleAIPaused} />
+        </div>
+
         <div>
           <Label>Prompt do sistema</Label>
           <Textarea
@@ -320,6 +331,46 @@ export default function WhatsApp() {
             às dívidas do cliente quando reconhece o telefone.
           </p>
         </div>
+      </GlassCard>
+
+      <GlassCard>
+        <div className="flex items-center gap-3 mb-4">
+          <AlertTriangle className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-display font-bold">Contatos silenciados</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          A Mônica <strong>nunca</strong> vai responder mensagens destes números — mas elas continuam aparecendo nas conversas para você responder manualmente.
+        </p>
+
+        <div className="grid md:grid-cols-[1fr_1fr_auto] gap-2 mb-4">
+          <Input
+            placeholder="Telefone (ex: 5511999999999)"
+            value={newBlockedPhone}
+            onChange={(e) => setNewBlockedPhone(e.target.value)}
+          />
+          <Input
+            placeholder="Observação (opcional)"
+            value={newBlockedNote}
+            onChange={(e) => setNewBlockedNote(e.target.value)}
+          />
+          <Button onClick={addBlocked} variant="outline">Adicionar</Button>
+        </div>
+
+        {blocked.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhum contato silenciado.</p>
+        ) : (
+          <ul className="divide-y divide-border/50 rounded-lg border border-border/50">
+            {blocked.map((b) => (
+              <li key={b.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                <div>
+                  <div className="font-mono">{b.phone}</div>
+                  {b.note && <div className="text-xs text-muted-foreground">{b.note}</div>}
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => removeBlocked(b.id)}>Remover</Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </GlassCard>
 
       <div className="flex gap-3">
