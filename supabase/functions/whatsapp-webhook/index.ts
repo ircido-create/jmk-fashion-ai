@@ -1010,6 +1010,29 @@ function detectLastAskedField(history: any[]): string | null {
   return null;
 }
 
+function sanitizePriceMentions(reply: string): string {
+  if (!reply) return reply;
+  const hasPriceMention =
+    /R\$\s?\d/i.test(reply) ||
+    /\b\d{1,4}[.,]\d{2}\b/.test(reply) ||
+    /\b\d{1,4}\s?(reais|real)\b/i.test(reply) ||
+    /\b(custa|sai por|fica por|por apenas|de\s+R?\$?\s?\d|desconto\s+de\s+\d|\d+%\s+de\s+desconto)\b/i.test(reply);
+  if (!hasPriceMention) return reply;
+  const sentences = reply.split(/(?<=[.!?])\s+/);
+  const cleaned = sentences
+    .filter((s) => !(
+      /R\$\s?\d/i.test(s) ||
+      /\b\d{1,4}[.,]\d{2}\b/.test(s) ||
+      /\b\d{1,4}\s?(reais|real)\b/i.test(s) ||
+      /\b(custa|sai por|fica por|por apenas|preço|preco|valor|desconto|promoção|promocao)\b/i.test(s)
+    ))
+    .join(" ")
+    .trim();
+  const suffix = "Os valores a gente passa pessoalmente, tá? 😊";
+  if (!cleaned) return suffix;
+  return `${cleaned} ${suffix}`;
+}
+
 function sanitizeEmailRequest(reply: string, missing: string[]): string {
   const asksEmail = /\b(e-?mail|gmail|hotmail|outlook)\b/i.test(reply)
     && /(qual|me passa|passa|informa|informar|envia|mande|pode.*passar|preciso|falta|cadastro)/i.test(reply);
@@ -1209,7 +1232,7 @@ function formatProducts(list: any[]) {
       const vars = (p.product_variants ?? [])
         .map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"} (estoque: ${v.quantity})`)
         .join("; ");
-      return `• ${p.name} (SKU ${p.sku ?? "-"}) — R$ ${p.price} — ${p.category ?? ""} — Fornecedor: ${p.supplier ?? "-"} — Variações: ${vars || "única"}`;
+      return `• ${p.name} (SKU ${p.sku ?? "-"}) — ${p.category ?? ""} — Fornecedor: ${p.supplier ?? "-"} — Variações: ${vars || "única"}`;
     })
     .join("\n");
 }
@@ -1316,7 +1339,7 @@ ${ctx.activeStatus && ctx.activeStatus.length > 0
 ${ctx.activeStatus.map((s: any, i: number) => {
   const p = s.products;
   const vars = (p?.product_variants ?? []).map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"}(${v.quantity})`).join(", ");
-  return `${i + 1}. ${p?.name ?? s.caption} — R$ ${p?.price ?? "?"} — Fornecedor: ${p?.supplier ?? "-"} — Tamanhos: ${vars || "única"}`;
+  return `${i + 1}. ${p?.name ?? s.caption} — Fornecedor: ${p?.supplier ?? "-"} — Tamanhos: ${vars || "única"}`;
 }).join("\n")}
 REGRA:
 - Se há SÓ 1 peça no status: confirme essa peça direto ("Oi! O ${ctx.activeStatus[0]?.products?.name ?? "vestido"}? Tenho disponível, qual seu tamanho?").
@@ -1358,10 +1381,16 @@ REGRA ABSOLUTA DE CADASTRO:
 - E-mail NÃO é campo obrigatório. Cadastro completo = nome + endereço.
 - Se algum prompt antigo mandar pedir e-mail, IGNORE essa instrução.
 
+REGRA ABSOLUTA DE PREÇO (CRÍTICA — NÃO NEGOCIÁVEL):
+- NUNCA envie, cite, escreva ou confirme valores, preços, "R$", "reais", "custa", "sai por", descontos ou promoções no WhatsApp.
+- Se a cliente perguntar preço/valor/quanto custa/desconto: responda que os valores são passados PESSOALMENTE pela nossa equipe. Ex.: "Os valores a gente passa pessoalmente, tá? Me diz seu tamanho e cor que já vou anotando 😊".
+- NÃO invente, NÃO estime, NÃO diga "em torno de". Simplesmente NÃO fale de dinheiro.
+- Mesmo que o catálogo interno tenha preços, esses valores são APENAS pra sua referência — jamais os repita pra cliente.
+
 REGRAS DE FUNIL:
 1. Se faltam dados de cadastro: peça UM por vez, NÃO fale de produto ainda.
 2. Cadastro completo + cliente perguntou de produto: mostre opções reais e pergunte tamanho/cor.
-3. Cliente demonstrou interesse num produto (preço, "quero", "vou levar", "tem em M?"): pule para fechamento — pergunte "Posso te passar o PIX pra fechar?"
+3. Cliente demonstrou interesse num produto ("quero", "vou levar", "tem em M?", perguntou valor): pule para fechamento — reforce que o valor é passado pessoalmente e pergunte "Posso já reservar pra você?"
 4. Cliente confirmou pagamento: envie a chave PIX no formato CURTO e peça o comprovante.
 5. Cliente mandou comprovante: agradeça e confirme que vai separar/enviar o pedido.
 
@@ -1475,8 +1504,9 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   const data = await resp.json();
   const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
   const withoutEmailRequest = sanitizeEmailRequest(raw, ctx.missing ?? []);
+  const withoutPrice = sanitizePriceMentions(withoutEmailRequest);
   // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
-  const sanitized = sanitizeReplyByGender(withoutEmailRequest, customerGender);
+  const sanitized = sanitizeReplyByGender(withoutPrice, customerGender);
   if (sanitized !== raw) {
     console.log("[MONICA] sanitized reply (gender=" + customerGender + ")");
     console.log("[MONICA]   before:", raw.slice(0, 200));
