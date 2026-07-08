@@ -400,7 +400,8 @@ Deno.serve(async (req) => {
       .limit(20);
     const isFirstMessage = (history?.length ?? 0) <= 1;
 
-    const ctx = await buildContext(conversationKey, text, history ?? []);
+    const contactAliasForCtx = isGroup ? null : (senderAlias || null);
+    const ctx = await buildContext(conversationKey, text, history ?? [], contactAliasForCtx);
     // Se a cliente respondeu ao nosso status, injeta a miniatura para a IA "ver" a peça.
     const quotedImageForAI = quotedIsStatus && quotedThumbnailBytes
       ? { bytes: quotedThumbnailBytes, mime: "image/jpeg" }
