@@ -641,7 +641,8 @@ function missingFields(c: any | null): string[] {
   const looksLikePhone = /^\+?\d[\d\s().-]*$/.test(nameStr);
   if (!nameStr || nameStr === c?.phone || looksLikePhone) miss.push("nome");
   if (!c?.address || c.address.trim() === "") miss.push("endereço");
-  if (!c?.email || c.email.trim() === "") miss.push("email");
+  // E-mail não é mais solicitado às clientes
+
   return miss;
 }
 
