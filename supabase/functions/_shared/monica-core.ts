@@ -381,11 +381,14 @@ export async function findPhotoMatches(
 }
 
 export async function getOrCreateConversation(phone: string, displayName?: string | null) {
-  const { data: existing } = await supabase
+  // Busca a conversa mais antiga com esse telefone (pode existir mais de uma por corrida antiga)
+  const { data: existingRows } = await supabase
     .from("whatsapp_conversations")
     .select("*")
     .eq("customer_phone", phone)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const existing = existingRows?.[0];
   if (existing) {
     if (displayName && existing.display_name !== displayName) {
       await supabase
@@ -403,7 +406,7 @@ export async function getOrCreateConversation(phone: string, displayName?: strin
     .eq("phone", phone)
     .maybeSingle();
 
-  const { data: created } = await supabase
+  const { data: created, error: insertErr } = await supabase
     .from("whatsapp_conversations")
     .insert({
       customer_phone: phone,
@@ -412,6 +415,16 @@ export async function getOrCreateConversation(phone: string, displayName?: strin
     })
     .select()
     .single();
+  // Se falhou por corrida (índice único), busca a existente
+  if (insertErr) {
+    const { data: retry } = await supabase
+      .from("whatsapp_conversations")
+      .select("*")
+      .eq("customer_phone", phone)
+      .order("created_at", { ascending: true })
+      .limit(1);
+    return retry?.[0] ?? null;
+  }
   return created;
 }
 
