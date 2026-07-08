@@ -46,7 +46,7 @@ async function loadConfig() {
   return data;
 }
 
-async function loadAISettings() {
+export async function loadAISettings() {
   const { data } = await supabase.from("ai_settings").select("*").maybeSingle();
   return data;
 }
@@ -64,7 +64,7 @@ function inboundExt(mime: string): string {
 }
 
 // Salva mídia recebida no bucket whatsapp-media e retorna o storage path
-async function saveInboundMedia(
+export async function saveInboundMedia(
   bytes: Uint8Array,
   mimeType: string,
   fromPhone: string,
@@ -90,7 +90,7 @@ async function saveInboundMedia(
 }
 
 // Transcreve áudio usando Lovable AI (Gemini multimodal)
-async function transcribeAudio(base64: string, mimeType: string): Promise<string | null> {
+export async function transcribeAudio(base64: string, mimeType: string): Promise<string | null> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return null;
   try {
@@ -236,7 +236,7 @@ async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8
   return { bytes: new Uint8Array(buf), mime: "audio/mpeg" };
 }
 
-async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+export async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   if (!Deno.env.get("ELEVENLABS_API_KEY")) {
     console.error("ELEVENLABS_API_KEY ausente — não é possível sintetizar áudio");
     return null;
@@ -268,7 +268,7 @@ async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime:
 
 
 // Detecta se a cliente pediu foto/imagem
-function asksForPhoto(text: string): boolean {
+export function asksForPhoto(text: string): boolean {
   const t = norm(text);
   return /(foto|fotos|imagem|imagens|figura|me manda.*foto|tem foto|tem imagem|posso ver|me mostra|manda.*foto)/.test(t);
 }
@@ -304,7 +304,7 @@ function buildPhotoQueryContext(userMsg: string, history: any[]): string {
 }
 
 // Busca variações com foto que correspondam à mensagem (com fallback para o contexto da conversa)
-async function findPhotoMatches(
+export async function findPhotoMatches(
   userMsg: string,
   supplier: string | null,
   history: any[] = [],
@@ -380,7 +380,7 @@ async function findPhotoMatches(
   return out;
 }
 
-async function getOrCreateConversation(phone: string) {
+export async function getOrCreateConversation(phone: string) {
   const { data: existing } = await supabase
     .from("whatsapp_conversations")
     .select("*")
@@ -808,7 +808,7 @@ function sanitizeReplyByGender(text: string, gender: "F" | "M" | "U"): string {
   return out;
 }
 
-async function buildContext(phone: string, userMsg: string, history: any[]) {
+export async function buildContext(phone: string, userMsg: string, history: any[]) {
   const supplierMentioned = await detectSupplier(userMsg);
   const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
   const focusedResult = await detectFocusedProduct(history);
@@ -872,7 +872,7 @@ function formatProducts(list: any[]) {
     .join("\n");
 }
 
-async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean, pix: { key?: string | null; type?: string | null; recipient?: string | null }) {
+export async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean, pix: { key?: string | null; type?: string | null; recipient?: string | null }) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY ausente");
 
