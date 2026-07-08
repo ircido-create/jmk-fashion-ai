@@ -886,24 +886,38 @@ export async function buildContext(phone: string, userMsg: string, history: any[
   const { matched, all } = await searchProducts(userMsg, supplierMentioned, history);
   const focusedResult = await detectFocusedProduct(history);
 
-  const { data: rawCustomer } = await supabase
+  // Busca tolerante: tenta com/sem prefixo 55 (Brasil), pois há cadastros duplicados.
+  const digits = (phone ?? "").replace(/\D/g, "");
+  const variants = new Set<string>([phone, digits]);
+  if (digits.startsWith("55")) variants.add(digits.slice(2));
+  else if (digits.length >= 10) variants.add("55" + digits);
+  const variantsArr = Array.from(variants).filter(Boolean);
+
+  const { data: matchedCustomers } = await supabase
     .from("customers")
-    .select("id, name, nickname, address, email")
-    .eq("phone", phone)
-    .maybeSingle();
+    .select("id, name, nickname, address, email, phone")
+    .in("phone", variantsArr);
+
+  const allIds = (matchedCustomers ?? []).map((c: any) => c.id);
+  let rawCustomer: any = matchedCustomers?.[0] ?? null;
+
+  // Se houver duplicatas, prefere o cadastro que possui dívidas em aberto.
+  let debts: any[] = [];
+  if (allIds.length > 0) {
+    const { data } = await supabase
+      .from("accounts_receivable")
+      .select("description, amount, due_date, status, customer_id")
+      .in("customer_id", allIds)
+      .neq("status", "pago");
+    debts = (data ?? []).map((d: any) => ({ ...d, due_date: formatDateBR(d.due_date) }));
+    if (debts.length > 0) {
+      const preferredId = debts[0].customer_id;
+      rawCustomer = matchedCustomers?.find((c: any) => c.id === preferredId) ?? rawCustomer;
+    }
+  }
 
   const lastAsked = detectLastAskedField(history);
   const customer = await autoUpdateCustomer(phone, rawCustomer, userMsg, lastAsked);
-
-  let debts: any[] = [];
-  if (customer) {
-    const { data } = await supabase
-      .from("accounts_receivable")
-      .select("description, amount, due_date, status")
-      .eq("customer_id", customer.id)
-      .neq("status", "pago");
-    debts = (data ?? []).map((d: any) => ({ ...d, due_date: formatDateBR(d.due_date) }));
-  }
 
   const missing = missingFields(customer);
 
