@@ -34,6 +34,7 @@ const Users = lazy(() => import("./pages/Users"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Install = lazy(() => import("./pages/Install"));
 const Reports = lazy(() => import("./pages/Reports"));
+const PaymentProofs = lazy(() => import("./pages/PaymentProofs"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
