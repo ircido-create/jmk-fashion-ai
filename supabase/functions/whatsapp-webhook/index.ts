@@ -1498,8 +1498,9 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   const data = await resp.json();
   const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
   const withoutEmailRequest = sanitizeEmailRequest(raw, ctx.missing ?? []);
+  const withoutPrice = sanitizePriceMentions(withoutEmailRequest);
   // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
-  const sanitized = sanitizeReplyByGender(withoutEmailRequest, customerGender);
+  const sanitized = sanitizeReplyByGender(withoutPrice, customerGender);
   if (sanitized !== raw) {
     console.log("[MONICA] sanitized reply (gender=" + customerGender + ")");
     console.log("[MONICA]   before:", raw.slice(0, 200));
