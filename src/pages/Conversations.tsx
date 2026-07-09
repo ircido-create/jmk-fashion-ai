@@ -38,6 +38,7 @@ interface Conversation {
   display_name?: string | null;
   customer?: { name: string } | null;
   lastMessage?: string;
+  unread_count: number;
 }
 
 interface Message {
@@ -201,7 +202,7 @@ export default function Conversations() {
   const loadConversations = async () => {
     const { data } = await supabase
       .from("whatsapp_conversations")
-      .select("id, customer_phone, customer_id, last_message_at, display_name, customers(name)")
+      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, customers(name)")
       .order("last_message_at", { ascending: false });
 
     const list: Conversation[] = (data ?? []).map((c: any) => ({
@@ -211,6 +212,7 @@ export default function Conversations() {
       last_message_at: c.last_message_at,
       display_name: c.display_name,
       customer: c.customers,
+      unread_count: c.unread_count ?? 0,
     }));
 
     for (const c of list) {
@@ -223,6 +225,13 @@ export default function Conversations() {
         .maybeSingle();
       c.lastMessage = isMediaPlaceholder(m?.content) ? "" : m?.content;
     }
+    // Não lidas primeiro, depois por data de última mensagem
+    list.sort((a, b) => {
+      const au = (a.unread_count ?? 0) > 0 ? 1 : 0;
+      const bu = (b.unread_count ?? 0) > 0 ? 1 : 0;
+      if (au !== bu) return bu - au;
+      return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
+    });
     setConversations(list);
   };
 
