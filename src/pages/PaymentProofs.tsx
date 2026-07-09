@@ -126,12 +126,14 @@ export default function PaymentProofs() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    if (!term) return proofs;
-    return proofs.filter((p) =>
+    let list = proofs;
+    if (onlyValid) list = list.filter((p) => p.ai_is_payment_proof === true);
+    if (!term) return list;
+    return list.filter((p) =>
       [p.ai_payer_name, p.ai_bank, p.ai_transaction_id, p.ai_summary, p.customer?.name, p.customer?.phone, p.original_filename]
         .filter(Boolean).some((v) => String(v).toLowerCase().includes(term))
     );
-  }, [proofs, q]);
+  }, [proofs, q, onlyValid]);
 
   const filteredCustomers = useMemo(() => {
     const t = customerQuery.trim().toLowerCase();
