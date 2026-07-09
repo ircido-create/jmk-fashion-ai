@@ -11,6 +11,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload, Trash2 } from "lucide-react";
@@ -54,7 +55,15 @@ export default function PaymentProofs() {
   const [proofs, setProofs] = useState<Proof[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [onlyValid, setOnlyValid] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("payment_proofs_only_valid") === "1";
+  });
   const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    localStorage.setItem("payment_proofs_only_valid", onlyValid ? "1" : "0");
+  }, [onlyValid]);
 
   // ---- Manual create ----
   const [open, setOpen] = useState(false);
@@ -117,12 +126,14 @@ export default function PaymentProofs() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
-    if (!term) return proofs;
-    return proofs.filter((p) =>
+    let list = proofs;
+    if (onlyValid) list = list.filter((p) => p.ai_is_payment_proof === true);
+    if (!term) return list;
+    return list.filter((p) =>
       [p.ai_payer_name, p.ai_bank, p.ai_transaction_id, p.ai_summary, p.customer?.name, p.customer?.phone, p.original_filename]
         .filter(Boolean).some((v) => String(v).toLowerCase().includes(term))
     );
-  }, [proofs, q]);
+  }, [proofs, q, onlyValid]);
 
   const filteredCustomers = useMemo(() => {
     const t = customerQuery.trim().toLowerCase();
@@ -363,13 +374,29 @@ export default function PaymentProofs() {
 
 
       <GlassCard>
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por pagador, banco, valor, cliente…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Input
+              placeholder="Buscar por pagador, banco, valor, cliente…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2 shrink-0 sm:border-l sm:border-border/50 sm:pl-3">
+            <Switch
+              id="only-valid"
+              checked={onlyValid}
+              onCheckedChange={setOnlyValid}
+              aria-label="Mostrar apenas comprovantes válidos"
+            />
+            <Label htmlFor="only-valid" className="text-sm cursor-pointer whitespace-nowrap">
+              Somente comprovantes válidos
+            </Label>
+            {onlyValid && (
+              <Badge className="bg-emerald-600 hover:bg-emerald-600 ml-1">Ativo</Badge>
+            )}
+          </div>
         </div>
       </GlassCard>
 
@@ -378,7 +405,9 @@ export default function PaymentProofs() {
       ) : filtered.length === 0 ? (
         <GlassCard className="text-center py-12">
           <FileText className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">Nenhum comprovante encontrado.</p>
+          <p className="text-sm text-muted-foreground">
+            {onlyValid ? "Nenhum comprovante válido encontrado." : "Nenhum comprovante encontrado."}
+          </p>
         </GlassCard>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
