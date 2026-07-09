@@ -374,13 +374,29 @@ export default function PaymentProofs() {
 
 
       <GlassCard>
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por pagador, banco, valor, cliente…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Input
+              placeholder="Buscar por pagador, banco, valor, cliente…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2 shrink-0 sm:border-l sm:border-border/50 sm:pl-3">
+            <Switch
+              id="only-valid"
+              checked={onlyValid}
+              onCheckedChange={setOnlyValid}
+              aria-label="Mostrar apenas comprovantes válidos"
+            />
+            <Label htmlFor="only-valid" className="text-sm cursor-pointer whitespace-nowrap">
+              Somente comprovantes válidos
+            </Label>
+            {onlyValid && (
+              <Badge className="bg-emerald-600 hover:bg-emerald-600 ml-1">Ativo</Badge>
+            )}
+          </div>
         </div>
       </GlassCard>
 
@@ -389,7 +405,9 @@ export default function PaymentProofs() {
       ) : filtered.length === 0 ? (
         <GlassCard className="text-center py-12">
           <FileText className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">Nenhum comprovante encontrado.</p>
+          <p className="text-sm text-muted-foreground">
+            {onlyValid ? "Nenhum comprovante válido encontrado." : "Nenhum comprovante encontrado."}
+          </p>
         </GlassCard>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
