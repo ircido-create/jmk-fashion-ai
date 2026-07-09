@@ -146,8 +146,8 @@ Deno.serve(async (req) => {
           tools: [tool],
           tool_choice: { type: "function", function: { name: "extract_romaneio" } },
         }),
-        // Evita que uma única chamada consuma o timeout de 150s da edge function
-        signal: AbortSignal.timeout(120_000),
+        // Cada tentativa limitada para caber, com margem, no limite de 150s da edge function
+        signal: AbortSignal.timeout(65_000),
       });
       return resp;
     };
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
         aiResp = await callAI(a.model, a.reinforce);
       } catch (e) {
         const isTimeout = (e as Error).name === "TimeoutError";
-        lastErr = "fetch: " + (isTimeout ? "timeout 120s" : (e as Error).message);
+        lastErr = "fetch: " + (isTimeout ? "timeout 65s" : (e as Error).message);
         console.error("AI gateway fetch failed", lastErr);
         // Se estourou timeout, não tenta de novo (ficaria sem margem no limite de 150s)
         if (isTimeout) break;
