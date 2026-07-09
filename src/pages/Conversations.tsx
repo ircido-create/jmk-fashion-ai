@@ -644,35 +644,59 @@ export default function Conversations() {
                 Nenhuma conversa ainda
               </div>
             )}
-            {filtered.map((c) => (
+            {filtered.map((c) => {
+              const unread = c.unread_count ?? 0;
+              const isUnread = unread > 0;
+              return (
               <button
                 key={c.id}
-                onClick={() => setActive(c)}
+                onClick={() => openConversation(c)}
                 className={cn(
-                  "w-full text-left p-3 border-b border-white/20 hover:bg-white/40 transition",
-                  active?.id === c.id && "bg-gradient-primary/20"
+                  "w-full text-left p-3 border-b border-white/20 hover:bg-white/40 transition relative",
+                  active?.id === c.id && "bg-gradient-primary/20",
+                  isUnread && "bg-emerald-500/5"
                 )}
               >
                 <div className="flex items-start gap-3">
-                  <div className="h-11 w-11 rounded-full bg-gradient-primary flex items-center justify-center shrink-0">
+                  <div className="h-11 w-11 rounded-full bg-gradient-primary flex items-center justify-center shrink-0 relative">
                     <User className="h-5 w-5 text-primary-foreground" />
+                    {isUnread && (
+                      <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline gap-2">
-                      <span className="font-medium text-sm truncate">
+                      <span className={cn(
+                        "text-sm truncate",
+                        isUnread ? "font-bold text-foreground" : "font-medium"
+                      )}>
                         {displayName(c)}
                       </span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
+                      <span className={cn(
+                        "text-[10px] shrink-0",
+                        isUnread ? "text-emerald-600 font-semibold" : "text-muted-foreground"
+                      )}>
                         {formatDistanceToNow(new Date(c.last_message_at), { locale: ptBR, addSuffix: false })}
                       </span>
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {c.lastMessage ?? c.customer_phone}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className={cn(
+                        "text-xs truncate flex-1",
+                        isUnread ? "text-foreground font-medium" : "text-muted-foreground"
+                      )}>
+                        {c.lastMessage ?? c.customer_phone}
+                      </div>
+                      {isUnread && (
+                        <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
+                          {unread > 99 ? "99+" : unread}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
 
           {/* FAB nova conversa (mobile) */}
