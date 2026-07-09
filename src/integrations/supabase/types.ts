@@ -1081,6 +1081,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bump_conversation_unread: {
+        Args: { conv_id: string }
+        Returns: undefined
+      }
       decrement_variant_stock: {
         Args: { qty: number; variant_id: string }
         Returns: number
