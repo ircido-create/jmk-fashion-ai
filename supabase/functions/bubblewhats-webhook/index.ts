@@ -170,26 +170,31 @@ async function analyzeAndSavePaymentProof(opts: {
   let parsed: any = {};
   try { parsed = JSON.parse(raw); } catch { console.warn("AI proof raw not JSON:", raw.slice(0, 200)); return null; }
 
-  // Salva na tabela payment_proofs (usa o mesmo arquivo do bucket whatsapp-media)
-  const { error } = await supabase.from("payment_proofs").insert({
-    storage_path: opts.mediaPath,
-    bucket: "whatsapp-media",
-    original_filename: opts.mediaPath.split("/").pop() ?? null,
-    mime_type: opts.mime,
-    file_size: opts.fileSize,
-    source: "monica",
-    customer_id: opts.customerId,
-    whatsapp_message_id: opts.whatsappMessageId,
-    ai_is_payment_proof: !!parsed.is_payment_proof,
-    ai_amount: parsed.amount ?? null,
-    ai_payer_name: parsed.payer_name ?? null,
-    ai_bank: parsed.bank ?? null,
-    ai_transaction_id: parsed.transaction_id ?? null,
-    ai_summary: parsed.summary ?? null,
-    description: parsed.summary ?? null,
-  });
-  if (error) console.error("payment_proofs insert err:", error);
-  else console.log("Comprovante salvo:", parsed.is_payment_proof, parsed.amount);
+  // Só salvamos na tabela payment_proofs quando a IA identifica como comprovante válido.
+  // Fotos aleatórias, memes, prints etc. são ignorados para não poluir a lista.
+  if (!parsed.is_payment_proof) {
+    console.log("Ignorado (não é comprovante):", (parsed.summary ?? "").slice(0, 120));
+  } else {
+    const { error } = await supabase.from("payment_proofs").insert({
+      storage_path: opts.mediaPath,
+      bucket: "whatsapp-media",
+      original_filename: opts.mediaPath.split("/").pop() ?? null,
+      mime_type: opts.mime,
+      file_size: opts.fileSize,
+      source: "monica",
+      customer_id: opts.customerId,
+      whatsapp_message_id: opts.whatsappMessageId,
+      ai_is_payment_proof: true,
+      ai_amount: parsed.amount ?? null,
+      ai_payer_name: parsed.payer_name ?? null,
+      ai_bank: parsed.bank ?? null,
+      ai_transaction_id: parsed.transaction_id ?? null,
+      ai_summary: parsed.summary ?? null,
+      description: parsed.summary ?? null,
+    });
+    if (error) console.error("payment_proofs insert err:", error);
+    else console.log("Comprovante salvo:", parsed.amount);
+  }
 
   return {
     is_payment_proof: !!parsed.is_payment_proof,
