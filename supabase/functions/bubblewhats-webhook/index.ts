@@ -306,9 +306,7 @@ Deno.serve(async (req) => {
                 direction: "outbound",
                 content: msg,
               });
-              await supabase.from("whatsapp_conversations")
-                .update({ last_message_at: new Date().toISOString() })
-                .eq("id", conv.id);
+              await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
             }
             await supabase.from("status_reaction_sent").insert({ phone: senderNumber, target_key: targetKey });
           }
@@ -449,9 +447,7 @@ Deno.serve(async (req) => {
         direction: "outbound",
         content: fixedReply,
       });
-      await supabase.from("whatsapp_conversations")
-        .update({ last_message_at: new Date().toISOString() })
-        .eq("id", conv.id);
+      await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
       return new Response(JSON.stringify({ ok: true, paymentProof: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -553,9 +549,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    await supabase.from("whatsapp_conversations")
-      .update({ last_message_at: new Date().toISOString() })
-      .eq("id", conv.id);
+    await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
 
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
