@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_conversations ADD COLUMN IF NOT EXISTS unread_count integer NOT NULL DEFAULT 0;
