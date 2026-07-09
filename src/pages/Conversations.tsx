@@ -261,6 +261,15 @@ export default function Conversations() {
   useEffect(() => { loadConversations(); }, []);
   useEffect(() => { if (active) loadMessages(active.id); }, [active?.id]);
 
+  // Marca conversa como lida ao abrir
+  const openConversation = async (c: Conversation) => {
+    setActive(c);
+    if ((c.unread_count ?? 0) > 0) {
+      setConversations((prev) => prev.map((x) => x.id === c.id ? { ...x, unread_count: 0 } : x));
+      await supabase.from("whatsapp_conversations").update({ unread_count: 0 }).eq("id", c.id);
+    }
+  };
+
   // Realtime
   useEffect(() => {
     const ch = supabase
