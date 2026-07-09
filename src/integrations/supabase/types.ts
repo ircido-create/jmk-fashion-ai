@@ -993,6 +993,7 @@ export type Database = {
           display_name: string | null
           id: string
           last_message_at: string
+          unread_count: number
         }
         Insert: {
           created_at?: string
@@ -1001,6 +1002,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           last_message_at?: string
+          unread_count?: number
         }
         Update: {
           created_at?: string
@@ -1009,6 +1011,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           last_message_at?: string
+          unread_count?: number
         }
         Relationships: [
           {
@@ -1078,6 +1081,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bump_conversation_unread: {
+        Args: { conv_id: string }
+        Returns: undefined
+      }
       decrement_variant_stock: {
         Args: { qty: number; variant_id: string }
         Returns: number

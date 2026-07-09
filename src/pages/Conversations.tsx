@@ -38,6 +38,7 @@ interface Conversation {
   display_name?: string | null;
   customer?: { name: string } | null;
   lastMessage?: string;
+  unread_count: number;
 }
 
 interface Message {
@@ -201,7 +202,7 @@ export default function Conversations() {
   const loadConversations = async () => {
     const { data } = await supabase
       .from("whatsapp_conversations")
-      .select("id, customer_phone, customer_id, last_message_at, display_name, customers(name)")
+      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, customers(name)")
       .order("last_message_at", { ascending: false });
 
     const list: Conversation[] = (data ?? []).map((c: any) => ({
@@ -211,6 +212,7 @@ export default function Conversations() {
       last_message_at: c.last_message_at,
       display_name: c.display_name,
       customer: c.customers,
+      unread_count: c.unread_count ?? 0,
     }));
 
     for (const c of list) {
@@ -223,6 +225,13 @@ export default function Conversations() {
         .maybeSingle();
       c.lastMessage = isMediaPlaceholder(m?.content) ? "" : m?.content;
     }
+    // Não lidas primeiro, depois por data de última mensagem
+    list.sort((a, b) => {
+      const au = (a.unread_count ?? 0) > 0 ? 1 : 0;
+      const bu = (b.unread_count ?? 0) > 0 ? 1 : 0;
+      if (au !== bu) return bu - au;
+      return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
+    });
     setConversations(list);
   };
 
@@ -251,6 +260,15 @@ export default function Conversations() {
 
   useEffect(() => { loadConversations(); }, []);
   useEffect(() => { if (active) loadMessages(active.id); }, [active?.id]);
+
+  // Marca conversa como lida ao abrir
+  const openConversation = async (c: Conversation) => {
+    setActive(c);
+    if ((c.unread_count ?? 0) > 0) {
+      setConversations((prev) => prev.map((x) => x.id === c.id ? { ...x, unread_count: 0 } : x));
+      await supabase.from("whatsapp_conversations").update({ unread_count: 0 }).eq("id", c.id);
+    }
+  };
 
   // Realtime
   useEffect(() => {
@@ -626,35 +644,59 @@ export default function Conversations() {
                 Nenhuma conversa ainda
               </div>
             )}
-            {filtered.map((c) => (
+            {filtered.map((c) => {
+              const unread = c.unread_count ?? 0;
+              const isUnread = unread > 0;
+              return (
               <button
                 key={c.id}
-                onClick={() => setActive(c)}
+                onClick={() => openConversation(c)}
                 className={cn(
-                  "w-full text-left p-3 border-b border-white/20 hover:bg-white/40 transition",
-                  active?.id === c.id && "bg-gradient-primary/20"
+                  "w-full text-left p-3 border-b border-white/20 hover:bg-white/40 transition relative",
+                  active?.id === c.id && "bg-gradient-primary/20",
+                  isUnread && "bg-emerald-500/5"
                 )}
               >
                 <div className="flex items-start gap-3">
-                  <div className="h-11 w-11 rounded-full bg-gradient-primary flex items-center justify-center shrink-0">
+                  <div className="h-11 w-11 rounded-full bg-gradient-primary flex items-center justify-center shrink-0 relative">
                     <User className="h-5 w-5 text-primary-foreground" />
+                    {isUnread && (
+                      <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline gap-2">
-                      <span className="font-medium text-sm truncate">
+                      <span className={cn(
+                        "text-sm truncate",
+                        isUnread ? "font-bold text-foreground" : "font-medium"
+                      )}>
                         {displayName(c)}
                       </span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
+                      <span className={cn(
+                        "text-[10px] shrink-0",
+                        isUnread ? "text-emerald-600 font-semibold" : "text-muted-foreground"
+                      )}>
                         {formatDistanceToNow(new Date(c.last_message_at), { locale: ptBR, addSuffix: false })}
                       </span>
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {c.lastMessage ?? c.customer_phone}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className={cn(
+                        "text-xs truncate flex-1",
+                        isUnread ? "text-foreground font-medium" : "text-muted-foreground"
+                      )}>
+                        {c.lastMessage ?? c.customer_phone}
+                      </div>
+                      {isUnread && (
+                        <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
+                          {unread > 99 ? "99+" : unread}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
 
           {/* FAB nova conversa (mobile) */}
