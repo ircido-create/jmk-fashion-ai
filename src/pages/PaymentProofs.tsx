@@ -55,7 +55,15 @@ export default function PaymentProofs() {
   const [proofs, setProofs] = useState<Proof[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [onlyValid, setOnlyValid] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("payment_proofs_only_valid") === "1";
+  });
   const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    localStorage.setItem("payment_proofs_only_valid", onlyValid ? "1" : "0");
+  }, [onlyValid]);
 
   // ---- Manual create ----
   const [open, setOpen] = useState(false);
