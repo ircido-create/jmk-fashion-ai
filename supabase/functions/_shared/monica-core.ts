@@ -1284,7 +1284,8 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   // Se a cliente perguntou sobre dívida/valor em aberto, PODE informar valores (fonte: contas a receber).
   // Caso contrário, remove qualquer menção a preço (produtos).
   const isDebtInquiry = /\b(devo|devendo|d[íi]vida|d[ée]bito|em aberto|conta\s+em\s+aberto|pend[êe]ncia|quanto\s+(tá|ta|est[áa])|saldo|quanto\s+falta|parcela)\b/i.test(userMsg ?? "");
-  const withoutPrice = isDebtInquiry ? withoutEmailRequest : sanitizePriceMentions(withoutEmailRequest);
+  const withPaz = expandPazGreeting(withoutEmailRequest);
+  const withoutPrice = isDebtInquiry ? withPaz : sanitizePriceMentions(withPaz);
   // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
   const sanitized = sanitizeReplyByGender(withoutPrice, customerGender);
   if (sanitized !== raw) {
