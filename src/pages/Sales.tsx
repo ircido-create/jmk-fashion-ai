@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Loader2, Search, Printer } from "lucide-react";
+import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 import { printReceipt } from "@/lib/receipt";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -57,6 +58,7 @@ export default function Sales() {
 
   // Form state
   const [customerId, setCustomerId] = useState<string>("");
+  const { debt: customerDebt, loading: debtLoading } = useCustomerDebt(customerId || null);
   const [dueDate, setDueDate] = useState<string>(todayISO());
   const [notes, setNotes] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -238,6 +240,23 @@ export default function Sales() {
                     <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="glass-input mt-1" />
                   </div>
                 </div>
+
+                <div
+                  aria-live="polite"
+                  className="flex items-center justify-between rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur px-3 py-2"
+                >
+                  <span className="text-xs text-muted-foreground">Dívida Total</span>
+                  {!customerId ? (
+                    <span className="text-xs text-muted-foreground">Selecione um cliente</span>
+                  ) : debtLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (customerDebt ?? 0) > 0 ? (
+                    <span className="text-base font-bold text-destructive">{fmtBRL(customerDebt ?? 0)}</span>
+                  ) : (
+                    <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Nenhuma dívida pendente</span>
+                  )}
+                </div>
+
 
                 <div className="border-t border-white/30 pt-4">
                   <Label className="text-sm font-semibold">Adicionar produtos</Label>

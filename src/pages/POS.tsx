@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, Printer, ChevronRight, ChevronLeft, Receipt, UserPlus } from "lucide-react";
 import { toast } from "sonner";
+import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 
 type PaymentMethod = "dinheiro" | "debito" | "credito" | "pix" | "fiado";
 
@@ -73,6 +74,7 @@ export default function POS() {
   // Step 2
   const [customerId, setCustomerId] = useState<string>("");
   const [customerSearch, setCustomerSearch] = useState("");
+  const { debt: customerDebt, loading: debtLoading } = useCustomerDebt(customerId || null);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
@@ -911,8 +913,20 @@ export default function POS() {
                 <span className="text-primary">{fmtBRL(total)}</span>
               </div>
               {customerId && (
-                <div className="text-xs text-muted-foreground pt-1">
-                  Cliente: <span className="font-medium text-foreground">{customers.find((c) => c.id === customerId)?.name}</span>
+                <div className="text-xs text-muted-foreground pt-1 space-y-1">
+                  <div>
+                    Cliente: <span className="font-medium text-foreground">{customers.find((c) => c.id === customerId)?.name}</span>
+                  </div>
+                  <div className="flex items-center justify-between" aria-live="polite">
+                    <span>Dívida Total:</span>
+                    {debtLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (customerDebt ?? 0) > 0 ? (
+                      <span className="font-semibold text-destructive">{fmtBRL(customerDebt ?? 0)}</span>
+                    ) : (
+                      <span className="font-medium text-emerald-600 dark:text-emerald-400">Nenhuma dívida</span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
