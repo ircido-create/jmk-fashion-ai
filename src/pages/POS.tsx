@@ -1263,7 +1263,17 @@ export default function POS() {
                 <span>{fmtBRL(receipt.subtotal)}</span>
               </div>
               <div className="sep" />
-              <div>Pagamento: {PAYMENT_LABELS[receipt.payment]}</div>
+              <div>Pagamento: {PAYMENT_LABELS[receipt.payment] ?? receipt.payment}</div>
+              {receipt.splits && receipt.splits.length > 0 && (
+                <>
+                  {receipt.splits.map((s, i) => (
+                    <div key={i} className="row">
+                      <span>· {PAYMENT_LABELS[s.method]}:</span>
+                      <span>{fmtBRL(s.amount)}</span>
+                    </div>
+                  ))}
+                </>
+              )}
               {receipt.payment === "credito" && receipt.installments > 1 && (
                 <div>
                   {receipt.installments}x de {fmtBRL(receipt.subtotal / receipt.installments)}
