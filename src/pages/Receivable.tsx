@@ -20,11 +20,11 @@ import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
 import { reconcile, reconcileManualPayment, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
 
-interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; phone: string | null; }
 interface Receivable {
   id: string; customer_id: string | null; description: string | null;
   amount: number; due_date: string; status: string; paid_at: string | null;
-  customers?: { name: string } | null;
+  customers?: { name: string; nickname: string | null; tax_id: string | null; phone: string | null } | null;
   proofs?: { proof_id: string; original_filename: string | null; storage_path: string }[];
 }
 
@@ -83,7 +83,7 @@ export default function Receivable() {
     try {
       const data = await fetchAll<any>((sb) =>
         sb.from("accounts_receivable")
-          .select("*, customers(name)")
+          .select("*, customers(name, nickname, tax_id, phone)")
           .order("due_date", { ascending: true })
       );
       const today = new Date().toISOString().slice(0, 10);
@@ -114,7 +114,7 @@ export default function Receivable() {
       setList(items);
 
       const cs = await fetchAll<Customer>((sb) =>
-        sb.from("customers").select("id, name, nickname, tax_id").order("name")
+        sb.from("customers").select("id, name, nickname, tax_id, phone").order("name")
       );
       setCustomers(cs);
     } catch (e: any) {
@@ -294,10 +294,19 @@ export default function Receivable() {
     })();
     const q = debouncedSearch.trim().toLowerCase();
     if (!q) return base;
-    return base.filter((r) =>
-      (r.customers?.name ?? "").toLowerCase().includes(q) ||
-      (r.description ?? "").toLowerCase().includes(q)
-    );
+    const qDigits = digitsOnly(q);
+    return base.filter((r) => {
+      const c = r.customers;
+      return (
+        (c?.name ?? "").toLowerCase().includes(q) ||
+        (c?.nickname ?? "").toLowerCase().includes(q) ||
+        (r.description ?? "").toLowerCase().includes(q) ||
+        (qDigits.length > 0 && (
+          digitsOnly(c?.phone ?? "").includes(qDigits) ||
+          digitsOnly(c?.tax_id ?? "").includes(qDigits)
+        ))
+      );
+    });
   })();
   const total = filtered.reduce((s, r) => s + Number(r.amount), 0);
 
@@ -916,7 +925,7 @@ export default function Receivable() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome do cliente ou descrição..."
+            placeholder="Buscar por nome, apelido, telefone, CPF/CNPJ ou descrição..."
             className="glass-input"
           />
         </div>
