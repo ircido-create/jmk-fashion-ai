@@ -996,14 +996,26 @@ ${ctx.focusedSource === "media" ? `\n📸 FONTE: foto enviada por você. Legenda
     ? `Chave PIX configurada: ${pix.key}
 Tipo: ${pix.type ?? "não informado"}${pix.recipient ? `\nRecebedor: ${pix.recipient}` : ""}
 
-→ Quando o cliente confirmar interesse em fechar/pagar, envie a chave PIX de forma CURTA E DIRETA, SEM enrolação. NÃO repita a chave 2x, NÃO escreva parágrafo longo, NÃO peça pra "verificar dados", NÃO ofereça outras formas de pagamento.
+FORMAS DE PAGAMENTO ACEITAS:
+1. PIX (preferencial — mais rápido)
+2. Link de pagamento (cartão de crédito/débito) — enviado por aqui pelo WhatsApp; a equipe gera e manda o link.
+3. Cartão de crédito, débito ou dinheiro — SOMENTE pessoalmente (na entrega ou retirada).
 
-FORMATO OBRIGATÓRIO da mensagem com PIX:
+→ Quando o cliente confirmar interesse em fechar/pagar:
+  a) Se ele NÃO especificou a forma: pergunte CURTO — "Prefere PIX, link de cartão ou pessoalmente (cartão/dinheiro)?"
+  b) Se ele escolheu PIX (ou não especificou nada e você já ofereceu): envie a chave no formato abaixo.
+  c) Se ele escolheu LINK DE CARTÃO: responda algo como "Perfeito! Já te mando o link de pagamento aqui em instantes 💳" — NÃO invente link, a equipe gera manualmente.
+  d) Se ele escolheu PESSOALMENTE (cartão/dinheiro): responda "Combinado! Aceitamos cartão de crédito, débito e dinheiro na hora da entrega/retirada 👍" e pergunte se prefere retirar ou receber.
+
+REGRAS:
+- NÃO repita a chave PIX 2x, NÃO escreva parágrafo longo, NÃO peça pra "verificar dados".
+- NÃO invente chaves PIX, contas bancárias, links de pagamento ou maquininhas diferentes das listadas.
+- NUNCA cite valores de produto (siga a regra geral — só valores de DÍVIDAS).
+
+FORMATO OBRIGATÓRIO da mensagem com PIX (quando for PIX):
 "PIX (${pix.type ?? "chave"}): ${pix.key}${pix.recipient ? `\nRecebedor: ${pix.recipient}` : ""}
-Me manda o comprovante quando pagar ${pixSign}"
-
-→ NÃO invente outras chaves PIX, contas bancárias ou formas de pagamento.`
-    : `→ Nenhuma chave PIX configurada. Se o cliente perguntar sobre pagamento, diga que vai verificar com a equipe e retorna em breve.`;
+Me manda o comprovante quando pagar ${pixSign}"`
+    : `→ Nenhuma chave PIX configurada. Formas disponíveis: link de cartão pelo WhatsApp (a equipe gera) ou pessoalmente (cartão de crédito, débito e dinheiro na entrega/retirada). Se pedir PIX, diga que vai verificar com a equipe e retorna em breve.`;
 
   const genderBlock =
     customerGender === "F"
