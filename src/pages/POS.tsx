@@ -373,6 +373,21 @@ export default function POS() {
 
     setSaving(true);
     try {
+      // Revalida o cliente no banco — evita FK violation se o cadastro foi removido/mesclado
+      const { data: custCheck, error: custErr } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("id", customerId)
+        .maybeSingle();
+      if (custErr) throw custErr;
+      if (!custCheck) {
+        toast.error("Cliente não existe mais no cadastro. Selecione outro.");
+        setCustomers((prev) => prev.filter((c) => c.id !== customerId));
+        setCustomerId("");
+        setSaving(false);
+        return;
+      }
+
       let firstReceivableId: string | null = null;
 
       // 1) Contas a receber (uma por parcela)
