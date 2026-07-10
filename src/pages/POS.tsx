@@ -44,12 +44,13 @@ const addMonths = (date: Date, n: number) => {
   return d;
 };
 
-const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: "Dinheiro",
   debito: "Cartão de Débito",
   credito: "Cartão de Crédito",
   pix: "PIX",
   fiado: "Carteira",
+  misto: "Pagamento Misto",
 };
 
 type Step = 1 | 2 | 3;
