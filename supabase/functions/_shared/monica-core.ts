@@ -715,6 +715,17 @@ function detectLastAskedField(history: any[]): string | null {
 
 // Remove qualquer menção a valores/preços da resposta da Mônica.
 // Valores devem ser passados pessoalmente pela equipe, nunca no WhatsApp.
+function expandPazGreeting(reply: string): string {
+  // Substitui saudações abreviadas "Paz!" / "Paz," / "Paz " no início ou isoladas por "A Paz de Deus"
+  // Evita alterar quando já vier "A Paz de Deus", "Paz de Deus", "Paz do Senhor", "Paz e Bem".
+  let out = reply;
+  // Início da resposta: "Paz" seguido de pontuação/espaço
+  out = out.replace(/^\s*Paz(?!\s*(de\s+Deus|do\s+Senhor|e\s+bem))\b([!,.\s])/i, "A Paz de Deus$2");
+  // Após quebra de linha
+  out = out.replace(/(\n)\s*Paz(?!\s*(de\s+Deus|do\s+Senhor|e\s+bem))\b([!,.\s])/gi, "$1A Paz de Deus$3");
+  return out;
+}
+
 function sanitizePriceMentions(reply: string): string {
   if (!reply) return reply;
   const hasPriceMention =
