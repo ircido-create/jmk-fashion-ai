@@ -19,7 +19,7 @@ interface Product {
   id: string; name: string; sku: string | null; price: number; cost: number; image_url: string | null;
   product_variants: Variant[];
 }
-interface Customer { id: string; name: string; phone: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; phone: string | null; }
 
 interface CartItem {
   productId: string;
