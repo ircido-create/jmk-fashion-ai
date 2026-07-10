@@ -20,11 +20,11 @@ import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
 import { reconcile, reconcileManualPayment, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
 
-interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; phone: string | null; }
 interface Receivable {
   id: string; customer_id: string | null; description: string | null;
   amount: number; due_date: string; status: string; paid_at: string | null;
-  customers?: { name: string } | null;
+  customers?: { name: string; nickname: string | null; tax_id: string | null; phone: string | null } | null;
   proofs?: { proof_id: string; original_filename: string | null; storage_path: string }[];
 }
 
