@@ -1062,6 +1062,9 @@ Me manda o comprovante quando pagar ${pixSign}"`
     ? `\n❓ ATENÇÃO: a mensagem do cliente é muito curta ou ambígua. PERGUNTE o que ele precisa ao invés de chutar resposta.`
     : "";
 
+  const pazRule = `\n📖 SAUDAÇÃO "PAZ": nunca use a palavra "Paz" sozinha (ex.: "Paz!", "Paz, fulana"). Se for cumprimentar com essa saudação, use SEMPRE a forma completa "A Paz de Deus" (ex.: "A Paz de Deus, irmã!").`;
+
+
   const contextText = `
 === ESTADO DA CONVERSA ===
 PRIMEIRA_MENSAGEM=${isFirstMessage ? "true" : "false"}
