@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 
 type PaymentMethod = "dinheiro" | "debito" | "credito" | "pix" | "fiado";
+interface SplitEntry { method: PaymentMethod; amount: number; }
 
 interface Variant { id: string; size: string | null; color: string | null; quantity: number; sku: string | null; }
 interface Product {
