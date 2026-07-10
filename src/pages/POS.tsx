@@ -109,10 +109,11 @@ export default function POS() {
     customer: Customer | null;
     items: CartItem[];
     subtotal: number;
-    payment: PaymentMethod;
+    payment: PaymentMethod | "misto";
     installments: number;
     cashReceived: number;
     change: number;
+    splits?: SplitEntry[];
   } | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
