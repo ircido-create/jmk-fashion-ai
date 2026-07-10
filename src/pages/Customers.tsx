@@ -294,6 +294,42 @@ export default function Customers() {
           </GlassCard>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!dupExisting} onOpenChange={(o) => { if (!o) { setDupExisting(null); setDupPayload(null); } }}>
+        <DialogContent className="glass-card border-white/40">
+          <DialogHeader><DialogTitle>CPF/CNPJ já cadastrado</DialogTitle></DialogHeader>
+          {dupExisting && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Já existe um cliente com o CPF/CNPJ <b>{formatTaxId(dupExisting.tax_id)}</b>:
+              </p>
+              <div className="p-3 rounded-xl bg-white/40 dark:bg-white/5 border border-border/40">
+                <div className="font-medium">{dupExisting.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {dupExisting.phone ?? "—"} {dupExisting.email ? `• ${dupExisting.email}` : ""}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {editing
+                  ? "Mesclar irá mover vendas e contas a receber deste cadastro para o cliente existente e apagar o duplicado."
+                  : "Você pode mesclar os dados digitados no cadastro existente ou abri-lo para edição."}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 justify-end pt-2">
+                <Button variant="ghost" onClick={() => { setDupExisting(null); setDupPayload(null); }} className="rounded-xl">
+                  Cancelar
+                </Button>
+                <Button variant="secondary" onClick={openExistingForEdit} className="rounded-xl">
+                  Abrir existente
+                </Button>
+                <Button onClick={mergeIntoExisting} disabled={dupBusy} className="bg-gradient-primary text-primary-foreground rounded-xl">
+                  {dupBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                  Mesclar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
