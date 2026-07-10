@@ -93,6 +93,12 @@ export default function POS() {
     return d.toISOString().slice(0, 10);
   });
 
+  // Pagamento misto (várias formas na mesma venda)
+  const [splitMode, setSplitMode] = useState<boolean>(false);
+  const [splits, setSplits] = useState<SplitEntry[]>([]);
+  const [splitMethod, setSplitMethod] = useState<PaymentMethod>("pix");
+  const [splitAmount, setSplitAmount] = useState<string>("");
+
   // Saving + receipt
   const [saving, setSaving] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
