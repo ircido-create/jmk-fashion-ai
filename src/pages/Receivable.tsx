@@ -294,10 +294,19 @@ export default function Receivable() {
     })();
     const q = debouncedSearch.trim().toLowerCase();
     if (!q) return base;
-    return base.filter((r) =>
-      (r.customers?.name ?? "").toLowerCase().includes(q) ||
-      (r.description ?? "").toLowerCase().includes(q)
-    );
+    const qDigits = digitsOnly(q);
+    return base.filter((r) => {
+      const c = r.customers;
+      return (
+        (c?.name ?? "").toLowerCase().includes(q) ||
+        (c?.nickname ?? "").toLowerCase().includes(q) ||
+        (r.description ?? "").toLowerCase().includes(q) ||
+        (qDigits.length > 0 && (
+          digitsOnly(c?.phone ?? "").includes(qDigits) ||
+          digitsOnly(c?.tax_id ?? "").includes(qDigits)
+        ))
+      );
+    });
   })();
   const total = filtered.reduce((s, r) => s + Number(r.amount), 0);
 
