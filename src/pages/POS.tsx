@@ -145,7 +145,7 @@ export default function POS() {
     const q = customerSearch.trim().toLowerCase();
     if (!q) return customers.slice(0, 50);
     return customers
-      .filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? "").toLowerCase().includes(q))
+      .filter((c) => c.name.toLowerCase().includes(q) || (c.nickname ?? "").toLowerCase().includes(q) || (c.phone ?? "").toLowerCase().includes(q))
       .slice(0, 50);
   }, [customers, customerSearch]);
 
