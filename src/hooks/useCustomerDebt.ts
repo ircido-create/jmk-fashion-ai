@@ -22,7 +22,7 @@ export function useCustomerDebt(customerId: string | null | undefined) {
         .from("accounts_receivable")
         .select("amount, status, receivable_payments(amount)")
         .eq("customer_id", customerId)
-        .in("status", ["pendente", "parcial", "atrasado"]);
+        .neq("status", "pago");
       if (cancelled) return;
       if (error) {
         setDebt(0);
