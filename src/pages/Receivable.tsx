@@ -925,7 +925,7 @@ export default function Receivable() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome do cliente ou descrição..."
+            placeholder="Buscar por nome, apelido, telefone, CPF/CNPJ ou descrição..."
             className="glass-input"
           />
         </div>
