@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 
 type PaymentMethod = "dinheiro" | "debito" | "credito" | "pix" | "fiado";
+interface SplitEntry { method: PaymentMethod; amount: number; }
 
 interface Variant { id: string; size: string | null; color: string | null; quantity: number; sku: string | null; }
 interface Product {
@@ -43,12 +44,13 @@ const addMonths = (date: Date, n: number) => {
   return d;
 };
 
-const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: "Dinheiro",
   debito: "Cartão de Débito",
   credito: "Cartão de Crédito",
   pix: "PIX",
   fiado: "Carteira",
+  misto: "Pagamento Misto",
 };
 
 type Step = 1 | 2 | 3;
@@ -92,6 +94,12 @@ export default function POS() {
     return d.toISOString().slice(0, 10);
   });
 
+  // Pagamento misto (várias formas na mesma venda)
+  const [splitMode, setSplitMode] = useState<boolean>(false);
+  const [splits, setSplits] = useState<SplitEntry[]>([]);
+  const [splitMethod, setSplitMethod] = useState<PaymentMethod>("pix");
+  const [splitAmount, setSplitAmount] = useState<string>("");
+
   // Saving + receipt
   const [saving, setSaving] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -101,10 +109,11 @@ export default function POS() {
     customer: Customer | null;
     items: CartItem[];
     subtotal: number;
-    payment: PaymentMethod;
+    payment: PaymentMethod | "misto";
     installments: number;
     cashReceived: number;
     change: number;
+    splits?: SplitEntry[];
   } | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -287,9 +296,28 @@ export default function POS() {
     setGenerateReceivables(true);
     setCashReceived("");
     setNotes("");
+    setSplitMode(false);
+    setSplits([]);
+    setSplitMethod("pix");
+    setSplitAmount("");
     const d = new Date();
     d.setDate(d.getDate() + 30);
     setFirstDueDate(d.toISOString().slice(0, 10));
+  };
+
+  const splitsTotal = useMemo(() => splits.reduce((s, x) => s + (Number(x.amount) || 0), 0), [splits]);
+  const splitsRemaining = Math.round((total - splitsTotal) * 100) / 100;
+
+  const addSplit = () => {
+    const amt = Number(String(splitAmount).replace(",", "."));
+    if (!Number.isFinite(amt) || amt <= 0) { toast.error("Valor inválido"); return; }
+    if (amt - splitsRemaining > 0.009) { toast.error(`Valor excede o restante (${fmtBRL(splitsRemaining)})`); return; }
+    setSplits((s) => [...s, { method: splitMethod, amount: Math.round(amt * 100) / 100 }]);
+    setSplitAmount("");
+  };
+  const fillRemainingSplit = () => {
+    if (splitsRemaining <= 0) return;
+    setSplitAmount(splitsRemaining.toFixed(2));
   };
 
   // ---------- Step navigation ----------
@@ -322,11 +350,26 @@ export default function POS() {
       return;
     }
 
-    const isCredit = paymentMethod === "credito";
-    const isFiado = paymentMethod === "fiado";
+    // Validação do pagamento misto
+    if (splitMode) {
+      if (splits.length < 2) { toast.error("Adicione pelo menos 2 formas de pagamento"); return; }
+      if (Math.abs(splitsTotal - total) > 0.01) {
+        toast.error(`Soma das formas (${fmtBRL(splitsTotal)}) difere do total (${fmtBRL(total)})`);
+        return;
+      }
+    }
+
+    const effectiveMethod: PaymentMethod | "misto" = splitMode ? "misto" : paymentMethod;
+    const isCredit = !splitMode && paymentMethod === "credito";
+    const isFiado = !splitMode && paymentMethod === "fiado";
     const numInstallments =
       isCredit || isFiado ? Math.max(1, installments) : 1;
     const willCreateReceivables = isFiado || (isCredit && generateReceivables);
+
+    // Portion na carteira (fiado) no modo misto — gera 1 conta a receber no vencimento escolhido
+    const splitFiadoAmount = splitMode
+      ? splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
+      : 0;
 
     setSaving(true);
     try {
@@ -364,7 +407,26 @@ export default function POS() {
           .select();
         if (recErr) throw recErr;
         firstReceivableId = recs?.[0]?.id ?? null;
+      } else if (splitFiadoAmount > 0) {
+        const baseDate = new Date(firstDueDate + "T00:00:00");
+        const { data: recs, error: recErr } = await supabase
+          .from("accounts_receivable")
+          .insert([{
+            customer_id: customerId,
+            amount: Math.round(splitFiadoAmount * 100) / 100,
+            due_date: baseDate.toISOString().slice(0, 10),
+            description: `Pagamento misto — parte na carteira — ${cart.length} item(ns)`,
+            status: "pendente",
+          }])
+          .select();
+        if (recErr) throw recErr;
+        firstReceivableId = recs?.[0]?.id ?? null;
       }
+
+      const splitNote = splitMode
+        ? "Misto: " + splits.map((s) => `${PAYMENT_LABELS[s.method]} ${fmtBRL(s.amount)}`).join(" + ")
+        : "";
+      const finalNotes = [notes, splitNote].filter(Boolean).join(" | ") || null;
 
       // 2) Cria venda
       const { data: sale, error: saleErr } = await supabase
@@ -373,9 +435,9 @@ export default function POS() {
           customer_id: customerId,
           receivable_id: firstReceivableId,
           total,
-          notes: notes || null,
+          notes: finalNotes,
           sale_date: new Date().toISOString(),
-          payment_method: paymentMethod,
+          payment_method: effectiveMethod,
           installments: numInstallments,
         })
         .select()
@@ -440,10 +502,11 @@ export default function POS() {
         customer: cust,
         items: [...cart],
         subtotal: total,
-        payment: paymentMethod,
+        payment: effectiveMethod,
         installments: numInstallments,
         cashReceived: cashNum,
         change,
+        splits: splitMode ? [...splits] : undefined,
       });
       setReceiptOpen(true);
       toast.success("Venda registrada");
@@ -655,7 +718,105 @@ export default function POS() {
 
           {step === 3 && (
             <GlassCard className="p-4">
-              <Label className="mb-3 block">Forma de pagamento</Label>
+              <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <Label>Forma de pagamento</Label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={splitMode}
+                    onChange={(e) => { setSplitMode(e.target.checked); setSplits([]); setSplitAmount(""); }}
+                    className="h-4 w-4"
+                  />
+                  Pagamento misto (várias formas)
+                </label>
+              </div>
+
+              {splitMode && (
+                <div className="space-y-3 mb-4">
+                  <div className="grid grid-cols-[1fr_130px_auto] gap-2">
+                    <Select value={splitMethod} onValueChange={(v) => setSplitMethod(v as PaymentMethod)}>
+                      <SelectTrigger className="glass-input"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                        <SelectItem value="pix">PIX</SelectItem>
+                        <SelectItem value="debito">Cartão de Débito</SelectItem>
+                        <SelectItem value="credito">Cartão de Crédito</SelectItem>
+                        <SelectItem value="fiado">Carteira (Fiado)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="Valor"
+                        value={splitAmount}
+                        onChange={(e) => setSplitAmount(e.target.value)}
+                        className="glass-input pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={fillRemainingSplit}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20"
+                        aria-label="Preencher restante"
+                      >
+                        MAX
+                      </button>
+                    </div>
+                    <Button type="button" onClick={addSplit} disabled={splitsRemaining <= 0.009}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="space-y-1">
+                    {splits.map((s, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-white/40 dark:bg-white/5 px-3 py-1.5">
+                        <span className="text-sm">{PAYMENT_LABELS[s.method]}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{fmtBRL(s.amount)}</span>
+                          <button
+                            onClick={() => setSplits((arr) => arr.filter((_, idx) => idx !== i))}
+                            className="text-destructive hover:opacity-70"
+                            aria-label="Remover"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {splits.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">
+                        Adicione as formas de pagamento até somar {fmtBRL(total)}.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between text-sm border-t border-white/30 pt-2">
+                    <span className="text-muted-foreground">Recebido / Restante:</span>
+                    <span>
+                      <span className="font-semibold">{fmtBRL(splitsTotal)}</span>
+                      {" / "}
+                      <span className={splitsRemaining > 0.009 ? "font-semibold text-destructive" : "font-semibold text-emerald-600 dark:text-emerald-400"}>
+                        {fmtBRL(Math.max(0, splitsRemaining))}
+                      </span>
+                    </span>
+                  </div>
+
+                  {splits.some((s) => s.method === "fiado") && (
+                    <div>
+                      <Label>Vencimento da parte na carteira</Label>
+                      <Input
+                        type="date"
+                        value={firstDueDate}
+                        onChange={(e) => setFirstDueDate(e.target.value)}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!splitMode && (
               <Tabs
                 value={paymentMethod}
                 onValueChange={(v) => {
@@ -771,6 +932,7 @@ export default function POS() {
                   </p>
                 </TabsContent>
               </Tabs>
+              )}
 
               <div className="mt-4">
                 <Label>Observações (opcional)</Label>
@@ -1101,7 +1263,17 @@ export default function POS() {
                 <span>{fmtBRL(receipt.subtotal)}</span>
               </div>
               <div className="sep" />
-              <div>Pagamento: {PAYMENT_LABELS[receipt.payment]}</div>
+              <div>Pagamento: {PAYMENT_LABELS[receipt.payment] ?? receipt.payment}</div>
+              {receipt.splits && receipt.splits.length > 0 && (
+                <>
+                  {receipt.splits.map((s, i) => (
+                    <div key={i} className="row">
+                      <span>· {PAYMENT_LABELS[s.method]}:</span>
+                      <span>{fmtBRL(s.amount)}</span>
+                    </div>
+                  ))}
+                </>
+              )}
               {receipt.payment === "credito" && receipt.installments > 1 && (
                 <div>
                   {receipt.installments}x de {fmtBRL(receipt.subtotal / receipt.installments)}
