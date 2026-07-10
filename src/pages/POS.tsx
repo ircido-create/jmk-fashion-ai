@@ -30,6 +30,7 @@ interface CartItem {
   unitPrice: number;
   unitCost: number;
   maxQty: number;
+  isAvulso?: boolean;
 }
 
 const fmtBRL = (n: number) =>
