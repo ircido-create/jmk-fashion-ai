@@ -932,6 +932,7 @@ export default function POS() {
                   </p>
                 </TabsContent>
               </Tabs>
+              )}
 
               <div className="mt-4">
                 <Label>Observações (opcional)</Label>
