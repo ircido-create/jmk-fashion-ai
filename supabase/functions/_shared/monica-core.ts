@@ -715,6 +715,17 @@ function detectLastAskedField(history: any[]): string | null {
 
 // Remove qualquer menção a valores/preços da resposta da Mônica.
 // Valores devem ser passados pessoalmente pela equipe, nunca no WhatsApp.
+function expandPazGreeting(reply: string): string {
+  // Substitui saudações abreviadas "Paz!" / "Paz," / "Paz " no início ou isoladas por "A Paz de Deus"
+  // Evita alterar quando já vier "A Paz de Deus", "Paz de Deus", "Paz do Senhor", "Paz e Bem".
+  let out = reply;
+  // Início da resposta: "Paz" seguido de pontuação/espaço
+  out = out.replace(/^\s*Paz(?!\s*(de\s+Deus|do\s+Senhor|e\s+bem))\b([!,.\s])/i, "A Paz de Deus$2");
+  // Após quebra de linha
+  out = out.replace(/(\n)\s*Paz(?!\s*(de\s+Deus|do\s+Senhor|e\s+bem))\b([!,.\s])/gi, "$1A Paz de Deus$3");
+  return out;
+}
+
 function sanitizePriceMentions(reply: string): string {
   if (!reply) return reply;
   const hasPriceMention =
@@ -1051,6 +1062,9 @@ Me manda o comprovante quando pagar ${pixSign}"`
     ? `\n❓ ATENÇÃO: a mensagem do cliente é muito curta ou ambígua. PERGUNTE o que ele precisa ao invés de chutar resposta.`
     : "";
 
+  const pazRule = `\n📖 SAUDAÇÃO "PAZ": nunca use a palavra "Paz" sozinha (ex.: "Paz!", "Paz, fulana"). Se for cumprimentar com essa saudação, use SEMPRE a forma completa "A Paz de Deus" (ex.: "A Paz de Deus, irmã!").`;
+
+
   const contextText = `
 === ESTADO DA CONVERSA ===
 PRIMEIRA_MENSAGEM=${isFirstMessage ? "true" : "false"}
@@ -1063,7 +1077,7 @@ ${genderBlock}
 
 === NOME DO CLIENTE (CRÍTICO — NÃO INVENTAR) ===
 ${nameSafetyBlock}
-${religiousBlock}${unclearBlock}
+${religiousBlock}${unclearBlock}${pazRule}
 
 === FOTOS ===
 Se o cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó", "Olha esse") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
@@ -1273,7 +1287,8 @@ NUNCA invente nome do cliente. NUNCA invente produto que não está no catálogo
   // Se a cliente perguntou sobre dívida/valor em aberto, PODE informar valores (fonte: contas a receber).
   // Caso contrário, remove qualquer menção a preço (produtos).
   const isDebtInquiry = /\b(devo|devendo|d[íi]vida|d[ée]bito|em aberto|conta\s+em\s+aberto|pend[êe]ncia|quanto\s+(tá|ta|est[áa])|saldo|quanto\s+falta|parcela)\b/i.test(userMsg ?? "");
-  const withoutPrice = isDebtInquiry ? withoutEmailRequest : sanitizePriceMentions(withoutEmailRequest);
+  const withPaz = expandPazGreeting(withoutEmailRequest);
+  const withoutPrice = isDebtInquiry ? withPaz : sanitizePriceMentions(withPaz);
   // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
   const sanitized = sanitizeReplyByGender(withoutPrice, customerGender);
   if (sanitized !== raw) {
