@@ -350,11 +350,26 @@ export default function POS() {
       return;
     }
 
-    const isCredit = paymentMethod === "credito";
-    const isFiado = paymentMethod === "fiado";
+    // Validação do pagamento misto
+    if (splitMode) {
+      if (splits.length < 2) { toast.error("Adicione pelo menos 2 formas de pagamento"); return; }
+      if (Math.abs(splitsTotal - total) > 0.01) {
+        toast.error(`Soma das formas (${fmtBRL(splitsTotal)}) difere do total (${fmtBRL(total)})`);
+        return;
+      }
+    }
+
+    const effectiveMethod: PaymentMethod | "misto" = splitMode ? "misto" : paymentMethod;
+    const isCredit = !splitMode && paymentMethod === "credito";
+    const isFiado = !splitMode && paymentMethod === "fiado";
     const numInstallments =
       isCredit || isFiado ? Math.max(1, installments) : 1;
     const willCreateReceivables = isFiado || (isCredit && generateReceivables);
+
+    // Portion na carteira (fiado) no modo misto — gera 1 conta a receber no vencimento escolhido
+    const splitFiadoAmount = splitMode
+      ? splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
+      : 0;
 
     setSaving(true);
     try {
@@ -392,7 +407,26 @@ export default function POS() {
           .select();
         if (recErr) throw recErr;
         firstReceivableId = recs?.[0]?.id ?? null;
+      } else if (splitFiadoAmount > 0) {
+        const baseDate = new Date(firstDueDate + "T00:00:00");
+        const { data: recs, error: recErr } = await supabase
+          .from("accounts_receivable")
+          .insert([{
+            customer_id: customerId,
+            amount: Math.round(splitFiadoAmount * 100) / 100,
+            due_date: baseDate.toISOString().slice(0, 10),
+            description: `Pagamento misto — parte na carteira — ${cart.length} item(ns)`,
+            status: "pendente",
+          }])
+          .select();
+        if (recErr) throw recErr;
+        firstReceivableId = recs?.[0]?.id ?? null;
       }
+
+      const splitNote = splitMode
+        ? "Misto: " + splits.map((s) => `${PAYMENT_LABELS[s.method]} ${fmtBRL(s.amount)}`).join(" + ")
+        : "";
+      const finalNotes = [notes, splitNote].filter(Boolean).join(" | ") || null;
 
       // 2) Cria venda
       const { data: sale, error: saleErr } = await supabase
@@ -401,9 +435,9 @@ export default function POS() {
           customer_id: customerId,
           receivable_id: firstReceivableId,
           total,
-          notes: notes || null,
+          notes: finalNotes,
           sale_date: new Date().toISOString(),
-          payment_method: paymentMethod,
+          payment_method: effectiveMethod,
           installments: numInstallments,
         })
         .select()
