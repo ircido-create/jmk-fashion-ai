@@ -718,7 +718,105 @@ export default function POS() {
 
           {step === 3 && (
             <GlassCard className="p-4">
-              <Label className="mb-3 block">Forma de pagamento</Label>
+              <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <Label>Forma de pagamento</Label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={splitMode}
+                    onChange={(e) => { setSplitMode(e.target.checked); setSplits([]); setSplitAmount(""); }}
+                    className="h-4 w-4"
+                  />
+                  Pagamento misto (várias formas)
+                </label>
+              </div>
+
+              {splitMode && (
+                <div className="space-y-3 mb-4">
+                  <div className="grid grid-cols-[1fr_130px_auto] gap-2">
+                    <Select value={splitMethod} onValueChange={(v) => setSplitMethod(v as PaymentMethod)}>
+                      <SelectTrigger className="glass-input"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                        <SelectItem value="pix">PIX</SelectItem>
+                        <SelectItem value="debito">Cartão de Débito</SelectItem>
+                        <SelectItem value="credito">Cartão de Crédito</SelectItem>
+                        <SelectItem value="fiado">Carteira (Fiado)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="Valor"
+                        value={splitAmount}
+                        onChange={(e) => setSplitAmount(e.target.value)}
+                        className="glass-input pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={fillRemainingSplit}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20"
+                        aria-label="Preencher restante"
+                      >
+                        MAX
+                      </button>
+                    </div>
+                    <Button type="button" onClick={addSplit} disabled={splitsRemaining <= 0.009}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="space-y-1">
+                    {splits.map((s, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-lg bg-white/40 dark:bg-white/5 px-3 py-1.5">
+                        <span className="text-sm">{PAYMENT_LABELS[s.method]}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{fmtBRL(s.amount)}</span>
+                          <button
+                            onClick={() => setSplits((arr) => arr.filter((_, idx) => idx !== i))}
+                            className="text-destructive hover:opacity-70"
+                            aria-label="Remover"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {splits.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">
+                        Adicione as formas de pagamento até somar {fmtBRL(total)}.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between text-sm border-t border-white/30 pt-2">
+                    <span className="text-muted-foreground">Recebido / Restante:</span>
+                    <span>
+                      <span className="font-semibold">{fmtBRL(splitsTotal)}</span>
+                      {" / "}
+                      <span className={splitsRemaining > 0.009 ? "font-semibold text-destructive" : "font-semibold text-emerald-600 dark:text-emerald-400"}>
+                        {fmtBRL(Math.max(0, splitsRemaining))}
+                      </span>
+                    </span>
+                  </div>
+
+                  {splits.some((s) => s.method === "fiado") && (
+                    <div>
+                      <Label>Vencimento da parte na carteira</Label>
+                      <Input
+                        type="date"
+                        value={firstDueDate}
+                        onChange={(e) => setFirstDueDate(e.target.value)}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!splitMode && (
               <Tabs
                 value={paymentMethod}
                 onValueChange={(v) => {
