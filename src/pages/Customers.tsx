@@ -110,9 +110,57 @@ export default function Customers() {
     const { error } = editing
       ? await supabase.from("customers").update(payload).eq("id", editing.id)
       : await supabase.from("customers").insert(payload);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      if (/customers_tax_id_unique/i.test(error.message) && taxIdDigits) {
+        const { data: existing } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("tax_id", taxIdDigits)
+          .maybeSingle();
+        if (existing && existing.id !== editing?.id) {
+          setDupExisting(existing as Customer);
+          setDupPayload(payload);
+          return;
+        }
+      }
+      toast.error(error.message);
+      return;
+    }
     toast.success(editing ? "Cliente atualizado" : "Cliente cadastrado");
     setOpen(false); setEditing(null); load();
+  };
+
+  const mergeIntoExisting = async () => {
+    if (!dupExisting) return;
+    setDupBusy(true);
+    try {
+      // Update the existing (canonical) record with the values just typed
+      const { error: upErr } = await supabase
+        .from("customers")
+        .update(dupPayload)
+        .eq("id", dupExisting.id);
+      if (upErr) throw upErr;
+      // If we were editing a different record, merge it into the existing via edge function
+      if (editing && editing.id !== dupExisting.id) {
+        const { data, error } = await supabase.functions.invoke("merge-customers", {
+          body: { keep_id: dupExisting.id, drop_id: editing.id },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+      }
+      toast.success("Cadastros mesclados");
+      setDupExisting(null); setDupPayload(null); setOpen(false); setEditing(null); load();
+    } catch (e: any) {
+      toast.error(e.message ?? "Erro ao mesclar");
+    } finally {
+      setDupBusy(false);
+    }
+  };
+
+  const openExistingForEdit = () => {
+    if (!dupExisting) return;
+    setEditing(dupExisting);
+    setDupExisting(null); setDupPayload(null);
   };
 
   const remove = async (id: string) => {
