@@ -296,9 +296,28 @@ export default function POS() {
     setGenerateReceivables(true);
     setCashReceived("");
     setNotes("");
+    setSplitMode(false);
+    setSplits([]);
+    setSplitMethod("pix");
+    setSplitAmount("");
     const d = new Date();
     d.setDate(d.getDate() + 30);
     setFirstDueDate(d.toISOString().slice(0, 10));
+  };
+
+  const splitsTotal = useMemo(() => splits.reduce((s, x) => s + (Number(x.amount) || 0), 0), [splits]);
+  const splitsRemaining = Math.round((total - splitsTotal) * 100) / 100;
+
+  const addSplit = () => {
+    const amt = Number(String(splitAmount).replace(",", "."));
+    if (!Number.isFinite(amt) || amt <= 0) { toast.error("Valor inválido"); return; }
+    if (amt - splitsRemaining > 0.009) { toast.error(`Valor excede o restante (${fmtBRL(splitsRemaining)})`); return; }
+    setSplits((s) => [...s, { method: splitMethod, amount: Math.round(amt * 100) / 100 }]);
+    setSplitAmount("");
+  };
+  const fillRemainingSplit = () => {
+    if (splitsRemaining <= 0) return;
+    setSplitAmount(splitsRemaining.toFixed(2));
   };
 
   // ---------- Step navigation ----------
