@@ -1077,7 +1077,7 @@ ${genderBlock}
 
 === NOME DO CLIENTE (CRÍTICO — NÃO INVENTAR) ===
 ${nameSafetyBlock}
-${religiousBlock}${unclearBlock}
+${religiousBlock}${unclearBlock}${pazRule}
 
 === FOTOS ===
 Se o cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó", "Olha esse") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
