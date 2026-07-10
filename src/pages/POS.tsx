@@ -392,6 +392,7 @@ export default function POS() {
       }
       const resolvedCart = await Promise.all(
         cart.map(async (it) => {
+          if (it.isAvulso) return it;
           if (!it.variantId || validIds.has(it.variantId)) return it;
           // Tenta achar variação equivalente (mesmo produto + size/color) que ainda existe
           const [size, color] = (it.variantLabel || "").split(" / ");
@@ -409,7 +410,7 @@ export default function POS() {
 
       const items = resolvedCart.map((it) => ({
         sale_id: sale.id,
-        product_id: it.productId,
+        product_id: it.isAvulso ? null : it.productId,
         variant_id: it.variantId,
         product_name: it.productName,
         variant_label: it.variantLabel || null,
