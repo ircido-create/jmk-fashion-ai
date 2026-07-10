@@ -115,7 +115,7 @@ export default function POS() {
         .select("id, name, sku, price, cost, image_url, product_variants(id, size, color, quantity, sku)")
         .eq("active", true)
         .order("name"),
-      fetchAll<Customer>((sb) => sb.from("customers").select("id, name, phone").order("name")),
+      fetchAll<Customer>((sb) => sb.from("customers").select("id, name, nickname, phone").order("name")),
     ]);
     setProducts((p.data ?? []) as Product[]);
     setCustomers(c as Customer[]);
