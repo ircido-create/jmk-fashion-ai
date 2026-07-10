@@ -37,6 +37,9 @@ export default function Customers() {
   const [cep, setCep] = useState("");
   const [cepLoading, setCepLoading] = useState(false);
   const addressRef = useRef<HTMLTextAreaElement>(null);
+  const [dupExisting, setDupExisting] = useState<Customer | null>(null);
+  const [dupPayload, setDupPayload] = useState<any>(null);
+  const [dupBusy, setDupBusy] = useState(false);
 
   const formatCep = (v: string) => {
     const d = v.replace(/\D/g, "").slice(0, 8);
@@ -107,9 +110,57 @@ export default function Customers() {
     const { error } = editing
       ? await supabase.from("customers").update(payload).eq("id", editing.id)
       : await supabase.from("customers").insert(payload);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      if (/customers_tax_id_unique/i.test(error.message) && taxIdDigits) {
+        const { data: existing } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("tax_id", taxIdDigits)
+          .maybeSingle();
+        if (existing && existing.id !== editing?.id) {
+          setDupExisting(existing as Customer);
+          setDupPayload(payload);
+          return;
+        }
+      }
+      toast.error(error.message);
+      return;
+    }
     toast.success(editing ? "Cliente atualizado" : "Cliente cadastrado");
     setOpen(false); setEditing(null); load();
+  };
+
+  const mergeIntoExisting = async () => {
+    if (!dupExisting) return;
+    setDupBusy(true);
+    try {
+      // Update the existing (canonical) record with the values just typed
+      const { error: upErr } = await supabase
+        .from("customers")
+        .update(dupPayload)
+        .eq("id", dupExisting.id);
+      if (upErr) throw upErr;
+      // If we were editing a different record, merge it into the existing via edge function
+      if (editing && editing.id !== dupExisting.id) {
+        const { data, error } = await supabase.functions.invoke("merge-customers", {
+          body: { keep_id: dupExisting.id, drop_id: editing.id },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+      }
+      toast.success("Cadastros mesclados");
+      setDupExisting(null); setDupPayload(null); setOpen(false); setEditing(null); load();
+    } catch (e: any) {
+      toast.error(e.message ?? "Erro ao mesclar");
+    } finally {
+      setDupBusy(false);
+    }
+  };
+
+  const openExistingForEdit = () => {
+    if (!dupExisting) return;
+    setEditing(dupExisting);
+    setDupExisting(null); setDupPayload(null);
   };
 
   const remove = async (id: string) => {
@@ -243,6 +294,42 @@ export default function Customers() {
           </GlassCard>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!dupExisting} onOpenChange={(o) => { if (!o) { setDupExisting(null); setDupPayload(null); } }}>
+        <DialogContent className="glass-card border-white/40">
+          <DialogHeader><DialogTitle>CPF/CNPJ já cadastrado</DialogTitle></DialogHeader>
+          {dupExisting && (
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Já existe um cliente com o CPF/CNPJ <b>{formatTaxId(dupExisting.tax_id)}</b>:
+              </p>
+              <div className="p-3 rounded-xl bg-white/40 dark:bg-white/5 border border-border/40">
+                <div className="font-medium">{dupExisting.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {dupExisting.phone ?? "—"} {dupExisting.email ? `• ${dupExisting.email}` : ""}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {editing
+                  ? "Mesclar irá mover vendas e contas a receber deste cadastro para o cliente existente e apagar o duplicado."
+                  : "Você pode mesclar os dados digitados no cadastro existente ou abri-lo para edição."}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 justify-end pt-2">
+                <Button variant="ghost" onClick={() => { setDupExisting(null); setDupPayload(null); }} className="rounded-xl">
+                  Cancelar
+                </Button>
+                <Button variant="secondary" onClick={openExistingForEdit} className="rounded-xl">
+                  Abrir existente
+                </Button>
+                <Button onClick={mergeIntoExisting} disabled={dupBusy} className="bg-gradient-primary text-primary-foreground rounded-xl">
+                  {dupBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                  Mesclar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
