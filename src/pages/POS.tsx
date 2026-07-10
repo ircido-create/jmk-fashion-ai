@@ -19,7 +19,7 @@ interface Product {
   id: string; name: string; sku: string | null; price: number; cost: number; image_url: string | null;
   product_variants: Variant[];
 }
-interface Customer { id: string; name: string; phone: string | null; }
+interface Customer { id: string; name: string; nickname: string | null; phone: string | null; }
 
 interface CartItem {
   productId: string;
@@ -115,7 +115,7 @@ export default function POS() {
         .select("id, name, sku, price, cost, image_url, product_variants(id, size, color, quantity, sku)")
         .eq("active", true)
         .order("name"),
-      fetchAll<Customer>((sb) => sb.from("customers").select("id, name, phone").order("name")),
+      fetchAll<Customer>((sb) => sb.from("customers").select("id, name, nickname, phone").order("name")),
     ]);
     setProducts((p.data ?? []) as Product[]);
     setCustomers(c as Customer[]);
@@ -145,7 +145,7 @@ export default function POS() {
     const q = customerSearch.trim().toLowerCase();
     if (!q) return customers.slice(0, 50);
     return customers
-      .filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? "").toLowerCase().includes(q))
+      .filter((c) => c.name.toLowerCase().includes(q) || (c.nickname ?? "").toLowerCase().includes(q) || (c.phone ?? "").toLowerCase().includes(q))
       .slice(0, 50);
   }, [customers, customerSearch]);
 
@@ -624,7 +624,7 @@ export default function POS() {
                         : "border-white/30 bg-white/40 dark:bg-white/5 hover:border-primary"
                     }`}
                   >
-                    <div className="font-medium text-sm">{c.name}</div>
+                    <div className="font-medium text-sm">{c.name}{c.nickname ? <span className={`ml-1 text-xs font-normal ${customerId === c.id ? "opacity-90" : "text-muted-foreground"}`}>({c.nickname})</span> : null}</div>
                     {c.phone && (
                       <div className={`text-xs ${customerId === c.id ? "opacity-90" : "text-muted-foreground"}`}>
                         {c.phone}
