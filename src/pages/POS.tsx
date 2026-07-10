@@ -502,10 +502,11 @@ export default function POS() {
         customer: cust,
         items: [...cart],
         subtotal: total,
-        payment: paymentMethod,
+        payment: effectiveMethod,
         installments: numInstallments,
         cashReceived: cashNum,
         change,
+        splits: splitMode ? [...splits] : undefined,
       });
       setReceiptOpen(true);
       toast.success("Venda registrada");
