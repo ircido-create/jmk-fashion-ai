@@ -964,6 +964,86 @@ export default function POS() {
         </DialogContent>
       </Dialog>
 
+      {/* PRODUTO AVULSO DIALOG */}
+      <Dialog open={avulsoOpen} onOpenChange={setAvulsoOpen}>
+        <DialogContent className="glass-card border-white/40 max-w-md">
+          <DialogHeader>
+            <DialogTitle>Produto avulso</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Adiciona um item que não está no estoque. Não afeta o cadastro de produtos nem o inventário.
+            </p>
+            <div>
+              <Label>Nome do produto</Label>
+              <Input
+                autoFocus
+                value={avulsoName}
+                onChange={(e) => setAvulsoName(e.target.value)}
+                placeholder="Ex.: Sacola personalizada"
+                className="glass-input mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Valor unitário (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={avulsoPrice}
+                  onChange={(e) => setAvulsoPrice(e.target.value)}
+                  placeholder="0,00"
+                  className="glass-input mt-1"
+                />
+              </div>
+              <div>
+                <Label>Quantidade</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={avulsoQty}
+                  onChange={(e) => setAvulsoQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                  className="glass-input mt-1"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAvulsoOpen(false)}>Cancelar</Button>
+            <Button
+              className="bg-gradient-primary text-primary-foreground"
+              onClick={() => {
+                const name = avulsoName.trim();
+                const price = Number(String(avulsoPrice).replace(",", "."));
+                const qty = Math.max(1, Math.floor(avulsoQty));
+                if (!name) { toast.error("Informe o nome"); return; }
+                if (!Number.isFinite(price) || price < 0) { toast.error("Valor inválido"); return; }
+                pushItem({
+                  productId: `avulso-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                  variantId: null,
+                  productName: name,
+                  variantLabel: "",
+                  sku: null,
+                  quantity: qty,
+                  unitPrice: Math.round(price * 100) / 100,
+                  unitCost: 0,
+                  maxQty: 9999,
+                  isAvulso: true,
+                });
+                setAvulsoOpen(false);
+                setAvulsoName("");
+                setAvulsoPrice("");
+                setAvulsoQty(1);
+                toast.success("Item avulso adicionado");
+              }}
+            >
+              Adicionar ao carrinho
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* RECEIPT DIALOG */}
       <Dialog open={receiptOpen} onOpenChange={(o) => !o && closeReceiptAndReset()}>
         <DialogContent className="max-w-sm">
