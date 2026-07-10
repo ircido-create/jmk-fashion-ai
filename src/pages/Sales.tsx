@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Loader2, Search, Printer } from "lucide-react";
+import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 import { printReceipt } from "@/lib/receipt";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -57,6 +58,7 @@ export default function Sales() {
 
   // Form state
   const [customerId, setCustomerId] = useState<string>("");
+  const { debt: customerDebt, loading: debtLoading } = useCustomerDebt(customerId || null);
   const [dueDate, setDueDate] = useState<string>(todayISO());
   const [notes, setNotes] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
