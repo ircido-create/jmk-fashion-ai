@@ -624,7 +624,7 @@ export default function POS() {
                         : "border-white/30 bg-white/40 dark:bg-white/5 hover:border-primary"
                     }`}
                   >
-                    <div className="font-medium text-sm">{c.name}</div>
+                    <div className="font-medium text-sm">{c.name}{c.nickname ? <span className={`ml-1 text-xs font-normal ${customerId === c.id ? "opacity-90" : "text-muted-foreground"}`}>({c.nickname})</span> : null}</div>
                     {c.phone && (
                       <div className={`text-xs ${customerId === c.id ? "opacity-90" : "text-muted-foreground"}`}>
                         {c.phone}
