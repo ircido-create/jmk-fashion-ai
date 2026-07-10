@@ -37,6 +37,9 @@ export default function Customers() {
   const [cep, setCep] = useState("");
   const [cepLoading, setCepLoading] = useState(false);
   const addressRef = useRef<HTMLTextAreaElement>(null);
+  const [dupExisting, setDupExisting] = useState<Customer | null>(null);
+  const [dupPayload, setDupPayload] = useState<any>(null);
+  const [dupBusy, setDupBusy] = useState(false);
 
   const formatCep = (v: string) => {
     const d = v.replace(/\D/g, "").slice(0, 8);
