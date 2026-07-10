@@ -534,6 +534,20 @@ export default function POS() {
                   onChange={(e) => setSearch(e.target.value)}
                   className="glass-input"
                 />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl whitespace-nowrap"
+                  onClick={() => {
+                    setAvulsoName(search);
+                    setAvulsoPrice("");
+                    setAvulsoQty(1);
+                    setAvulsoOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Produto avulso
+                </Button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
                 {filteredProducts.map((p) => {
