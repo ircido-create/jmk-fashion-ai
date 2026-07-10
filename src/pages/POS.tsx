@@ -64,6 +64,12 @@ export default function POS() {
   const [pickVariantId, setPickVariantId] = useState<string>("");
   const [pickQty, setPickQty] = useState<number>(1);
 
+  // Step 1 — produto avulso (não cadastrado)
+  const [avulsoOpen, setAvulsoOpen] = useState(false);
+  const [avulsoName, setAvulsoName] = useState("");
+  const [avulsoPrice, setAvulsoPrice] = useState<string>("");
+  const [avulsoQty, setAvulsoQty] = useState<number>(1);
+
   // Step 2
   const [customerId, setCustomerId] = useState<string>("");
   const [customerSearch, setCustomerSearch] = useState("");
