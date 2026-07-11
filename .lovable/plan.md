@@ -1,99 +1,92 @@
-# Plano de Otimização de Performance
+# Módulo: Relatórios de Contas a Receber
 
-Fiz um diagnóstico rápido antes de propor mudanças. Segue o resultado e o que faz sentido aplicar **agora** (sem quebrar nada) vs. o que **não vale o custo/risco** neste estado do projeto.
+O escopo enviado é muito grande para uma única entrega (dashboard, ~10 relatórios, gráficos, exportações, agendamento por e-mail, permissões por perfil, etc.). Vou propor uma implementação **em fases**, respeitando o que já existe no ERP hoje.
 
----
+## Contexto atual do projeto (o que já temos)
 
-## 1) Diagnóstico atual
+- Tabelas: `accounts_receivable`, `receivable_payments`, `customers`, `sales`, `sale_items`, `profiles`, `user_roles` (admin / vendedor).
+- Página `Receivable.tsx` já lista parcelas, dá baixa, exporta PDF simples (`financePdf.ts`).
+- Página `Reports.tsx` já existe (posso estender ou criar `/relatorios/contas-receber` como sub-rota dedicada).
+- **Não existem hoje**: campos de juros/multa/desconto por parcela, número de NF, vendedor por venda, banco/conta bancária, grupo/categoria de cliente, cidade/estado no cadastro, limite de crédito, centro de custo, competência, agendamento de e-mails, log de responsável por lançamento.
 
-**Banco de dados (Lovable Cloud):**
-- Tabelas são pequenas: `accounts_receivable` 646, `customers` 330, `product_variants` 132, `products` 70, `accounts_payable` 64, `sales` 6, `sale_items` 4. Nenhuma perto de "milhares".
-- Consultas mais lentas rodam em **9–30 ms**. Não há query lenta real. Índices FK principais já existem (`sale_items.sale_id`, `receivable_payments.receivable_id`, `pre_sales.customer_id`, `customers.tax_id`, `customers(lower(nickname))`).
-- Faltam apenas 3 índices úteis para o padrão de ordenação/filtro atual (ver seção 3).
+Vários itens do prompt dependem de dados que **não estão no banco**. Vou construir tudo o que os dados atuais permitem e listar claramente o que fica pendente até você decidir estender o schema.
 
-**Front-end:**
-- `src/App.tsx` importa **as 23 páginas de forma estática** — todo o app entra no bundle inicial. Esse é o maior gargalo real de "tempo até a tela".
-- Páginas grandes: `Receivable.tsx` (1325 linhas), `POS.tsx` (1029), `Conversations.tsx` (999), `Reports.tsx` (717), `Inventory.tsx` (676).
-- Várias páginas usam `fetchAll` (paginação até acabar) para tabelas hoje pequenas — vai escalar mal, mas ainda não é problema.
+## Fase 1 — Entrega desta rodada (o que farei agora)
 
-**Conclusão honesta:** o app **não está lento por causa de banco**. Está lento (potencialmente) por causa de bundle inicial. Vou focar aí — é onde há ganho real e baixo risco.
+Nova página `/relatorios/contas-receber` com abas:
 
----
+**1. Dashboard (KPIs + gráficos)**
+- Cards: Total a Receber, Recebido no período, Vencido, A Vencer, Clientes Inadimplentes, Ticket Médio, Qtd. Títulos, Recebimentos Hoje / Semana / Mês, % Inadimplência, Valor Médio/Cliente.
+- Gráficos (recharts): barras de recebimentos por mês, linha de evolução da inadimplência, pizza por status, top 10 clientes por saldo devedor.
 
-## 2) O que vou fazer (alto impacto, baixo risco)
+**2. Filtros globais** (aplicam-se a todas as abas)
+- Cliente (busca por nome/apelido/CPF/telefone — reaproveita padrão de `Receivable.tsx`)
+- Período (Emissão / Vencimento / Recebimento) com presets (hoje, semana, mês, ano, custom)
+- Status (aberto, recebido, parcial, vencido)
+- Vendedor (usa `profiles` — usuário que criou a venda via `sales.created_by` se existir; caso contrário fica desabilitado)
+- Faixa de valor (mín/máx)
 
-### A. Code-splitting por rota (impacto alto)
-- Trocar todos os `import Page from ...` em `src/App.tsx` por `lazy(() => import(...))`.
-- Envolver `<Routes>` em `<Suspense fallback={<PageSkeleton/>}>`.
-- Criar `src/components/layout/PageSkeleton.tsx` para não mostrar tela em branco.
-- **Ganho estimado:** bundle inicial cai ~60–75% (só Dashboard + libs comuns), TTI e LCP caem proporcionalmente em 3G/mobile.
+**3. Relatório Analítico** — uma linha por parcela: Cliente, Venda #, Parcela, Emissão, Vencimento, Dias atraso, Valor, Pago, Saldo, Status, Forma pagamento.
 
-### B. QueryClient com defaults saudáveis
-- Configurar `staleTime: 30s`, `gcTime: 5min`, `refetchOnWindowFocus: false`, `retry: 1`.
-- Efeito: menos refetch redundante quando o usuário volta pra aba.
+**4. Relatório Sintético (por cliente)** — Cliente, Qtd parcelas, Total, Recebido, Aberto, Vencido, Saldo.
 
-### C. Debounce nas buscas (300ms)
-- Criar hook `useDebouncedValue` e aplicar em `Customers`, `Sales`, `Inventory`, `Receivable`, `Payable`, `Conversations`, `PreSales`.
-- Hoje o filtro roda a cada tecla; com 300+ registros já dá pra sentir.
+**5. Extrato do Cliente** — clicando num cliente abre modal com linha do tempo: vendas + recebimentos em ordem cronológica, com saldo corrente.
 
-### D. Índices que faltam no Postgres
-```sql
-CREATE INDEX IF NOT EXISTS idx_accounts_receivable_customer_due
-  ON public.accounts_receivable (customer_id, due_date DESC);
-CREATE INDEX IF NOT EXISTS idx_accounts_receivable_status_due
-  ON public.accounts_receivable (status, due_date);
-CREATE INDEX IF NOT EXISTS idx_accounts_payable_status_due
-  ON public.accounts_payable (status, due_date);
-CREATE INDEX IF NOT EXISTS idx_sales_date
-  ON public.sales (sale_date DESC);
-CREATE INDEX IF NOT EXISTS idx_sales_customer
-  ON public.sales (customer_id);
-CREATE INDEX IF NOT EXISTS idx_product_variants_product
-  ON public.product_variants (product_id);
-CREATE INDEX IF NOT EXISTS idx_customers_name_lower
-  ON public.customers (lower(name));
+**6. Inadimplência por faixa** — buckets: até 30 / 31-60 / 61-90 / 91-180 / 180+ dias, com clientes, telefone, valor.
+
+**7. Ranking** — Top clientes por: faturamento, saldo devedor, pontualidade (% pago em dia), atrasos.
+
+**8. Fluxo de Recebimentos (previsão)** — gráfico + tabela agregando parcelas futuras por dia/semana/mês.
+
+**9. Exportação** — PDF (jspdf-autotable, já em uso) e Excel (`xlsx` / SheetJS) para qualquer aba. CSV incluso via Excel.
+
+**10. UX** — colunas ordenáveis, paginação, busca em tempo real, totalizadores no rodapé, header sticky, responsivo, tempo de carregamento otimizado com `fetchAll` paginado e `useQuery` com cache.
+
+**Permissões**: admin vê tudo; vendedor vê apenas seus próprios clientes/vendas (se `sales.created_by = auth.uid()`). Sem novos perfis nesta fase.
+
+## Fase 2 — Requer extensão de schema (fora desta rodada, precisa sua aprovação)
+
+Estes itens **não conseguem ser feitos** sem migração de banco / novos campos:
+
+- **Juros, multa, desconto por parcela** → adicionar colunas em `accounts_receivable` e/ou `receivable_payments`.
+- **Nota fiscal, documento, banco/conta bancária, competência, centro de custo** → novos campos em `sales` / `accounts_receivable`.
+- **Grupo de clientes, categoria, cidade, estado, limite de crédito** → novos campos em `customers`.
+- **Vendedor por venda** (hoje não há vínculo firme) → coluna `salesperson_id` em `sales` + UI para atribuir.
+- **Relatório por Vendedor com comissões** → precisa tabela de regras de comissão.
+- **Renegociação de parcelas** → fluxo próprio + status `renegociado`.
+- **Agendamento de envio automático por e-mail** → cron (pg_cron) + edge function + template de e-mail (Lovable Emails, precisa domínio configurado).
+- **Novos perfis** (Financeiro, Gerente, Consulta) → adicionar valores ao enum `app_role` + RLS por perfil.
+- **Log de "responsável pelo lançamento"** → coluna `created_by` auditada em `accounts_receivable`.
+- **Filtros favoritos salvos por usuário** → tabela `user_report_presets`.
+- **Word export** → não recomendo (formato ruim para relatório financeiro); PDF+Excel cobrem o caso.
+
+Quando quiser avançar nesses itens, me diga quais priorizar e eu abro uma nova migração + UI.
+
+## Arquivos que serão criados/alterados na Fase 1
+
+```text
+src/pages/reports/ReceivableReports.tsx      (nova página com tabs)
+src/components/reports/ReceivableKPIs.tsx    (cards de indicadores)
+src/components/reports/ReceivableCharts.tsx  (gráficos recharts)
+src/components/reports/ReceivableFilters.tsx (barra de filtros compartilhada)
+src/components/reports/AnalyticTable.tsx
+src/components/reports/SyntheticTable.tsx
+src/components/reports/AgingReport.tsx
+src/components/reports/RankingReport.tsx
+src/components/reports/CashflowForecast.tsx
+src/components/reports/CustomerStatementDialog.tsx
+src/hooks/useReceivableData.ts               (fetch + agregação, react-query)
+src/lib/receivableExport.ts                  (PDF + XLSX)
+src/App.tsx                                  (rota /relatorios/contas-receber)
+src/components/layout/AppSidebar.tsx         (link no menu, sob "Relatórios")
 ```
-**Ganho:** invisível hoje, mas evita degradação futura quando as tabelas crescerem.
 
-### E. Limpeza de imports mortos
-- Rodar `rg` por `import` não usado nas 5 páginas maiores e remover. Mudança cosmética; sem impacto funcional.
+Dependência nova: `xlsx` (SheetJS) para exportar Excel.
 
----
+## Pergunta rápida antes de codar
 
-## 3) O que **NÃO** vou fazer agora (e por quê)
+Confirma que quer que eu:
+1. **Vá em frente com a Fase 1 agora**, e
+2. Deixe a Fase 2 (schema + e-mail + comissões + novos perfis) para uma próxima rodada, quando você priorizar os itens?
 
-- **Virtualização de listas** (`react-window`): útil só acima de ~500 itens visíveis. Nenhuma tela chega perto. Adicionar dependência e reescrever renderização por prevenção não compensa.
-- **`React.memo` / `useMemo` / `useCallback` massivos:** sem profiler mostrando re-render caro, virariam ruído. Aplico pontualmente quando/se aparecer.
-- **Refatorar `fetchAll` para paginação server-side:** as tabelas ainda cabem em memória sem dor. Faço quando `customers`/`accounts_receivable` passarem de ~2k linhas.
-- **Web workers para relatórios:** `Reports.tsx` hoje agrega em memória sem travar. Fazer isso só quando houver > 10k linhas por chamada.
-- **Reescrever RLS:** políticas atuais estão OK; mexer sem necessidade é risco de regressão de segurança.
-- **Comprimir imagens automaticamente:** as imagens são de produto vindas do storage/URL do usuário; não são bundled assets.
-
----
-
-## 4) Detalhes técnicos
-
-**Arquivos a editar:**
-- `src/App.tsx` — lazy routes + Suspense + QueryClient config.
-- `src/components/layout/PageSkeleton.tsx` (novo) — fallback visual.
-- `src/hooks/useDebouncedValue.ts` (novo).
-- `src/pages/Customers.tsx`, `Sales.tsx`, `Inventory.tsx`, `Receivable.tsx`, `Payable.tsx`, `Conversations.tsx`, `PreSales.tsx` — aplicar debounce no state de busca (mudança de ~2 linhas cada).
-- 1 migração SQL com os índices `IF NOT EXISTS` acima.
-
-**Segurança:** nada mexe em RLS, auth, políticas, validações ou logs. Zero mudança de schema além de índices.
-
-**Verificação:** build TypeScript + navegação nas rotas principais via preview para confirmar que nada quebrou.
-
----
-
-## 5) Ganho estimado
-
-| Área | Antes | Depois (esperado) |
-|---|---|---|
-| Bundle JS inicial | ~1 arquivo com 23 páginas | Dashboard + shared libs (~60–75% menor) |
-| Tempo até 1ª interação (mobile) | alto | baixo |
-| Refetch ao trocar de aba | sempre | só se >30s |
-| Digitação em busca (300 clientes) | trava leve por tecla | fluido (debounce) |
-| Escala do banco | OK hoje | OK até dezenas de milhares |
-
-Confirma que posso seguir com essas mudanças?
+Se quiser cortar/adicionar algo da Fase 1, me diga também.
