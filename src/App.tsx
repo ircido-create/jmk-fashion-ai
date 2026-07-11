@@ -35,6 +35,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 const Install = lazy(() => import("./pages/Install"));
 const Reports = lazy(() => import("./pages/Reports"));
 const PaymentProofs = lazy(() => import("./pages/PaymentProofs"));
+const ReceivableReports = lazy(() => import("./pages/ReceivableReports"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -77,6 +78,7 @@ const App = () => (
                     <Route path="/pre-vendas/:id" element={<PreSaleDetail />} />
                     <Route path="/whatsapp" element={<WhatsApp />} />
                     <Route path="/relatorios" element={<Reports />} />
+                    <Route path="/relatorios/contas-receber" element={<ReceivableReports />} />
                     <Route path="/comprovantes" element={<PaymentProofs />} />
                     <Route path="/instalar" element={<Install />} />
                   </Route>
