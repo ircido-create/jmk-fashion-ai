@@ -72,17 +72,51 @@ async function sendImage(to: string, imageUrl: string, caption: string) {
     console.error("sendImage: URL inválida:", imageUrl);
     return { ok: false, status: 0, text: "invalid url" };
   }
-  // IMPORTANTE: NÃO enviar campo "image" com URL — o BubbleWhats interpreta
-  // "image" como caminho de arquivo local (fs.open) e retorna
-  // ENOENT: ... 'https:undefined'. O campo correto para URL é "imageUrl".
-  const payload: Record<string, unknown> = { jid: to, imageUrl, url: imageUrl };
-  if (caption && caption.trim()) payload.caption = caption.slice(0, 1024);
-  // Retry simples para 502/503 (nginx do BubbleWhats cai às vezes).
+  // BubbleWhats /send-image exige upload MULTIPART do arquivo (campo "image").
+  // Passar URL em JSON dispara ENOENT 'https:undefined' no lado deles.
+  let bytes: Uint8Array;
+  let mime = "image/jpeg";
+  try {
+    const r = await fetch(imageUrl);
+    if (!r.ok) {
+      console.error("sendImage: falha ao baixar imagem:", r.status);
+      return { ok: false, status: r.status, text: "download failed" };
+    }
+    bytes = new Uint8Array(await r.arrayBuffer());
+    mime = (r.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
+  } catch (e) {
+    console.error("sendImage: erro download:", e);
+    return { ok: false, status: 0, text: "download error" };
+  }
+
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+  const form = new FormData();
+  form.append("jid", to);
+  if (caption && caption.trim()) form.append("caption", caption.slice(0, 1024));
+  form.append("image", new Blob([bytes], { type: mime }), `photo.${ext}`);
+
   for (let i = 0; i < 3; i++) {
-    const r = await bwPost("/send-image", payload);
-    if (r.ok) return r;
-    if (r.status !== 502 && r.status !== 503 && r.status !== 504) return r;
-    await new Promise((res) => setTimeout(res, 800 * (i + 1)));
+    const res = await fetch(`${BW_BASE}/send-image`, {
+      method: "POST",
+      headers: { Authorization: BW_TOKEN },
+      body: form,
+    });
+    const text = await res.text();
+    if (res.ok) {
+      try {
+        const j = JSON.parse(text);
+        if (j?.status === false) {
+          console.error(`BubbleWhats /send-image ok=true but status=false: ${text.slice(0, 300)}`);
+          return { ok: false, status: res.status, text };
+        }
+      } catch { /* not JSON, treat as ok */ }
+      return { ok: true, status: res.status, text };
+    }
+    console.error(`BubbleWhats /send-image ${res.status}: ${text.slice(0, 300)}`);
+    if (res.status !== 502 && res.status !== 503 && res.status !== 504) {
+      return { ok: false, status: res.status, text };
+    }
+    await new Promise((r) => setTimeout(r, 800 * (i + 1)));
   }
   return { ok: false, status: 502, text: "bubblewhats unavailable" };
 }
