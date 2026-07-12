@@ -72,8 +72,11 @@ async function sendImage(to: string, imageUrl: string, caption: string) {
     console.error("sendImage: URL inválida:", imageUrl);
     return { ok: false, status: 0, text: "invalid url" };
   }
-  // BubbleWhats varia entre builds: aceita "image", "imageUrl" e "url".
-  const payload = { jid: to, image: imageUrl, imageUrl, url: imageUrl, caption: caption ?? "" };
+  // IMPORTANTE: NÃO enviar campo "image" com URL — o BubbleWhats interpreta
+  // "image" como caminho de arquivo local (fs.open) e retorna
+  // ENOENT: ... 'https:undefined'. O campo correto para URL é "imageUrl".
+  const payload: Record<string, unknown> = { jid: to, imageUrl, url: imageUrl };
+  if (caption && caption.trim()) payload.caption = caption.slice(0, 1024);
   // Retry simples para 502/503 (nginx do BubbleWhats cai às vezes).
   for (let i = 0; i < 3; i++) {
     const r = await bwPost("/send-image", payload);
