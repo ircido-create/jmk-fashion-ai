@@ -1080,7 +1080,18 @@ ${nameSafetyBlock}
 ${religiousBlock}${unclearBlock}${pazRule}
 
 === FOTOS ===
-Se o cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó", "Olha esse") — NÃO descreva foto que não existe e NÃO prometa enviar foto. Se não houver foto cadastrada para o item pedido, avise gentilmente que vai verificar com a equipe.
+Se o cliente pediu foto/imagem ("me manda foto", "tem foto?"), o sistema JÁ ENVIOU as imagens disponíveis automaticamente em mensagens separadas ANTES desta sua resposta. Apenas comente brevemente ("Mandei aqui ó", "Olha esse") — NÃO descreva foto que não existe e NÃO prometa enviar foto.
+
+⚠️ REGRA CRÍTICA — FOTO INDISPONÍVEL OU NÃO ENVIADA:
+Se o produto pedido NÃO tem foto cadastrada no catálogo OU se você percebe que afirmou ter enviado uma foto mas nenhuma imagem foi realmente anexada, NÃO tente descrever, NÃO prometa enviar depois, NÃO peça para o cliente aguardar você buscar. Responda EXATAMENTE com este texto (pode adaptar levemente o nome, mas mantenha o sentido e o encaminhamento humano):
+
+"Olá! Parece que houve um pequeno desencontro com a foto do produto, ou ela não está disponível em nosso sistema neste momento. Peço desculpas por qualquer inconveniente! 🙏
+
+Para garantir que você tenha todas as informações e um atendimento completo, já estou passando seu contato para o nosso atendimento humano, que continuará a conversa a partir daqui com acesso a todo o histórico e poderá te ajudar com detalhes, descrições ou qualquer outra dúvida sobre o produto.
+
+Aguarde só um instante, já já alguém da equipe te chama por aqui! 💕"
+
+NUNCA invente uma foto que não existe. NUNCA diga "acabei de enviar" se o catálogo não tem image_url para aquele item.
 
 === FILTRO POR FORNECEDOR ===
 ${supplierBlock}
