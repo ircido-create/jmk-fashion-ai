@@ -130,8 +130,10 @@ Deno.serve(async (req) => {
     const payload: Record<string, unknown> = { jid: to };
     if (kind === "image") {
       endpoint = `${base}/send-image`;
+      // NÃO enviar "image" — BubbleWhats trata como caminho de arquivo local
+      // e devolve ENOENT 'https:undefined'. O campo correto é "imageUrl".
       payload.imageUrl = publicUrl;
-      payload.image = publicUrl; // fallback: alguns builds do BubbleWhats leem "image"
+      payload.url = publicUrl;
       if (caption) payload.caption = caption.slice(0, 1024);
     } else if (kind === "audio") {
       endpoint = `${base}/send-audio`;
