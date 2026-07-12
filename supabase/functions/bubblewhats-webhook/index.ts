@@ -536,20 +536,23 @@ Deno.serve(async (req) => {
     // substitui a resposta pelo encaminhamento humano (evita "mandei aqui" fantasma).
     const claimsPhotoSent =
       /\b(mandei|enviei|segue|segueei|olha|olhe|veja|t[ôo] mandando|estou mandando|acabei de (mandar|enviar)|vou (te )?(mandar|enviar))\b[^.\n!?]{0,80}\b(a\s+|as\s+|umas?\s+)?(foto|fotos|imagem|imagens|figura|figuras)\b/i.test(reply)
-      || /\b(foto|fotos|imagem|imagens)\b[^.\n!?]{0,30}\b(a[ií]|ali|acima|abaixo|em anexo|anexo)\b/i.test(reply);
+      || /\b(foto|fotos|imagem|imagens)\b[^.\n!?]{0,30}\b(a[ií]|ali|acima|abaixo|em anexo|anexo)\b/i.test(reply)
+      || /\b(mandei|enviei|segue|olha|olhe|veja)\b\s+(a[ií]|aqui|agora|pra\s+voc[êe]|pra\s+ti)\b/i.test(reply);
     const phantomPhoto = claimsPhotoSent && photosSent === 0;
 
     const handoffReply = "Olá! Parece que houve um pequeno desencontro com a foto do produto, ou ela não está disponível em nosso sistema neste momento. Peço desculpas por qualquer inconveniente! 🙏\n\nPara garantir que você tenha todas as informações e um atendimento completo, já estou passando seu contato para o nosso atendimento humano, que continuará a conversa a partir daqui com acesso a todo o histórico e poderá te ajudar com detalhes, descrições ou qualquer outra dúvida sobre o produto.\n\nAguarde um instante, a Monica já está chegando!";
 
-    const finalReply = phantomPhoto
+    const finalReply = (phantomPhoto || photoFailed)
       ? handoffReply
-      : photoFailed
-        ? `Ah, desculpa! Tentei te mandar as fotos mas não consegui enviar agora 😅 Mas posso te descrever:\n\n${reply}`
-        : reply;
+      : reply;
 
     if (phantomPhoto) {
       console.warn("[MONICA] phantom photo claim — handoff. original:", reply.slice(0, 200));
     }
+    if (photoFailed) {
+      console.warn("[MONICA] photo send failed — handoff.");
+    }
+
 
     // ---- ÁUDIO (quando cliente mandou áudio ou pediu) ----
     const clientSentAudio = mediaKind === "audio";
