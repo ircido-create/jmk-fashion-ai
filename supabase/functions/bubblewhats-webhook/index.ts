@@ -68,7 +68,20 @@ async function sendText(to: string, message: string) {
 }
 
 async function sendImage(to: string, imageUrl: string, caption: string) {
-  return bwPost("/send-image", { jid: to, imageUrl, caption });
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+    console.error("sendImage: URL inválida:", imageUrl);
+    return { ok: false, status: 0, text: "invalid url" };
+  }
+  // BubbleWhats varia entre builds: aceita "image", "imageUrl" e "url".
+  const payload = { jid: to, image: imageUrl, imageUrl, url: imageUrl, caption: caption ?? "" };
+  // Retry simples para 502/503 (nginx do BubbleWhats cai às vezes).
+  for (let i = 0; i < 3; i++) {
+    const r = await bwPost("/send-image", payload);
+    if (r.ok) return r;
+    if (r.status !== 502 && r.status !== 503 && r.status !== 504) return r;
+    await new Promise((res) => setTimeout(res, 800 * (i + 1)));
+  }
+  return { ok: false, status: 502, text: "bubblewhats unavailable" };
 }
 
 // Envia áudio (voice note). Faz upload no bucket para gerar URL pública temporária.
