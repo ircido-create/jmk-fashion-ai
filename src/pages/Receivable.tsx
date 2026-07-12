@@ -135,12 +135,17 @@ export default function Receivable() {
       due_date: f.get("due_date"),
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
-    const payload = {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const payload: any = {
       customer_id: parsed.data.customer_id,
       description: parsed.data.description || null,
       amount: parsed.data.amount,
       due_date: parsed.data.due_date,
     };
+    // Recalcula status ao alterar a data (somente para parcelas não pagas)
+    if (!editing || (editing.status !== "pago" && editing.status !== "cancelado")) {
+      payload.status = parsed.data.due_date < todayIso ? "vencido" : "pendente";
+    }
     const { error } = editing
       ? await supabase.from("accounts_receivable").update(payload).eq("id", editing.id)
       : await supabase.from("accounts_receivable").insert(payload);
