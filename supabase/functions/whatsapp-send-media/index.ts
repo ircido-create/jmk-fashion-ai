@@ -126,32 +126,54 @@ Deno.serve(async (req) => {
 
     // 3) Chama endpoint correto do BubbleWhats
     const base = `https://${deviceId}.bubblewhats.com`;
-    let endpoint = "";
-    const payload: Record<string, unknown> = { jid: to };
+    let sendRes: Response;
+    let raw = "";
     if (kind === "image") {
-      endpoint = `${base}/send-image`;
-      // NÃO enviar "image" — BubbleWhats trata como caminho de arquivo local
-      // e devolve ENOENT 'https:undefined'. O campo correto é "imageUrl".
-      payload.imageUrl = publicUrl;
-      payload.url = publicUrl;
-      if (caption) payload.caption = caption.slice(0, 1024);
-    } else if (kind === "audio") {
-      endpoint = `${base}/send-audio`;
-      payload.audiourl = publicUrl;
-      payload.audio = publicUrl;
+      // BubbleWhats /send-image só aceita o arquivo via multipart no campo
+      // "image". Passar URL em JSON dispara ENOENT 'https:undefined'.
+      const boundary = "----BWBoundary" + Math.random().toString(16).slice(2);
+      const enc = new TextEncoder();
+      const chunks: Uint8Array[] = [];
+      const push = (s: string) => chunks.push(enc.encode(s));
+      push(`--${boundary}\r\nContent-Disposition: form-data; name="jid"\r\n\r\n${to}\r\n`);
+      if (caption) {
+        push(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption.slice(0, 1024)}\r\n`);
+      }
+      push(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${safeName}"\r\nContent-Type: ${mimeType}\r\n\r\n`);
+      chunks.push(bytes);
+      push(`\r\n--${boundary}--\r\n`);
+      const totalLen = chunks.reduce((n, p) => n + p.byteLength, 0);
+      const body = new Uint8Array(totalLen);
+      let off = 0;
+      for (const p of chunks) { body.set(p, off); off += p.byteLength; }
+      sendRes = await fetch(`${base}/send-image`, {
+        method: "POST",
+        headers: {
+          Authorization: bwToken,
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          "Content-Length": String(body.byteLength),
+        },
+        body,
+      });
+      raw = await sendRes.text();
     } else {
-      endpoint = `${base}/send-doc`;
-      payload.docurl = publicUrl;
-      payload.document = publicUrl;
-      payload.filename = safeName;
+      const endpoint = kind === "audio" ? `${base}/send-audio` : `${base}/send-doc`;
+      const payload: Record<string, unknown> = { jid: to };
+      if (kind === "audio") {
+        payload.audiourl = publicUrl;
+        payload.audio = publicUrl;
+      } else {
+        payload.docurl = publicUrl;
+        payload.document = publicUrl;
+        payload.filename = safeName;
+      }
+      sendRes = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: bwToken, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      raw = await sendRes.text();
     }
-
-    const sendRes = await fetch(endpoint, {
-      method: "POST",
-      headers: { Authorization: bwToken, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const raw = await sendRes.text();
     let sendJson: any; try { sendJson = JSON.parse(raw); } catch { sendJson = { raw }; }
     if (!sendRes.ok || sendJson?.status === false) {
       console.error("BubbleWhats media send error:", sendRes.status, raw);

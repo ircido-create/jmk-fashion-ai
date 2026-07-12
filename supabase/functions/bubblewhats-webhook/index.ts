@@ -72,8 +72,10 @@ async function sendImage(to: string, imageUrl: string, caption: string) {
     console.error("sendImage: URL inválida:", imageUrl);
     return { ok: false, status: 0, text: "invalid url" };
   }
-  // BubbleWhats /send-image exige upload MULTIPART do arquivo (campo "image").
-  // Passar URL em JSON dispara ENOENT 'https:undefined' no lado deles.
+  // BubbleWhats /send-image aceita multipart com o arquivo em "image".
+  // Deno fetch+FormData estava enviando chunked; a nginx do BubbleWhats
+  // rejeita (500 ENOENT). Montamos o body multipart manualmente com
+  // Content-Length fixo para funcionar igual ao `curl -F`.
   let bytes: Uint8Array;
   let mime = "image/jpeg";
   try {
@@ -90,16 +92,33 @@ async function sendImage(to: string, imageUrl: string, caption: string) {
   }
 
   const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
-  const form = new FormData();
-  form.append("jid", to);
-  if (caption && caption.trim()) form.append("caption", caption.slice(0, 1024));
-  form.append("image", new Blob([bytes], { type: mime }), `photo.${ext}`);
+  const boundary = "----BWBoundary" + Math.random().toString(16).slice(2);
+  const enc = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  const push = (s: string) => parts.push(enc.encode(s));
+
+  push(`--${boundary}\r\nContent-Disposition: form-data; name="jid"\r\n\r\n${to}\r\n`);
+  if (caption && caption.trim()) {
+    push(`--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption.slice(0, 1024)}\r\n`);
+  }
+  push(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="photo.${ext}"\r\nContent-Type: ${mime}\r\n\r\n`);
+  parts.push(bytes);
+  push(`\r\n--${boundary}--\r\n`);
+
+  const totalLen = parts.reduce((n, p) => n + p.byteLength, 0);
+  const body = new Uint8Array(totalLen);
+  let off = 0;
+  for (const p of parts) { body.set(p, off); off += p.byteLength; }
 
   for (let i = 0; i < 3; i++) {
     const res = await fetch(`${BW_BASE}/send-image`, {
       method: "POST",
-      headers: { Authorization: BW_TOKEN },
-      body: form,
+      headers: {
+        Authorization: BW_TOKEN,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": String(body.byteLength),
+      },
+      body,
     });
     const text = await res.text();
     if (res.ok) {
