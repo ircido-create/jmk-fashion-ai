@@ -20,7 +20,7 @@ export function useCustomerDebt(customerId: string | null | undefined) {
     (async () => {
       const { data, error } = await supabase
         .from("accounts_receivable")
-        .select("amount, status, receivable_payments(amount)")
+        .select("amount, status, receivable_payments(amount_paid)")
         .eq("customer_id", customerId)
         .in("status", ["pendente", "vencido"]);
       if (cancelled) return;
@@ -29,7 +29,7 @@ export function useCustomerDebt(customerId: string | null | undefined) {
       } else {
         const total = (data ?? []).reduce((sum: number, r: any) => {
           const paid = (r.receivable_payments ?? []).reduce(
-            (s: number, p: any) => s + Number(p.amount || 0),
+            (s: number, p: any) => s + Number(p.amount_paid || 0),
             0,
           );
           const open = Math.max(0, Number(r.amount || 0) - paid);
