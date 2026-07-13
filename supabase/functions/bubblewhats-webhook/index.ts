@@ -320,6 +320,88 @@ Deno.serve(async (req) => {
     const caption: string = (payload.caption ?? "").toString();
     if (!text && caption) text = caption;
 
+    console.log("[chk] parsed", { conversationKey, isGroup, hasText: !!text, senderNumber });
+
+    // ---- FAST-PATH: cliente pede FICHA/EXTRATO/PARCELAS ----
+    // Executa ANTES de qualquer análise pesada (mídia, comprovante, IA) e usa
+    // timeouts defensivos para nunca travar o worker.
+    const fichaRegex = /\b(fich[ao]|extrato|minhas?\s+parcelas?|quais?\s+parcelas?|carn[êe])\b/i;
+    if (text && !isGroup && senderNumber && fichaRegex.test(text)) {
+      console.log("[chk] ficha fast-path start");
+      try {
+        const digits = senderNumber.replace(/\D/g, "");
+        const variants = new Set<string>([senderNumber, digits]);
+        if (digits.startsWith("55")) variants.add(digits.slice(2));
+        else if (digits.length >= 10) variants.add("55" + digits);
+        const { data: custs } = await withTimeout(
+          supabase.from("customers").select("id, name").in("phone", Array.from(variants).filter(Boolean)),
+          5000, "ficha:customers",
+        );
+        const custIds = (custs ?? []).map((c: any) => c.id);
+        let fichaReply = "";
+        if (custIds.length === 0) {
+          fichaReply = "Não localizei seu cadastro aqui 💕 Me diga seu nome completo por favor?";
+        } else {
+          const { data: recs } = await withTimeout(
+            supabase
+              .from("accounts_receivable")
+              .select("description, amount, due_date, status, receivable_payments(amount_paid)")
+              .in("customer_id", custIds)
+              .in("status", ["pendente", "vencido"])
+              .order("due_date", { ascending: true }),
+            7000, "ficha:receivables",
+          );
+          if (!recs || recs.length === 0) {
+            fichaReply = `Boa notícia, ${custs![0].name.split(" ")[0]}! Você não tem nenhuma parcela em aberto 💕 Deus abençoe 🙏`;
+          } else {
+            const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const fmtDate = (iso: string) => {
+              const [y, m, d] = String(iso).slice(0, 10).split("-");
+              return `${d}/${m}/${y}`;
+            };
+            let total = 0;
+            const lines = recs.map((r: any) => {
+              const paid = (r.receivable_payments ?? []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
+              const open = Math.max(0, Number(r.amount || 0) - paid);
+              total += open;
+              const flag = r.status === "vencido" ? " ⚠️ vencida" : "";
+              const desc = r.description ? ` — ${r.description}` : "";
+              return `• ${fmtDate(r.due_date)}: ${fmtBRL(open)}${desc}${flag}`;
+            }).join("\n");
+            fichaReply =
+              `Segue sua ficha, ${custs![0].name.split(" ")[0]} 💕\n\n` +
+              `${lines}\n\n` +
+              `Total em aberto: ${fmtBRL(total)}\n\n` +
+              `Qualquer dúvida é só me chamar! 🙏`;
+          }
+        }
+        console.log("[chk] ficha sending reply");
+        await withTimeout(sendText(conversationKey, fichaReply), 10000, "ficha:sendText");
+        // Log de conversa (best-effort) — nunca bloqueia a resposta
+        try {
+          const convFast = await withTimeout(
+            getOrCreateConversation(conversationKey, displayName || null),
+            5000, "ficha:getOrCreateConversation",
+          );
+          if (convFast) {
+            await supabase.from("whatsapp_messages").insert([
+              { conversation_id: convFast.id, direction: "inbound", content: text },
+              { conversation_id: convFast.id, direction: "outbound", content: fichaReply },
+            ]);
+            await supabase.rpc("bump_conversation_unread", { conv_id: convFast.id });
+          }
+        } catch (e) { console.error("[ficha] log conv err:", e); }
+        console.log("[chk] ficha fast-path done");
+        return new Response(JSON.stringify({ ok: true, ficha: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        console.error("ficha fast-path err:", e);
+        // Cai no fluxo normal se algo falhou
+      }
+    }
+
+
     // ---- REAÇÃO A STATUS (curtida em foto que postamos) ----
     // BubbleWhats entrega em messageContext.message.reactionMessage
     try {
