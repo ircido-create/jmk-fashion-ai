@@ -23,6 +23,16 @@ const BW_TOKEN = Deno.env.get("BUBBLEWHATS_TOKEN")!;
 const BW_BASE = `https://${DEVICE_ID}.bubblewhats.com`;
 let groupWebhookConfigEnsured = false;
 
+// Timeout defensivo — nunca deixa o worker travado esperando uma promise pendurada.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`timeout ${label} after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 function classifyKind(mime?: string): "image" | "audio" | "video" | "document" | null {
   if (!mime) return null;
   if (mime.startsWith("image/")) return "image";
@@ -310,6 +320,88 @@ Deno.serve(async (req) => {
     const caption: string = (payload.caption ?? "").toString();
     if (!text && caption) text = caption;
 
+    console.log("[chk] parsed", { conversationKey, isGroup, hasText: !!text, senderNumber });
+
+    // ---- FAST-PATH: cliente pede FICHA/EXTRATO/PARCELAS ----
+    // Executa ANTES de qualquer análise pesada (mídia, comprovante, IA) e usa
+    // timeouts defensivos para nunca travar o worker.
+    const fichaRegex = /\b(fich[ao]|extrato|minhas?\s+parcelas?|quais?\s+parcelas?|carn[êe])\b/i;
+    if (text && !isGroup && senderNumber && fichaRegex.test(text)) {
+      console.log("[chk] ficha fast-path start");
+      try {
+        const digits = senderNumber.replace(/\D/g, "");
+        const variants = new Set<string>([senderNumber, digits]);
+        if (digits.startsWith("55")) variants.add(digits.slice(2));
+        else if (digits.length >= 10) variants.add("55" + digits);
+        const { data: custs } = await withTimeout(
+          supabase.from("customers").select("id, name").in("phone", Array.from(variants).filter(Boolean)),
+          5000, "ficha:customers",
+        );
+        const custIds = (custs ?? []).map((c: any) => c.id);
+        let fichaReply = "";
+        if (custIds.length === 0) {
+          fichaReply = "Não localizei seu cadastro aqui 💕 Me diga seu nome completo por favor?";
+        } else {
+          const { data: recs } = await withTimeout(
+            supabase
+              .from("accounts_receivable")
+              .select("description, amount, due_date, status, receivable_payments(amount_paid)")
+              .in("customer_id", custIds)
+              .in("status", ["pendente", "vencido"])
+              .order("due_date", { ascending: true }),
+            7000, "ficha:receivables",
+          );
+          if (!recs || recs.length === 0) {
+            fichaReply = `Boa notícia, ${custs![0].name.split(" ")[0]}! Você não tem nenhuma parcela em aberto 💕 Deus abençoe 🙏`;
+          } else {
+            const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const fmtDate = (iso: string) => {
+              const [y, m, d] = String(iso).slice(0, 10).split("-");
+              return `${d}/${m}/${y}`;
+            };
+            let total = 0;
+            const lines = recs.map((r: any) => {
+              const paid = (r.receivable_payments ?? []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
+              const open = Math.max(0, Number(r.amount || 0) - paid);
+              total += open;
+              const flag = r.status === "vencido" ? " ⚠️ vencida" : "";
+              const desc = r.description ? ` — ${r.description}` : "";
+              return `• ${fmtDate(r.due_date)}: ${fmtBRL(open)}${desc}${flag}`;
+            }).join("\n");
+            fichaReply =
+              `Segue sua ficha, ${custs![0].name.split(" ")[0]} 💕\n\n` +
+              `${lines}\n\n` +
+              `Total em aberto: ${fmtBRL(total)}\n\n` +
+              `Qualquer dúvida é só me chamar! 🙏`;
+          }
+        }
+        console.log("[chk] ficha sending reply");
+        await withTimeout(sendText(conversationKey, fichaReply), 10000, "ficha:sendText");
+        // Log de conversa (best-effort) — nunca bloqueia a resposta
+        try {
+          const convFast = await withTimeout(
+            getOrCreateConversation(conversationKey, displayName || null),
+            5000, "ficha:getOrCreateConversation",
+          );
+          if (convFast) {
+            await supabase.from("whatsapp_messages").insert([
+              { conversation_id: convFast.id, direction: "inbound", content: text },
+              { conversation_id: convFast.id, direction: "outbound", content: fichaReply },
+            ]);
+            await supabase.rpc("bump_conversation_unread", { conv_id: convFast.id });
+          }
+        } catch (e) { console.error("[ficha] log conv err:", e); }
+        console.log("[chk] ficha fast-path done");
+        return new Response(JSON.stringify({ ok: true, ficha: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        console.error("ficha fast-path err:", e);
+        // Cai no fluxo normal se algo falhou
+      }
+    }
+
+
     // ---- REAÇÃO A STATUS (curtida em foto que postamos) ----
     // BubbleWhats entrega em messageContext.message.reactionMessage
     try {
@@ -461,7 +553,20 @@ Deno.serve(async (req) => {
     }
 
     // Cria/pega conversa (armazena/atualiza nome do grupo ou do contato)
-    const conv = await getOrCreateConversation(conversationKey, displayName || null);
+    console.log("[chk] before getOrCreateConversation");
+    let conv: Awaited<ReturnType<typeof getOrCreateConversation>> | null = null;
+    try {
+      conv = await withTimeout(
+        getOrCreateConversation(conversationKey, displayName || null),
+        8000, "getOrCreateConversation",
+      );
+    } catch (e) {
+      console.error("[chk] getOrCreateConversation timeout/err:", e);
+      return new Response(JSON.stringify({ ok: false, error: "conv timeout" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    console.log("[chk] conv", conv?.id);
     if (!conv) return new Response("ok", { headers: corsHeaders });
 
     // Grava inbound
@@ -543,67 +648,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, skippedAI: "blocked" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ---- ATALHO: cliente pede foto/cópia da FICHA (contas a receber) ----
-    // Detecta pedidos como "manda a ficha", "foto da ficha", "minha ficha",
-    // "ficha por favor", "extrato", "quais parcelas".
-    const fichaRegex = /\b(fich[ao]|extrato|minhas?\s+parcelas?|quais?\s+parcelas?|carn[êe])\b/i;
-    if (text && fichaRegex.test(text) && !isGroup) {
-      try {
-        const digits = senderNumber.replace(/\D/g, "");
-        const variants = new Set<string>([senderNumber, digits]);
-        if (digits.startsWith("55")) variants.add(digits.slice(2));
-        else if (digits.length >= 10) variants.add("55" + digits);
-        const { data: custs } = await supabase
-          .from("customers")
-          .select("id, name")
-          .in("phone", Array.from(variants).filter(Boolean));
-        const custIds = (custs ?? []).map((c: any) => c.id);
-        let fichaReply = "";
-        if (custIds.length === 0) {
-          fichaReply = "Não localizei seu cadastro aqui 💕 Me diga seu nome completo por favor?";
-        } else {
-          const { data: recs } = await supabase
-            .from("accounts_receivable")
-            .select("description, amount, due_date, status, receivable_payments(amount_paid)")
-            .in("customer_id", custIds)
-            .in("status", ["pendente", "vencido"])
-            .order("due_date", { ascending: true });
-          if (!recs || recs.length === 0) {
-            fichaReply = `Boa notícia, ${custs![0].name.split(" ")[0]}! Você não tem nenhuma parcela em aberto 💕 Deus abençoe 🙏`;
-          } else {
-            const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-            const fmtDate = (iso: string) => {
-              const [y, m, d] = String(iso).slice(0, 10).split("-");
-              return `${d}/${m}/${y}`;
-            };
-            let total = 0;
-            const lines = recs.map((r: any) => {
-              const paid = (r.receivable_payments ?? []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
-              const open = Math.max(0, Number(r.amount || 0) - paid);
-              total += open;
-              const flag = r.status === "vencido" ? " ⚠️ vencida" : "";
-              const desc = r.description ? ` — ${r.description}` : "";
-              return `• ${fmtDate(r.due_date)}: ${fmtBRL(open)}${desc}${flag}`;
-            }).join("\n");
-            fichaReply =
-              `Segue sua ficha, ${custs![0].name.split(" ")[0]} 💕\n\n` +
-              `${lines}\n\n` +
-              `Total em aberto: ${fmtBRL(total)}\n\n` +
-              `Qualquer dúvida é só me chamar! 🙏`;
-          }
-        }
-        await sendText(conversationKey, fichaReply);
-        await supabase.from("whatsapp_messages").insert({
-          conversation_id: conv.id,
-          direction: "outbound",
-          content: fichaReply,
-        });
-        await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
-        return new Response(JSON.stringify({ ok: true, ficha: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      } catch (e) {
-        console.error("ficha shortcut err:", e);
-      }
-    }
+    // (atalho de FICHA já foi tratado no fast-path lá em cima)
+
+
 
     const { data: history } = await supabase
       .from("whatsapp_messages")
