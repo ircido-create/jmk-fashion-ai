@@ -553,7 +553,20 @@ Deno.serve(async (req) => {
     }
 
     // Cria/pega conversa (armazena/atualiza nome do grupo ou do contato)
-    const conv = await getOrCreateConversation(conversationKey, displayName || null);
+    console.log("[chk] before getOrCreateConversation");
+    let conv: Awaited<ReturnType<typeof getOrCreateConversation>> | null = null;
+    try {
+      conv = await withTimeout(
+        getOrCreateConversation(conversationKey, displayName || null),
+        8000, "getOrCreateConversation",
+      );
+    } catch (e) {
+      console.error("[chk] getOrCreateConversation timeout/err:", e);
+      return new Response(JSON.stringify({ ok: false, error: "conv timeout" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    console.log("[chk] conv", conv?.id);
     if (!conv) return new Response("ok", { headers: corsHeaders });
 
     // Grava inbound
