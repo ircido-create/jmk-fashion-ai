@@ -20,7 +20,7 @@ const mainItems = [
   { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownCircle },
   { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpCircle },
   { title: "Comprovantes", url: "/comprovantes", icon: Receipt },
-  { title: "Relatórios", url: "/relatorios", icon: FileBarChart2 },
+  
   { title: "Relatório Contas a Receber", url: "/relatorios/contas-receber", icon: FileBarChart2 },
   { title: "Status do Dia", url: "/status", icon: Camera },
   { title: "Conversas", url: "/conversas", icon: MessageCircle },
