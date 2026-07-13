@@ -23,6 +23,16 @@ const BW_TOKEN = Deno.env.get("BUBBLEWHATS_TOKEN")!;
 const BW_BASE = `https://${DEVICE_ID}.bubblewhats.com`;
 let groupWebhookConfigEnsured = false;
 
+// Timeout defensivo — nunca deixa o worker travado esperando uma promise pendurada.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`timeout ${label} after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 function classifyKind(mime?: string): "image" | "audio" | "video" | "document" | null {
   if (!mime) return null;
   if (mime.startsWith("image/")) return "image";
