@@ -542,6 +542,69 @@ Deno.serve(async (req) => {
       console.log("Contato na whitelist — Mônica não responde:", senderNumber);
       return new Response(JSON.stringify({ ok: true, skippedAI: "blocked" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    // ---- ATALHO: cliente pede foto/cópia da FICHA (contas a receber) ----
+    // Detecta pedidos como "manda a ficha", "foto da ficha", "minha ficha",
+    // "ficha por favor", "extrato", "quais parcelas".
+    const fichaRegex = /\b(fich[ao]|extrato|minhas?\s+parcelas?|quais?\s+parcelas?|carn[êe])\b/i;
+    if (text && fichaRegex.test(text) && !isGroup) {
+      try {
+        const digits = senderNumber.replace(/\D/g, "");
+        const variants = new Set<string>([senderNumber, digits]);
+        if (digits.startsWith("55")) variants.add(digits.slice(2));
+        else if (digits.length >= 10) variants.add("55" + digits);
+        const { data: custs } = await supabase
+          .from("customers")
+          .select("id, name")
+          .in("phone", Array.from(variants).filter(Boolean));
+        const custIds = (custs ?? []).map((c: any) => c.id);
+        let fichaReply = "";
+        if (custIds.length === 0) {
+          fichaReply = "Não localizei seu cadastro aqui 💕 Me diga seu nome completo por favor?";
+        } else {
+          const { data: recs } = await supabase
+            .from("accounts_receivable")
+            .select("description, amount, due_date, status, receivable_payments(amount)")
+            .in("customer_id", custIds)
+            .in("status", ["pendente", "vencido"])
+            .order("due_date", { ascending: true });
+          if (!recs || recs.length === 0) {
+            fichaReply = `Boa notícia, ${custs![0].name.split(" ")[0]}! Você não tem nenhuma parcela em aberto 💕 Deus abençoe 🙏`;
+          } else {
+            const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+            const fmtDate = (iso: string) => {
+              const [y, m, d] = String(iso).slice(0, 10).split("-");
+              return `${d}/${m}/${y}`;
+            };
+            let total = 0;
+            const lines = recs.map((r: any) => {
+              const paid = (r.receivable_payments ?? []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+              const open = Math.max(0, Number(r.amount || 0) - paid);
+              total += open;
+              const flag = r.status === "vencido" ? " ⚠️ vencida" : "";
+              const desc = r.description ? ` — ${r.description}` : "";
+              return `• ${fmtDate(r.due_date)}: ${fmtBRL(open)}${desc}${flag}`;
+            }).join("\n");
+            fichaReply =
+              `Segue sua ficha, ${custs![0].name.split(" ")[0]} 💕\n\n` +
+              `${lines}\n\n` +
+              `Total em aberto: ${fmtBRL(total)}\n\n` +
+              `Qualquer dúvida é só me chamar! 🙏`;
+          }
+        }
+        await sendText(conversationKey, fichaReply);
+        await supabase.from("whatsapp_messages").insert({
+          conversation_id: conv.id,
+          direction: "outbound",
+          content: fichaReply,
+        });
+        await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
+        return new Response(JSON.stringify({ ok: true, ficha: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        console.error("ficha shortcut err:", e);
+      }
+    }
+
     const { data: history } = await supabase
       .from("whatsapp_messages")
       .select("direction, content, media_type, media_filename, created_at")
