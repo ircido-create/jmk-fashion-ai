@@ -466,6 +466,26 @@ export default function Conversations() {
     await loadConversations();
   };
 
+  const toggleHandoff = async () => {
+    if (!active) return;
+    const next = !active.ai_handoff;
+    const { error } = await supabase
+      .from("whatsapp_conversations")
+      .update({ ai_handoff: next })
+      .eq("id", active.id);
+    if (error) {
+      toast({ title: "Erro ao alterar atendimento", description: error.message, variant: "destructive" });
+      return;
+    }
+    setActive({ ...active, ai_handoff: next });
+    setConversations((prev) => prev.map((x) => x.id === active.id ? { ...x, ai_handoff: next } : x));
+    toast({
+      title: next
+        ? "Atendimento humano iniciado — Mônica em silêncio"
+        : "Retornado para IA — Mônica voltará a responder",
+    });
+  };
+
   const openRegister = async () => {
     if (!active) return;
     setRegMode("new");
