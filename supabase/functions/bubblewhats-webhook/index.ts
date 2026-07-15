@@ -426,7 +426,7 @@ Deno.serve(async (req) => {
     // BubbleWhats entrega em messageContext.message.reactionMessage
     try {
       const reactionMsg = payload.messageContext?.message?.reactionMessage;
-      if (reactionMsg && !isGroup) {
+      if (reactionMsg && !isGroup && !humanHandoff) {
         const reactedKey = reactionMsg.key ?? {};
         const reactedRemote = String(reactedKey.remoteJid ?? "");
         const reactedFromMe = Boolean(reactedKey.fromMe);
