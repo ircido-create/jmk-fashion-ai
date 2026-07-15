@@ -763,9 +763,35 @@ export default function Conversations() {
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate text-sm">{displayName(active)}</div>
+                  <div className="font-medium truncate text-sm flex items-center gap-1.5">
+                    {displayName(active)}
+                    {active.ai_handoff && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                        Humano
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-muted-foreground truncate">{active.customer_phone}</div>
                 </div>
+                <Button
+                  variant={active.ai_handoff ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleHandoff}
+                  className={cn("shrink-0 hidden sm:inline-flex", active.ai_handoff && "bg-amber-600 hover:bg-amber-700 text-white")}
+                  title={active.ai_handoff ? "Retornar atendimento para a IA Mônica" : "Assumir atendimento (Mônica fica em silêncio)"}
+                >
+                  {active.ai_handoff ? <Bot className="h-4 w-4 mr-1" /> : <Headset className="h-4 w-4 mr-1" />}
+                  {active.ai_handoff ? "Retornar para IA" : "Atender"}
+                </Button>
+                <Button
+                  variant={active.ai_handoff ? "default" : "outline"}
+                  size="icon"
+                  onClick={toggleHandoff}
+                  className={cn("shrink-0 sm:hidden h-9 w-9", active.ai_handoff && "bg-amber-600 hover:bg-amber-700 text-white")}
+                  aria-label={active.ai_handoff ? "Retornar para IA" : "Atender"}
+                >
+                  {active.ai_handoff ? <Bot className="h-4 w-4" /> : <Headset className="h-4 w-4" />}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
