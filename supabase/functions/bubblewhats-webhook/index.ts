@@ -633,7 +633,7 @@ Deno.serve(async (req) => {
     }
 
     // Se for comprovante de pagamento, responde SEMPRE com "Deus abençoe 🙏" e não chama a IA.
-    if (proofResult?.is_payment_proof) {
+    if (proofResult?.is_payment_proof && !humanHandoff) {
       const fixedReply = "Recebi seu comprovante, muito obrigada! Deus abençoe 🙏";
       await sendText(conversationKey, fixedReply);
       await supabase.from("whatsapp_messages").insert({
