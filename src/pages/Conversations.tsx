@@ -39,6 +39,7 @@ interface Conversation {
   customer?: { name: string } | null;
   lastMessage?: string;
   unread_count: number;
+  ai_handoff?: boolean;
 }
 
 interface Message {
