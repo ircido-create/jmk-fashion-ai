@@ -22,7 +22,7 @@ import { formatTaxId } from "@/lib/taxId";
 import {
   MessageCircle, Send, Plus, Search, User, UserPlus, ArrowLeft, Paperclip,
   Image as ImageIcon, FileText, Mic, X, Download,
-  Smile, Check, ChevronsUpDown, Link2,
+  Smile, Check, ChevronsUpDown, Link2, Bot, Headset,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
