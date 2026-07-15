@@ -987,6 +987,7 @@ export type Database = {
       }
       whatsapp_conversations: {
         Row: {
+          ai_handoff: boolean
           created_at: string
           customer_id: string | null
           customer_phone: string
@@ -996,6 +997,7 @@ export type Database = {
           unread_count: number
         }
         Insert: {
+          ai_handoff?: boolean
           created_at?: string
           customer_id?: string | null
           customer_phone: string
@@ -1005,6 +1007,7 @@ export type Database = {
           unread_count?: number
         }
         Update: {
+          ai_handoff?: boolean
           created_at?: string
           customer_id?: string | null
           customer_phone?: string

@@ -322,11 +322,31 @@ Deno.serve(async (req) => {
 
     console.log("[chk] parsed", { conversationKey, isGroup, hasText: !!text, senderNumber });
 
+    // ---- ATENDIMENTO HUMANO (prioridade máxima) ----
+    // Se a conversa está marcada como handoff humano, a Mônica fica em silêncio total:
+    // NÃO responde ficha, NÃO reage a status, NÃO responde comprovante, NÃO chama IA.
+    // A mensagem inbound continua sendo salva normalmente para o atendente ver.
+    let humanHandoff = false;
+    try {
+      const { data: existingConv } = await withTimeout(
+        supabase
+          .from("whatsapp_conversations")
+          .select("ai_handoff")
+          .eq("customer_phone", conversationKey)
+          .maybeSingle(),
+        3000, "handoff:lookup",
+      );
+      humanHandoff = !!existingConv?.ai_handoff;
+    } catch (e) {
+      console.error("[handoff] lookup err:", e);
+    }
+    if (humanHandoff) console.log("[handoff] ATIVO — Mônica em silêncio para", conversationKey);
+
     // ---- FAST-PATH: cliente pede FICHA/EXTRATO/PARCELAS ----
     // Executa ANTES de qualquer análise pesada (mídia, comprovante, IA) e usa
     // timeouts defensivos para nunca travar o worker.
     const fichaRegex = /\b(fich[ao]|extrato|minhas?\s+parcelas?|quais?\s+parcelas?|carn[êe])\b/i;
-    if (text && !isGroup && senderNumber && fichaRegex.test(text)) {
+    if (!humanHandoff && text && !isGroup && senderNumber && fichaRegex.test(text)) {
       console.log("[chk] ficha fast-path start");
       try {
         const digits = senderNumber.replace(/\D/g, "");
@@ -406,7 +426,7 @@ Deno.serve(async (req) => {
     // BubbleWhats entrega em messageContext.message.reactionMessage
     try {
       const reactionMsg = payload.messageContext?.message?.reactionMessage;
-      if (reactionMsg && !isGroup) {
+      if (reactionMsg && !isGroup && !humanHandoff) {
         const reactedKey = reactionMsg.key ?? {};
         const reactedRemote = String(reactedKey.remoteJid ?? "");
         const reactedFromMe = Boolean(reactedKey.fromMe);
@@ -613,7 +633,7 @@ Deno.serve(async (req) => {
     }
 
     // Se for comprovante de pagamento, responde SEMPRE com "Deus abençoe 🙏" e não chama a IA.
-    if (proofResult?.is_payment_proof) {
+    if (proofResult?.is_payment_proof && !humanHandoff) {
       const fixedReply = "Recebi seu comprovante, muito obrigada! Deus abençoe 🙏";
       await sendText(conversationKey, fixedReply);
       await supabase.from("whatsapp_messages").insert({
@@ -623,6 +643,11 @@ Deno.serve(async (req) => {
       });
       await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
       return new Response(JSON.stringify({ ok: true, paymentProof: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Atendimento humano ativo → Mônica em silêncio total nesta conversa
+    if (humanHandoff) {
+      return new Response(JSON.stringify({ ok: true, skippedAI: "human-handoff" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Se não temos texto (foto sem caption) ou é grupo, não chama a IA

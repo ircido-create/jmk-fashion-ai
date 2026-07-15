@@ -22,7 +22,7 @@ import { formatTaxId } from "@/lib/taxId";
 import {
   MessageCircle, Send, Plus, Search, User, UserPlus, ArrowLeft, Paperclip,
   Image as ImageIcon, FileText, Mic, X, Download,
-  Smile, Check, ChevronsUpDown, Link2,
+  Smile, Check, ChevronsUpDown, Link2, Bot, Headset,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -39,6 +39,7 @@ interface Conversation {
   customer?: { name: string } | null;
   lastMessage?: string;
   unread_count: number;
+  ai_handoff?: boolean;
 }
 
 interface Message {
@@ -202,7 +203,7 @@ export default function Conversations() {
   const loadConversations = async () => {
     const { data } = await supabase
       .from("whatsapp_conversations")
-      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, customers(name)")
+      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, ai_handoff, customers(name)")
       .order("last_message_at", { ascending: false });
 
     const list: Conversation[] = (data ?? []).map((c: any) => ({
@@ -213,6 +214,7 @@ export default function Conversations() {
       display_name: c.display_name,
       customer: c.customers,
       unread_count: c.unread_count ?? 0,
+      ai_handoff: !!c.ai_handoff,
     }));
 
     for (const c of list) {
@@ -462,6 +464,26 @@ export default function Conversations() {
     setNewOpen(false);
     setNewPhone(""); setNewName(""); setNewMessage("");
     await loadConversations();
+  };
+
+  const toggleHandoff = async () => {
+    if (!active) return;
+    const next = !active.ai_handoff;
+    const { error } = await supabase
+      .from("whatsapp_conversations")
+      .update({ ai_handoff: next })
+      .eq("id", active.id);
+    if (error) {
+      toast({ title: "Erro ao alterar atendimento", description: error.message, variant: "destructive" });
+      return;
+    }
+    setActive({ ...active, ai_handoff: next });
+    setConversations((prev) => prev.map((x) => x.id === active.id ? { ...x, ai_handoff: next } : x));
+    toast({
+      title: next
+        ? "Atendimento humano iniciado — Mônica em silêncio"
+        : "Retornado para IA — Mônica voltará a responder",
+    });
   };
 
   const openRegister = async () => {
@@ -741,9 +763,35 @@ export default function Conversations() {
                   <User className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate text-sm">{displayName(active)}</div>
+                  <div className="font-medium truncate text-sm flex items-center gap-1.5">
+                    {displayName(active)}
+                    {active.ai_handoff && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                        Humano
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-muted-foreground truncate">{active.customer_phone}</div>
                 </div>
+                <Button
+                  variant={active.ai_handoff ? "default" : "outline"}
+                  size="sm"
+                  onClick={toggleHandoff}
+                  className={cn("shrink-0 hidden sm:inline-flex", active.ai_handoff && "bg-amber-600 hover:bg-amber-700 text-white")}
+                  title={active.ai_handoff ? "Retornar atendimento para a IA Mônica" : "Assumir atendimento (Mônica fica em silêncio)"}
+                >
+                  {active.ai_handoff ? <Bot className="h-4 w-4 mr-1" /> : <Headset className="h-4 w-4 mr-1" />}
+                  {active.ai_handoff ? "Retornar para IA" : "Atender"}
+                </Button>
+                <Button
+                  variant={active.ai_handoff ? "default" : "outline"}
+                  size="icon"
+                  onClick={toggleHandoff}
+                  className={cn("shrink-0 sm:hidden h-9 w-9", active.ai_handoff && "bg-amber-600 hover:bg-amber-700 text-white")}
+                  aria-label={active.ai_handoff ? "Retornar para IA" : "Atender"}
+                >
+                  {active.ai_handoff ? <Bot className="h-4 w-4" /> : <Headset className="h-4 w-4" />}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
