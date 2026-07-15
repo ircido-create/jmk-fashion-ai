@@ -645,6 +645,11 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, paymentProof: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Atendimento humano ativo → Mônica em silêncio total nesta conversa
+    if (humanHandoff) {
+      return new Response(JSON.stringify({ ok: true, skippedAI: "human-handoff" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // Se não temos texto (foto sem caption) ou é grupo, não chama a IA
     if (!text || isGroup) return new Response(JSON.stringify({ ok: true, skippedAI: isGroup ? "group" : "no-text" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
