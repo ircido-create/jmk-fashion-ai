@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_conversations ADD COLUMN IF NOT EXISTS ai_handoff boolean NOT NULL DEFAULT false;
