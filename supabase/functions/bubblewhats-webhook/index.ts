@@ -322,11 +322,31 @@ Deno.serve(async (req) => {
 
     console.log("[chk] parsed", { conversationKey, isGroup, hasText: !!text, senderNumber });
 
+    // ---- ATENDIMENTO HUMANO (prioridade máxima) ----
+    // Se a conversa está marcada como handoff humano, a Mônica fica em silêncio total:
+    // NÃO responde ficha, NÃO reage a status, NÃO responde comprovante, NÃO chama IA.
+    // A mensagem inbound continua sendo salva normalmente para o atendente ver.
+    let humanHandoff = false;
+    try {
+      const { data: existingConv } = await withTimeout(
+        supabase
+          .from("whatsapp_conversations")
+          .select("ai_handoff")
+          .eq("customer_phone", conversationKey)
+          .maybeSingle(),
+        3000, "handoff:lookup",
+      );
+      humanHandoff = !!existingConv?.ai_handoff;
+    } catch (e) {
+      console.error("[handoff] lookup err:", e);
+    }
+    if (humanHandoff) console.log("[handoff] ATIVO — Mônica em silêncio para", conversationKey);
+
     // ---- FAST-PATH: cliente pede FICHA/EXTRATO/PARCELAS ----
     // Executa ANTES de qualquer análise pesada (mídia, comprovante, IA) e usa
     // timeouts defensivos para nunca travar o worker.
     const fichaRegex = /\b(fich[ao]|extrato|minhas?\s+parcelas?|quais?\s+parcelas?|carn[êe])\b/i;
-    if (text && !isGroup && senderNumber && fichaRegex.test(text)) {
+    if (!humanHandoff && text && !isGroup && senderNumber && fichaRegex.test(text)) {
       console.log("[chk] ficha fast-path start");
       try {
         const digits = senderNumber.replace(/\D/g, "");
