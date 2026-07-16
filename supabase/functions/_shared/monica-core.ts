@@ -1297,11 +1297,10 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   const data = await resp.json();
   const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
   const withoutEmailRequest = sanitizeEmailRequest(raw, ctx.missing ?? []);
-  // Se a cliente perguntou sobre dívida/valor em aberto, PODE informar valores (fonte: contas a receber).
-  // Caso contrário, remove qualquer menção a preço (produtos).
-  const isDebtInquiry = /\b(devo|devendo|d[íi]vida|d[ée]bito|em aberto|conta\s+em\s+aberto|pend[êe]ncia|quanto\s+(tá|ta|est[áa])|saldo|quanto\s+falta|parcela)\b/i.test(userMsg ?? "");
+  // Assistente é FINANCEIRA: valores sempre vêm de contas a receber, então NÃO sanitizamos preços.
   const withPaz = expandPazGreeting(withoutEmailRequest);
-  const withoutPrice = isDebtInquiry ? withPaz : sanitizePriceMentions(withPaz);
+  const withoutPrice = withPaz;
+
   // Sanitiza tom/emojis conforme gênero do cliente (pós-processamento)
   const sanitized = sanitizeReplyByGender(withoutPrice, customerGender);
   if (sanitized !== raw) {
