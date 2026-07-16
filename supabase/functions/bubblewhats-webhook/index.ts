@@ -701,48 +701,11 @@ Deno.serve(async (req) => {
       quotedImageForAI,
     );
 
-    // ---- FOTOS quando a cliente pediu ----
-    let photoFailed = false;
-    let photosSent = 0;
-    if (asksForPhoto(text)) {
-      const photos = await findPhotoMatches(text, ctx.supplierMentioned, history ?? []);
-      for (const ph of photos) {
-        const r = await sendImage(conversationKey, ph.url, ph.caption);
-        if (r.ok) {
-          photosSent++;
-          try {
-            const ir = await fetch(ph.url);
-            if (ir.ok) {
-              const bs = new Uint8Array(await ir.arrayBuffer());
-              const mm = (ir.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
-              await logOutboundMedia(conv.id, conversationKey, bs, mm, "image", ph.caption);
-            }
-          } catch { /* noop */ }
-        }
-      }
-      if (photos.length > 0 && photosSent === 0) photoFailed = true;
-    }
+    // Mônica é assistente exclusivamente financeira — não envia fotos de produtos
+    // nem faz "handoff fantasma" por foto. Qualquer pedido não-financeiro é
+    // tratado pelo próprio prompt da IA (encaminha à equipe).
+    const finalReply = reply;
 
-    // Se a IA afirmou ter enviado foto(s) mas nenhuma foi realmente enviada,
-    // substitui a resposta pelo encaminhamento humano (evita "mandei aqui" fantasma).
-    const claimsPhotoSent =
-      /\b(mandei|enviei|segue|segueei|olha|olhe|veja|t[ôo] mandando|estou mandando|acabei de (mandar|enviar)|vou (te )?(mandar|enviar))\b[^.\n!?]{0,80}\b(a\s+|as\s+|umas?\s+)?(foto|fotos|imagem|imagens|figura|figuras)\b/i.test(reply)
-      || /\b(foto|fotos|imagem|imagens)\b[^.\n!?]{0,30}\b(a[ií]|ali|acima|abaixo|em anexo|anexo)\b/i.test(reply)
-      || /\b(mandei|enviei|segue|olha|olhe|veja)\b\s+(a[ií]|aqui|agora|pra\s+voc[êe]|pra\s+ti)\b/i.test(reply);
-    const phantomPhoto = claimsPhotoSent && photosSent === 0;
-
-    const handoffReply = "Olá! Parece que houve um pequeno desencontro com a foto do produto, ou ela não está disponível em nosso sistema neste momento. Peço desculpas por qualquer inconveniente! 🙏\n\nPara garantir que você tenha todas as informações e um atendimento completo, já estou passando seu contato para o nosso atendimento humano, que continuará a conversa a partir daqui com acesso a todo o histórico e poderá te ajudar com detalhes, descrições ou qualquer outra dúvida sobre o produto.\n\nAguarde um instante, a Monica já está chegando!";
-
-    const finalReply = (phantomPhoto || photoFailed)
-      ? handoffReply
-      : reply;
-
-    if (phantomPhoto) {
-      console.warn("[MONICA] phantom photo claim — handoff. original:", reply.slice(0, 200));
-    }
-    if (photoFailed) {
-      console.warn("[MONICA] photo send failed — handoff.");
-    }
 
 
     // ---- ÁUDIO (quando cliente mandou áudio ou pediu) ----
