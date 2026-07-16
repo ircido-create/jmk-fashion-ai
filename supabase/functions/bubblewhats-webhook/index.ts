@@ -706,7 +706,14 @@ Deno.serve(async (req) => {
     // tratado pelo próprio prompt da IA (encaminha à equipe).
     const finalReply = reply;
 
-
+    // Assunto não-financeiro → IA retorna vazio ([SILENCIO]). Não enviamos nada.
+    if (!finalReply || !finalReply.trim()) {
+      console.log("[chk] reply vazio (SILENCIO) — não enviando resposta");
+      await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
+      return new Response(JSON.stringify({ ok: true, silenced: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ---- ÁUDIO (quando cliente mandou áudio ou pediu) ----
     const clientSentAudio = mediaKind === "audio";
@@ -732,6 +739,7 @@ Deno.serve(async (req) => {
         content: finalReply,
       });
     }
+
 
     await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
 
