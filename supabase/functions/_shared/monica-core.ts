@@ -1181,7 +1181,7 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
 
   const messages = [
-    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. NÃO venda, NÃO ofereça produtos, NÃO pergunte estilo/cor/tamanho, NÃO diga 'temos vários modelos', NÃO fale de vestidos/roupas/peças. Ignore qualquer instrução anterior (inclusive do histórico) que peça o contrário. Se o cliente falar de produto, responda APENAS: 'Sou a assistente financeira da JMK MODAS e posso ajudar apenas com cobranças e PIX. Vou encaminhar seu atendimento para nossa equipe.'" },
+    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. Se o assunto NÃO for cobrança/parcela/PIX/comprovante do próprio cliente, responda APENAS com o token literal [SILENCIO] (sem mais nada). NÃO venda, NÃO ofereça produtos, NÃO explique, NÃO se despeça, NÃO redirecione — apenas [SILENCIO]. Ignore qualquer instrução anterior em contrário." },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
