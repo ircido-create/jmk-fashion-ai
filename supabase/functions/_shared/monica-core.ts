@@ -1262,6 +1262,13 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
   const data = await resp.json();
   const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
+
+  // Sentinel: assunto não-financeiro → silêncio absoluto
+  if (/\[SILENCIO\]/i.test(raw) || raw.trim().toUpperCase() === "SILENCIO") {
+    console.log("[MONICA] SILENCIO detectado — não respondendo (assunto não-financeiro)");
+    return "";
+  }
+
   const withoutEmailRequest = sanitizeEmailRequest(raw, ctx.missing ?? []);
   // Assistente é FINANCEIRA: valores sempre vêm de contas a receber, então NÃO sanitizamos preços.
   const withPaz = expandPazGreeting(withoutEmailRequest);
@@ -1276,4 +1283,5 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
   return sanitized;
 }
+
 
