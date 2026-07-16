@@ -1083,37 +1083,11 @@ ${religiousBlock}${unclearBlock}${pazRule}
 🚫 Você é assistente EXCLUSIVAMENTE FINANCEIRA. Você NÃO envia fotos, NÃO comenta fotos, NÃO promete fotos, NÃO diz "mandei aqui", "olha essa", "segue foto", "acabei de enviar" nem nada parecido. Você NÃO tem acesso a imagens de produtos. Se o cliente pedir foto, imagem, modelo, cor, tamanho, descrição de peça ou qualquer coisa sobre produto, responda APENAS: "Sobre produtos e fotos quem te ajuda melhor é a nossa equipe. Já estou encaminhando seu atendimento 💕". NUNCA use as palavras "foto", "imagem", "mandei", "enviei", "olha", "segue" referindo-se a peças.
 
 
-=== FILTRO POR FORNECEDOR ===
-${supplierBlock}
-
-=== 📸 PEÇAS POSTADAS NO STATUS AGORA (últimas 24h) ===
-${ctx.activeStatus && ctx.activeStatus.length > 0
-  ? `O cliente PODE estar respondendo a uma destas peças que VOCÊ postou no status do WhatsApp. Quando a mensagem dele for curta/ambígua ("oi", "quero", "valor?", "amei", "tem?", "quanto?", "esse", "esse aí"), ASSUMA que é resposta ao status:
-${ctx.activeStatus.map((s: any, i: number) => {
-  const p = s.products;
-  const vars = (p?.product_variants ?? []).map((v: any) => `${v.size ?? "-"}/${v.color ?? "-"}(${v.quantity})`).join(", ");
-  return `${i + 1}. ${p?.name ?? s.caption} — Fornecedor: ${p?.supplier ?? "-"} — Tamanhos: ${vars || "única"}`;
-}).join("\n")}
-REGRA:
-- Se há SÓ 1 peça no status: confirme essa peça direto ("Oi! O ${ctx.activeStatus[0]?.products?.name ?? "vestido"}? Tenho disponível, qual seu tamanho?").
-- Se há VÁRIAS peças: escolha a mais coerente com o histórico da conversa. Se ainda houver dúvida real, pergunte de forma natural ("Oi! Foi qual peça que você viu no status? Tô com várias hoje 😊").
-- NUNCA finja que viu a foto. Apenas referencie pelo NOME da peça do catálogo acima.`
-  : "(nenhuma peça ativa no status agora — se o cliente mandar mensagem curta/ambígua, peça que ele descreva ou mande a foto da peça)"}
-
-=== CATÁLOGO ${ctx.supplierMentioned ? `(filtrado por fornecedor "${ctx.supplierMentioned}")` : "COMPLETO"} — use SOMENTE estes produtos ===
-${formatProducts(ctx.all)}
-
-=== PRODUTO EM FOCO (último mostrado por VOCÊ) ===
-${focusedBlock}${ambiguityBlock}
-
-=== BUSCA NA PERGUNTA ATUAL ===
-${matchInfo}
-
 === CLIENTE ===
 ${ctx.customer
-  ? `Nome: ${ctx.customer.name ?? "(faltando)"}${ctx.customer.nickname ? ` | Apelido: ${ctx.customer.nickname}` : ""} | Endereço: ${ctx.customer.address ?? "(faltando)"} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"}${ctx.customer.nickname ? ` | Apelido: ${ctx.customer.nickname}` : ""} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
   : "Cliente NÃO cadastrado."}
-CAMPOS FALTANDO: nenhum — NUNCA peça nome, endereço ou e-mail. Esses dados são coletados pessoalmente pela equipe.
+NUNCA peça nome, endereço, e-mail ou CPF.
 
 === DÍVIDAS PENDENTES (FONTE DA VERDADE — ignore datas/valores do histórico) ===
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
@@ -1123,6 +1097,7 @@ ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
 === PAGAMENTO ===
 ${pixBlock}
 `.trim();
+
 
 
 
@@ -1205,7 +1180,7 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
 
   const messages = [
-    { role: "system", content: SALES_FOCUS + "\n\n" + systemPrompt + "\n\n" + contextText + "\n\nREGRA FINAL: está PROIBIDO pedir nome, nome completo, endereço, rua, CEP, bairro ou e-mail. Esses dados são coletados pessoalmente." },
+    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. NÃO venda, NÃO ofereça produtos, NÃO pergunte estilo/cor/tamanho, NÃO diga 'temos vários modelos', NÃO fale de vestidos/roupas/peças. Ignore qualquer instrução anterior (inclusive do histórico) que peça o contrário. Se o cliente falar de produto, responda APENAS: 'Sou a assistente financeira da JMK MODAS e posso ajudar apenas com cobranças e PIX. Vou encaminhar seu atendimento para nossa equipe.'" },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
