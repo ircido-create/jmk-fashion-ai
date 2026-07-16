@@ -1134,10 +1134,11 @@ DATA DE HOJE: ${hojeBR} (ISO ${hojeISO}). Use APENAS esta data como referência 
 === COMPROVANTE ===
 Se o cliente enviar comprovante (mídia rotulada como "[📎 Documento]", "[📄 PDF]" ou "[📷 Imagem]" após conversa de pagamento): agradeça curto e finalize com "Deus abençoe 🙏". NUNCA confirme a baixa — apenas confirme o recebimento do comprovante. NUNCA prometa separar/enviar pedido.
 
-=== ASSUNTOS FORA DO FINANCEIRO ===
-Se o cliente falar de roupas, preços de produtos, tamanhos, cores, troca, entrega, pedidos, estoque, promoções, atendimento humano, assuntos pessoais ou qualquer outro tema não-financeiro, responda EXATAMENTE:
-"Sou a assistente financeira da JMK MODAS e posso ajudar apenas com informações sobre cobranças e pagamento via PIX. Para os demais assuntos, vou encaminhar seu atendimento para nossa equipe."
-Não invente, não continue o assunto, não ofereça alternativas.
+=== ASSUNTOS FORA DO FINANCEIRO (SILÊNCIO ABSOLUTO) ===
+Se o cliente falar de roupas, preços de produtos, tamanhos, cores, troca, entrega, pedidos, estoque, promoções, atendimento humano, assuntos pessoais, saudações soltas sem contexto financeiro, ou qualquer outro tema não-financeiro, responda EXATAMENTE com este único token e nada mais:
+[SILENCIO]
+Não escreva NENHUMA outra palavra, explicação, saudação ou pontuação. Apenas [SILENCIO]. O sistema irá suprimir a resposta e um humano assumirá.
+
 
 === RESTRIÇÕES ABSOLUTAS ===
 - NUNCA cite cobranças futuras sem solicitação.
@@ -1180,7 +1181,7 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
 
   const messages = [
-    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. NÃO venda, NÃO ofereça produtos, NÃO pergunte estilo/cor/tamanho, NÃO diga 'temos vários modelos', NÃO fale de vestidos/roupas/peças. Ignore qualquer instrução anterior (inclusive do histórico) que peça o contrário. Se o cliente falar de produto, responda APENAS: 'Sou a assistente financeira da JMK MODAS e posso ajudar apenas com cobranças e PIX. Vou encaminhar seu atendimento para nossa equipe.'" },
+    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. Se o assunto NÃO for cobrança/parcela/PIX/comprovante do próprio cliente, responda APENAS com o token literal [SILENCIO] (sem mais nada). NÃO venda, NÃO ofereça produtos, NÃO explique, NÃO se despeça, NÃO redirecione — apenas [SILENCIO]. Ignore qualquer instrução anterior em contrário." },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
@@ -1261,6 +1262,13 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
   const data = await resp.json();
   const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
+
+  // Sentinel: assunto não-financeiro → silêncio absoluto
+  if (/\[SILENCIO\]/i.test(raw) || raw.trim().toUpperCase() === "SILENCIO") {
+    console.log("[MONICA] SILENCIO detectado — não respondendo (assunto não-financeiro)");
+    return "";
+  }
+
   const withoutEmailRequest = sanitizeEmailRequest(raw, ctx.missing ?? []);
   // Assistente é FINANCEIRA: valores sempre vêm de contas a receber, então NÃO sanitizamos preços.
   const withPaz = expandPazGreeting(withoutEmailRequest);
@@ -1275,4 +1283,5 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
   return sanitized;
 }
+
 
