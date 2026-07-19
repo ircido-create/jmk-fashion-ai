@@ -583,43 +583,124 @@ export default function Sales() {
       </GlassCard>
 
       <Dialog open={!!payEdit} onOpenChange={(o) => !o && setPayEdit(null)}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+        <DialogContent className="glass-card border-white/40 max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Alterar forma de pagamento</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Método</Label>
-              <Select value={payMethod} onValueChange={setPayMethod}>
-                <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                  <SelectItem value="credito">Cartão Crédito</SelectItem>
-                  <SelectItem value="debito">Cartão Débito</SelectItem>
-                  <SelectItem value="link">Link de Pagamento</SelectItem>
-                  <SelectItem value="fiado">Fiado</SelectItem>
-                  <SelectItem value="misto">Misto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {(payMethod === "credito" || payMethod === "fiado") && (
-              <div>
-                <Label>Parcelas</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={payInstallments}
-                  onChange={(e) => setPayInstallments(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
-                  className="glass-input mt-1"
-                />
+          {payEdit && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-xl bg-white/40 dark:bg-white/5 px-3 py-2">
+                <span className="text-xs text-muted-foreground">Total da venda</span>
+                <span className="text-base font-bold">{fmtBRL(Number(payEdit.total))}</span>
               </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Nota: alterar o método aqui não quita nem cria contas a receber automaticamente.
-            </p>
-          </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="split-mode">Pagamento misto (várias formas)</Label>
+                <Switch id="split-mode" checked={paySplitMode} onCheckedChange={setPaySplitMode} />
+              </div>
+
+              {!paySplitMode && (
+                <>
+                  <div>
+                    <Label>Método</Label>
+                    <Select value={payMethod} onValueChange={(v) => setPayMethod(v as PaySimple)}>
+                      <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(PAY_LABELS) as PaySimple[]).map((k) => (
+                          <SelectItem key={k} value={k}>{PAY_LABELS[k]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(payMethod === "credito" || payMethod === "fiado") && (
+                    <div>
+                      <Label>Parcelas</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={payInstallments}
+                        onChange={(e) => setPayInstallments(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                  {payMethod === "fiado" && (
+                    <div>
+                      <Label>Vencimento (1ª parcela)</Label>
+                      <Input
+                        type="date"
+                        value={payFiadoDueDate}
+                        onChange={(e) => setPayFiadoDueDate(e.target.value)}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {paySplitMode && (
+                <div className="space-y-2">
+                  <Label>Formas de pagamento</Label>
+                  {paySplits.map((sp, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                      <Select
+                        value={sp.method}
+                        onValueChange={(v) => setPaySplits((prev) => prev.map((x, idx) => idx === i ? { ...x, method: v as PaySimple } : x))}
+                      >
+                        <SelectTrigger className="glass-input"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(PAY_LABELS) as PaySimple[]).map((k) => (
+                            <SelectItem key={k} value={k}>{PAY_LABELS[k]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={sp.amount}
+                        onChange={(e) => setPaySplits((prev) => prev.map((x, idx) => idx === i ? { ...x, amount: Number(e.target.value) || 0 } : x))}
+                        className="glass-input"
+                      />
+                      <Button size="icon" variant="ghost" onClick={() => setPaySplits((prev) => prev.filter((_, idx) => idx !== i))} disabled={paySplits.length <= 2}>
+                        <X className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPaySplits((prev) => [...prev, { method: "pix", amount: 0 }])}
+                  >
+                    + Adicionar forma
+                  </Button>
+                  <div className={`flex items-center justify-between rounded-xl px-3 py-2 ${Math.abs(splitsSum - Number(payEdit.total)) > 0.01 ? "bg-destructive/10" : "bg-emerald-500/10"}`}>
+                    <span className="text-xs">Soma das formas</span>
+                    <span className={`text-sm font-semibold ${Math.abs(splitsSum - Number(payEdit.total)) > 0.01 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
+                      {fmtBRL(splitsSum)} / {fmtBRL(Number(payEdit.total))}
+                    </span>
+                  </div>
+                  {paySplits.some((s) => s.method === "fiado") && (
+                    <div>
+                      <Label>Vencimento (parte fiado)</Label>
+                      <Input
+                        type="date"
+                        value={payFiadoDueDate}
+                        onChange={(e) => setPayFiadoDueDate(e.target.value)}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Nota: se houver Fiado, novas contas a receber serão criadas. Contas antigas dessa venda continuam existindo — ajuste-as em <b>Contas a Receber</b>.
+              </p>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayEdit(null)}>Cancelar</Button>
             <Button onClick={savePayEdit} disabled={savingPay} className="bg-gradient-primary text-primary-foreground">
@@ -628,6 +709,7 @@ export default function Sales() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
