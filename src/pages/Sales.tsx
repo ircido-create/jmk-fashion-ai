@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Loader2, Search, Printer } from "lucide-react";
+import { Plus, Trash2, Loader2, Search, Printer, CreditCard } from "lucide-react";
 import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 import { printReceipt } from "@/lib/receipt";
 import { toast } from "sonner";
@@ -65,6 +65,36 @@ export default function Sales() {
   const [pickProduct, setPickProduct] = useState<string>("");
   const [pickVariant, setPickVariant] = useState<string>("");
   const [pickQty, setPickQty] = useState<number>(1);
+
+  // Editar forma de pagamento de venda finalizada
+  const [payEdit, setPayEdit] = useState<SaleRow | null>(null);
+  const [payMethod, setPayMethod] = useState<string>("dinheiro");
+  const [payInstallments, setPayInstallments] = useState<number>(1);
+  const [savingPay, setSavingPay] = useState(false);
+
+  const openPayEdit = (s: SaleRow) => {
+    setPayEdit(s);
+    setPayMethod(s.payment_method ?? "dinheiro");
+    setPayInstallments(s.installments ?? 1);
+  };
+
+  const savePayEdit = async () => {
+    if (!payEdit) return;
+    setSavingPay(true);
+    const showInst = payMethod === "credito" || payMethod === "fiado";
+    const { error } = await supabase
+      .from("sales")
+      .update({
+        payment_method: payMethod,
+        installments: showInst ? payInstallments : 1,
+      })
+      .eq("id", payEdit.id);
+    setSavingPay(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Forma de pagamento atualizada");
+    setPayEdit(null);
+    load();
+  };
 
   const load = async () => {
     const [s, p, c] = await Promise.all([
@@ -406,6 +436,15 @@ export default function Sales() {
                   >
                     <Printer className="h-3.5 w-3.5 mr-1" /> Reimprimir cupom
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => openPayEdit(s)}>
+                    <CreditCard className="h-3.5 w-3.5 mr-1" /> Forma de pagamento
+                  </Button>
+                  {s.payment_method && (
+                    <span className="text-[11px] text-muted-foreground">
+                      {s.payment_method}
+                      {(s.installments ?? 1) > 1 ? ` · ${s.installments}x` : ""}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -417,6 +456,53 @@ export default function Sales() {
           )}
         </div>
       </GlassCard>
+
+      <Dialog open={!!payEdit} onOpenChange={(o) => !o && setPayEdit(null)}>
+        <DialogContent className="glass-card border-white/40 max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar forma de pagamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Método</Label>
+              <Select value={payMethod} onValueChange={setPayMethod}>
+                <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                  <SelectItem value="credito">Cartão Crédito</SelectItem>
+                  <SelectItem value="debito">Cartão Débito</SelectItem>
+                  <SelectItem value="link">Link de Pagamento</SelectItem>
+                  <SelectItem value="fiado">Fiado</SelectItem>
+                  <SelectItem value="misto">Misto</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(payMethod === "credito" || payMethod === "fiado") && (
+              <div>
+                <Label>Parcelas</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={payInstallments}
+                  onChange={(e) => setPayInstallments(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                  className="glass-input mt-1"
+                />
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Nota: alterar o método aqui não quita nem cria contas a receber automaticamente.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayEdit(null)}>Cancelar</Button>
+            <Button onClick={savePayEdit} disabled={savingPay} className="bg-gradient-primary text-primary-foreground">
+              {savingPay ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
