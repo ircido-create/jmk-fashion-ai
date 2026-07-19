@@ -66,6 +66,36 @@ export default function Sales() {
   const [pickVariant, setPickVariant] = useState<string>("");
   const [pickQty, setPickQty] = useState<number>(1);
 
+  // Editar forma de pagamento de venda finalizada
+  const [payEdit, setPayEdit] = useState<SaleRow | null>(null);
+  const [payMethod, setPayMethod] = useState<string>("dinheiro");
+  const [payInstallments, setPayInstallments] = useState<number>(1);
+  const [savingPay, setSavingPay] = useState(false);
+
+  const openPayEdit = (s: SaleRow) => {
+    setPayEdit(s);
+    setPayMethod(s.payment_method ?? "dinheiro");
+    setPayInstallments(s.installments ?? 1);
+  };
+
+  const savePayEdit = async () => {
+    if (!payEdit) return;
+    setSavingPay(true);
+    const showInst = payMethod === "credito" || payMethod === "fiado";
+    const { error } = await supabase
+      .from("sales")
+      .update({
+        payment_method: payMethod,
+        installments: showInst ? payInstallments : 1,
+      })
+      .eq("id", payEdit.id);
+    setSavingPay(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Forma de pagamento atualizada");
+    setPayEdit(null);
+    load();
+  };
+
   const load = async () => {
     const [s, p, c] = await Promise.all([
       supabase.from("sales").select("*, customers(name, phone), sale_items(*)").order("sale_date", { ascending: false }).limit(100),
