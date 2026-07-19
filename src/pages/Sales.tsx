@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Loader2, Search, Printer, CreditCard } from "lucide-react";
+import { Plus, Trash2, Loader2, Search, Printer, CreditCard, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 import { printReceipt } from "@/lib/receipt";
 import { toast } from "sonner";
@@ -45,6 +46,37 @@ const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "curren
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+type PaySimple = "pix" | "dinheiro" | "credito" | "debito" | "link" | "fiado";
+const PAY_LABELS: Record<PaySimple, string> = {
+  pix: "PIX",
+  dinheiro: "Dinheiro",
+  credito: "Cartão Crédito",
+  debito: "Cartão Débito",
+  link: "Link de Pagamento",
+  fiado: "Fiado",
+};
+interface SplitLine { method: PaySimple; amount: number; }
+
+// Extrai a linha "Misto: X R$ 0,00 + Y R$ 0,00" das notes
+function parseMistoFromNotes(notes: string | null): SplitLine[] | null {
+  if (!notes) return null;
+  const m = notes.match(/Misto:\s*(.+?)(?:\s*\|\s*|$)/i);
+  if (!m) return null;
+  const parts = m[1].split("+").map((s) => s.trim());
+  const out: SplitLine[] = [];
+  for (const p of parts) {
+    const mm = p.match(/^(.+?)\s+R\$\s*([\d.,]+)$/);
+    if (!mm) continue;
+    const label = mm[1].trim();
+    const key = (Object.keys(PAY_LABELS) as PaySimple[]).find((k) => PAY_LABELS[k].toLowerCase() === label.toLowerCase());
+    if (!key) continue;
+    const val = Number(mm[2].replace(/\./g, "").replace(",", "."));
+    if (!isFinite(val)) continue;
+    out.push({ method: key, amount: val });
+  }
+  return out.length >= 2 ? out : null;
+}
+
 type PeriodFilter = "week" | "today" | "month" | "all";
 
 export default function Sales() {
@@ -68,33 +100,126 @@ export default function Sales() {
 
   // Editar forma de pagamento de venda finalizada
   const [payEdit, setPayEdit] = useState<SaleRow | null>(null);
-  const [payMethod, setPayMethod] = useState<string>("dinheiro");
+  const [payMethod, setPayMethod] = useState<PaySimple>("dinheiro");
   const [payInstallments, setPayInstallments] = useState<number>(1);
+  const [paySplitMode, setPaySplitMode] = useState(false);
+  const [paySplits, setPaySplits] = useState<SplitLine[]>([]);
+  const [payFiadoDueDate, setPayFiadoDueDate] = useState<string>(todayISO());
   const [savingPay, setSavingPay] = useState(false);
 
   const openPayEdit = (s: SaleRow) => {
     setPayEdit(s);
-    setPayMethod(s.payment_method ?? "dinheiro");
+    const isMisto = (s.payment_method ?? "") === "misto";
+    setPaySplitMode(isMisto);
+    setPayMethod(isMisto ? "dinheiro" : ((s.payment_method as PaySimple) ?? "dinheiro"));
     setPayInstallments(s.installments ?? 1);
+    setPayFiadoDueDate(todayISO());
+    if (isMisto) {
+      const parsed = parseMistoFromNotes(s.notes);
+      if (parsed) setPaySplits(parsed);
+      else setPaySplits([
+        { method: "pix", amount: Math.round(Number(s.total) * 100) / 200 },
+        { method: "dinheiro", amount: Math.round(Number(s.total) * 100) / 200 },
+      ]);
+    } else {
+      setPaySplits([
+        { method: "pix", amount: Math.round(Number(s.total) * 100) / 200 },
+        { method: "dinheiro", amount: Math.round(Number(s.total) * 100) / 200 },
+      ]);
+    }
   };
+
+  const splitsSum = useMemo(
+    () => paySplits.reduce((a, b) => a + (Number(b.amount) || 0), 0),
+    [paySplits],
+  );
 
   const savePayEdit = async () => {
     if (!payEdit) return;
+    const total = Number(payEdit.total);
+
+    if (paySplitMode) {
+      if (paySplits.length < 2) { toast.error("Adicione pelo menos 2 formas de pagamento"); return; }
+      if (Math.abs(splitsSum - total) > 0.01) {
+        toast.error(`Soma (${fmtBRL(splitsSum)}) difere do total (${fmtBRL(total)})`);
+        return;
+      }
+    }
+
     setSavingPay(true);
-    const showInst = payMethod === "credito" || payMethod === "fiado";
-    const { error } = await supabase
-      .from("sales")
-      .update({
-        payment_method: payMethod,
-        installments: showInst ? payInstallments : 1,
-      })
-      .eq("id", payEdit.id);
-    setSavingPay(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Forma de pagamento atualizada");
-    setPayEdit(null);
-    load();
+    try {
+      let newMethod: string;
+      let newInstallments = 1;
+      let newNotes = (payEdit.notes ?? "").replace(/\s*\|\s*Misto:[^|]*/gi, "").replace(/^Misto:[^|]*\|?\s*/i, "").trim();
+
+      if (paySplitMode) {
+        newMethod = "misto";
+        const line = "Misto: " + paySplits
+          .map((s) => `${PAY_LABELS[s.method]} ${fmtBRL(s.amount)}`)
+          .join(" + ");
+        newNotes = [newNotes, line].filter(Boolean).join(" | ");
+      } else {
+        newMethod = payMethod;
+        newInstallments = (payMethod === "credito" || payMethod === "fiado") ? Math.max(1, payInstallments) : 1;
+      }
+
+      const { error } = await supabase
+        .from("sales")
+        .update({
+          payment_method: newMethod,
+          installments: newInstallments,
+          notes: newNotes || null,
+        })
+        .eq("id", payEdit.id);
+      if (error) throw error;
+
+      // Cria contas a receber se aplicável
+      const fiadoInSplit = paySplitMode
+        ? paySplits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
+        : 0;
+
+      if (paySplitMode && fiadoInSplit > 0 && payEdit.customer_id) {
+        const { error: rErr } = await supabase.from("accounts_receivable").insert({
+          customer_id: payEdit.customer_id,
+          amount: Math.round(fiadoInSplit * 100) / 100,
+          due_date: payFiadoDueDate,
+          description: `Pagamento misto — parte na carteira — venda ${payEdit.id.slice(0, 8).toUpperCase()}`,
+          status: "pendente",
+        });
+        if (rErr) throw rErr;
+      } else if (!paySplitMode && payMethod === "fiado" && payEdit.customer_id) {
+        const totalParts = newInstallments;
+        const parcela = Math.round((total / totalParts) * 100) / 100;
+        const base = new Date(payFiadoDueDate + "T00:00:00");
+        const records = Array.from({ length: totalParts }).map((_, i) => {
+          const due = new Date(base); due.setMonth(base.getMonth() + i);
+          const valor = i === totalParts - 1
+            ? Math.round((total - parcela * (totalParts - 1)) * 100) / 100
+            : parcela;
+          return {
+            customer_id: payEdit.customer_id!,
+            amount: valor,
+            due_date: due.toISOString().slice(0, 10),
+            description: totalParts === 1
+              ? `Fiado — venda ${payEdit.id.slice(0, 8).toUpperCase()}`
+              : `Fiado (${i + 1}/${totalParts}) — venda ${payEdit.id.slice(0, 8).toUpperCase()}`,
+            status: "pendente" as const,
+          };
+        });
+        const { error: rErr } = await supabase.from("accounts_receivable").insert(records);
+        if (rErr) throw rErr;
+      }
+
+      toast.success("Forma de pagamento atualizada");
+      setPayEdit(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao atualizar");
+    } finally {
+      setSavingPay(false);
+    }
   };
+
 
   const load = async () => {
     const [s, p, c] = await Promise.all([
@@ -458,43 +583,124 @@ export default function Sales() {
       </GlassCard>
 
       <Dialog open={!!payEdit} onOpenChange={(o) => !o && setPayEdit(null)}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+        <DialogContent className="glass-card border-white/40 max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Alterar forma de pagamento</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Método</Label>
-              <Select value={payMethod} onValueChange={setPayMethod}>
-                <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                  <SelectItem value="credito">Cartão Crédito</SelectItem>
-                  <SelectItem value="debito">Cartão Débito</SelectItem>
-                  <SelectItem value="link">Link de Pagamento</SelectItem>
-                  <SelectItem value="fiado">Fiado</SelectItem>
-                  <SelectItem value="misto">Misto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {(payMethod === "credito" || payMethod === "fiado") && (
-              <div>
-                <Label>Parcelas</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={payInstallments}
-                  onChange={(e) => setPayInstallments(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
-                  className="glass-input mt-1"
-                />
+          {payEdit && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-xl bg-white/40 dark:bg-white/5 px-3 py-2">
+                <span className="text-xs text-muted-foreground">Total da venda</span>
+                <span className="text-base font-bold">{fmtBRL(Number(payEdit.total))}</span>
               </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Nota: alterar o método aqui não quita nem cria contas a receber automaticamente.
-            </p>
-          </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="split-mode">Pagamento misto (várias formas)</Label>
+                <Switch id="split-mode" checked={paySplitMode} onCheckedChange={setPaySplitMode} />
+              </div>
+
+              {!paySplitMode && (
+                <>
+                  <div>
+                    <Label>Método</Label>
+                    <Select value={payMethod} onValueChange={(v) => setPayMethod(v as PaySimple)}>
+                      <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(PAY_LABELS) as PaySimple[]).map((k) => (
+                          <SelectItem key={k} value={k}>{PAY_LABELS[k]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(payMethod === "credito" || payMethod === "fiado") && (
+                    <div>
+                      <Label>Parcelas</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={payInstallments}
+                        onChange={(e) => setPayInstallments(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                  {payMethod === "fiado" && (
+                    <div>
+                      <Label>Vencimento (1ª parcela)</Label>
+                      <Input
+                        type="date"
+                        value={payFiadoDueDate}
+                        onChange={(e) => setPayFiadoDueDate(e.target.value)}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {paySplitMode && (
+                <div className="space-y-2">
+                  <Label>Formas de pagamento</Label>
+                  {paySplits.map((sp, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                      <Select
+                        value={sp.method}
+                        onValueChange={(v) => setPaySplits((prev) => prev.map((x, idx) => idx === i ? { ...x, method: v as PaySimple } : x))}
+                      >
+                        <SelectTrigger className="glass-input"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(PAY_LABELS) as PaySimple[]).map((k) => (
+                            <SelectItem key={k} value={k}>{PAY_LABELS[k]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={sp.amount}
+                        onChange={(e) => setPaySplits((prev) => prev.map((x, idx) => idx === i ? { ...x, amount: Number(e.target.value) || 0 } : x))}
+                        className="glass-input"
+                      />
+                      <Button size="icon" variant="ghost" onClick={() => setPaySplits((prev) => prev.filter((_, idx) => idx !== i))} disabled={paySplits.length <= 2}>
+                        <X className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPaySplits((prev) => [...prev, { method: "pix", amount: 0 }])}
+                  >
+                    + Adicionar forma
+                  </Button>
+                  <div className={`flex items-center justify-between rounded-xl px-3 py-2 ${Math.abs(splitsSum - Number(payEdit.total)) > 0.01 ? "bg-destructive/10" : "bg-emerald-500/10"}`}>
+                    <span className="text-xs">Soma das formas</span>
+                    <span className={`text-sm font-semibold ${Math.abs(splitsSum - Number(payEdit.total)) > 0.01 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
+                      {fmtBRL(splitsSum)} / {fmtBRL(Number(payEdit.total))}
+                    </span>
+                  </div>
+                  {paySplits.some((s) => s.method === "fiado") && (
+                    <div>
+                      <Label>Vencimento (parte fiado)</Label>
+                      <Input
+                        type="date"
+                        value={payFiadoDueDate}
+                        onChange={(e) => setPayFiadoDueDate(e.target.value)}
+                        className="glass-input mt-1"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Nota: se houver Fiado, novas contas a receber serão criadas. Contas antigas dessa venda continuam existindo — ajuste-as em <b>Contas a Receber</b>.
+              </p>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayEdit(null)}>Cancelar</Button>
             <Button onClick={savePayEdit} disabled={savingPay} className="bg-gradient-primary text-primary-foreground">
@@ -503,6 +709,7 @@ export default function Sales() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
