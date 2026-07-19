@@ -46,6 +46,37 @@ const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "curren
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+type PaySimple = "pix" | "dinheiro" | "credito" | "debito" | "link" | "fiado";
+const PAY_LABELS: Record<PaySimple, string> = {
+  pix: "PIX",
+  dinheiro: "Dinheiro",
+  credito: "Cartão Crédito",
+  debito: "Cartão Débito",
+  link: "Link de Pagamento",
+  fiado: "Fiado",
+};
+interface SplitLine { method: PaySimple; amount: number; }
+
+// Extrai a linha "Misto: X R$ 0,00 + Y R$ 0,00" das notes
+function parseMistoFromNotes(notes: string | null): SplitLine[] | null {
+  if (!notes) return null;
+  const m = notes.match(/Misto:\s*(.+?)(?:\s*\|\s*|$)/i);
+  if (!m) return null;
+  const parts = m[1].split("+").map((s) => s.trim());
+  const out: SplitLine[] = [];
+  for (const p of parts) {
+    const mm = p.match(/^(.+?)\s+R\$\s*([\d.,]+)$/);
+    if (!mm) continue;
+    const label = mm[1].trim();
+    const key = (Object.keys(PAY_LABELS) as PaySimple[]).find((k) => PAY_LABELS[k].toLowerCase() === label.toLowerCase());
+    if (!key) continue;
+    const val = Number(mm[2].replace(/\./g, "").replace(",", "."));
+    if (!isFinite(val)) continue;
+    out.push({ method: key, amount: val });
+  }
+  return out.length >= 2 ? out : null;
+}
+
 type PeriodFilter = "week" | "today" | "month" | "all";
 
 export default function Sales() {
