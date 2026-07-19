@@ -436,6 +436,15 @@ export default function Sales() {
                   >
                     <Printer className="h-3.5 w-3.5 mr-1" /> Reimprimir cupom
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => openPayEdit(s)}>
+                    <CreditCard className="h-3.5 w-3.5 mr-1" /> Forma de pagamento
+                  </Button>
+                  {s.payment_method && (
+                    <span className="text-[11px] text-muted-foreground">
+                      {s.payment_method}
+                      {(s.installments ?? 1) > 1 ? ` · ${s.installments}x` : ""}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
