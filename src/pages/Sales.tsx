@@ -100,33 +100,126 @@ export default function Sales() {
 
   // Editar forma de pagamento de venda finalizada
   const [payEdit, setPayEdit] = useState<SaleRow | null>(null);
-  const [payMethod, setPayMethod] = useState<string>("dinheiro");
+  const [payMethod, setPayMethod] = useState<PaySimple>("dinheiro");
   const [payInstallments, setPayInstallments] = useState<number>(1);
+  const [paySplitMode, setPaySplitMode] = useState(false);
+  const [paySplits, setPaySplits] = useState<SplitLine[]>([]);
+  const [payFiadoDueDate, setPayFiadoDueDate] = useState<string>(todayISO());
   const [savingPay, setSavingPay] = useState(false);
 
   const openPayEdit = (s: SaleRow) => {
     setPayEdit(s);
-    setPayMethod(s.payment_method ?? "dinheiro");
+    const isMisto = (s.payment_method ?? "") === "misto";
+    setPaySplitMode(isMisto);
+    setPayMethod(isMisto ? "dinheiro" : ((s.payment_method as PaySimple) ?? "dinheiro"));
     setPayInstallments(s.installments ?? 1);
+    setPayFiadoDueDate(todayISO());
+    if (isMisto) {
+      const parsed = parseMistoFromNotes(s.notes);
+      if (parsed) setPaySplits(parsed);
+      else setPaySplits([
+        { method: "pix", amount: Math.round(Number(s.total) * 100) / 200 },
+        { method: "dinheiro", amount: Math.round(Number(s.total) * 100) / 200 },
+      ]);
+    } else {
+      setPaySplits([
+        { method: "pix", amount: Math.round(Number(s.total) * 100) / 200 },
+        { method: "dinheiro", amount: Math.round(Number(s.total) * 100) / 200 },
+      ]);
+    }
   };
+
+  const splitsSum = useMemo(
+    () => paySplits.reduce((a, b) => a + (Number(b.amount) || 0), 0),
+    [paySplits],
+  );
 
   const savePayEdit = async () => {
     if (!payEdit) return;
+    const total = Number(payEdit.total);
+
+    if (paySplitMode) {
+      if (paySplits.length < 2) { toast.error("Adicione pelo menos 2 formas de pagamento"); return; }
+      if (Math.abs(splitsSum - total) > 0.01) {
+        toast.error(`Soma (${fmtBRL(splitsSum)}) difere do total (${fmtBRL(total)})`);
+        return;
+      }
+    }
+
     setSavingPay(true);
-    const showInst = payMethod === "credito" || payMethod === "fiado";
-    const { error } = await supabase
-      .from("sales")
-      .update({
-        payment_method: payMethod,
-        installments: showInst ? payInstallments : 1,
-      })
-      .eq("id", payEdit.id);
-    setSavingPay(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Forma de pagamento atualizada");
-    setPayEdit(null);
-    load();
+    try {
+      let newMethod: string;
+      let newInstallments = 1;
+      let newNotes = (payEdit.notes ?? "").replace(/\s*\|\s*Misto:[^|]*/gi, "").replace(/^Misto:[^|]*\|?\s*/i, "").trim();
+
+      if (paySplitMode) {
+        newMethod = "misto";
+        const line = "Misto: " + paySplits
+          .map((s) => `${PAY_LABELS[s.method]} ${fmtBRL(s.amount)}`)
+          .join(" + ");
+        newNotes = [newNotes, line].filter(Boolean).join(" | ");
+      } else {
+        newMethod = payMethod;
+        newInstallments = (payMethod === "credito" || payMethod === "fiado") ? Math.max(1, payInstallments) : 1;
+      }
+
+      const { error } = await supabase
+        .from("sales")
+        .update({
+          payment_method: newMethod,
+          installments: newInstallments,
+          notes: newNotes || null,
+        })
+        .eq("id", payEdit.id);
+      if (error) throw error;
+
+      // Cria contas a receber se aplicável
+      const fiadoInSplit = paySplitMode
+        ? paySplits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
+        : 0;
+
+      if (paySplitMode && fiadoInSplit > 0 && payEdit.customer_id) {
+        const { error: rErr } = await supabase.from("accounts_receivable").insert({
+          customer_id: payEdit.customer_id,
+          amount: Math.round(fiadoInSplit * 100) / 100,
+          due_date: payFiadoDueDate,
+          description: `Pagamento misto — parte na carteira — venda ${payEdit.id.slice(0, 8).toUpperCase()}`,
+          status: "pendente",
+        });
+        if (rErr) throw rErr;
+      } else if (!paySplitMode && payMethod === "fiado" && payEdit.customer_id) {
+        const totalParts = newInstallments;
+        const parcela = Math.round((total / totalParts) * 100) / 100;
+        const base = new Date(payFiadoDueDate + "T00:00:00");
+        const records = Array.from({ length: totalParts }).map((_, i) => {
+          const due = new Date(base); due.setMonth(base.getMonth() + i);
+          const valor = i === totalParts - 1
+            ? Math.round((total - parcela * (totalParts - 1)) * 100) / 100
+            : parcela;
+          return {
+            customer_id: payEdit.customer_id!,
+            amount: valor,
+            due_date: due.toISOString().slice(0, 10),
+            description: totalParts === 1
+              ? `Fiado — venda ${payEdit.id.slice(0, 8).toUpperCase()}`
+              : `Fiado (${i + 1}/${totalParts}) — venda ${payEdit.id.slice(0, 8).toUpperCase()}`,
+            status: "pendente" as const,
+          };
+        });
+        const { error: rErr } = await supabase.from("accounts_receivable").insert(records);
+        if (rErr) throw rErr;
+      }
+
+      toast.success("Forma de pagamento atualizada");
+      setPayEdit(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao atualizar");
+    } finally {
+      setSavingPay(false);
+    }
   };
+
 
   const load = async () => {
     const [s, p, c] = await Promise.all([
