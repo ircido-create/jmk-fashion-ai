@@ -456,6 +456,53 @@ export default function Sales() {
           )}
         </div>
       </GlassCard>
+
+      <Dialog open={!!payEdit} onOpenChange={(o) => !o && setPayEdit(null)}>
+        <DialogContent className="glass-card border-white/40 max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar forma de pagamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Método</Label>
+              <Select value={payMethod} onValueChange={setPayMethod}>
+                <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                  <SelectItem value="credito">Cartão Crédito</SelectItem>
+                  <SelectItem value="debito">Cartão Débito</SelectItem>
+                  <SelectItem value="link">Link de Pagamento</SelectItem>
+                  <SelectItem value="fiado">Fiado</SelectItem>
+                  <SelectItem value="misto">Misto</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(payMethod === "credito" || payMethod === "fiado") && (
+              <div>
+                <Label>Parcelas</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={payInstallments}
+                  onChange={(e) => setPayInstallments(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                  className="glass-input mt-1"
+                />
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Nota: alterar o método aqui não quita nem cria contas a receber automaticamente.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayEdit(null)}>Cancelar</Button>
+            <Button onClick={savePayEdit} disabled={savingPay} className="bg-gradient-primary text-primary-foreground">
+              {savingPay ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
