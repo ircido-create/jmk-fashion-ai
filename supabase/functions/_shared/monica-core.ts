@@ -908,10 +908,18 @@ export async function buildContext(phone: string, userMsg: string, history: any[
   else if (digits.length >= 10) variants.add("55" + digits);
   const variantsArr = Array.from(variants).filter(Boolean);
 
-  const { data: matchedCustomers } = await supabase
+  // Busca ampla por qualquer variante contida no campo (tolera espaços, +, hífen)
+  // e depois filtra em memória comparando apenas dígitos.
+  const orExpr = variantsArr.map((v) => `phone.ilike.%${v}%`).join(",");
+  const { data: rawRows } = await supabase
     .from("customers")
     .select("id, name, nickname, address, email, phone")
-    .in("phone", variantsArr);
+    .or(orExpr);
+  const matchedCustomers = (rawRows ?? []).filter((c: any) => {
+    const d = (c.phone ?? "").replace(/\D/g, "");
+    if (!d) return false;
+    return variantsArr.some((v) => d === v || d.endsWith(v) || v.endsWith(d));
+  });
 
   const allIds = (matchedCustomers ?? []).map((c: any) => c.id);
   let rawCustomer: any = matchedCustomers?.[0] ?? null;
