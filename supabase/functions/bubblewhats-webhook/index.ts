@@ -353,11 +353,18 @@ Deno.serve(async (req) => {
         const variants = new Set<string>([senderNumber, digits]);
         if (digits.startsWith("55")) variants.add(digits.slice(2));
         else if (digits.length >= 10) variants.add("55" + digits);
-        const { data: custs } = await withTimeout(
-          supabase.from("customers").select("id, name").in("phone", Array.from(variants).filter(Boolean)),
+        const variantsArr = Array.from(variants).filter(Boolean);
+        const orExpr = variantsArr.map((v) => `phone.ilike.%${v}%`).join(",");
+        const { data: custsRaw } = await withTimeout(
+          supabase.from("customers").select("id, name, phone").or(orExpr),
           5000, "ficha:customers",
         );
-        const custIds = (custs ?? []).map((c: any) => c.id);
+        const custs = (custsRaw ?? []).filter((c: any) => {
+          const d = (c.phone ?? "").replace(/\D/g, "");
+          if (!d) return false;
+          return variantsArr.some((v) => d === v || d.endsWith(v) || v.endsWith(d));
+        });
+        const custIds = custs.map((c: any) => c.id);
         let fichaReply = "";
         if (custIds.length === 0) {
           fichaReply = "Não localizei seu cadastro aqui 💕 Me diga seu nome completo por favor?";
