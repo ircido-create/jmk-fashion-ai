@@ -3,8 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
-  TrendingUp, TrendingDown, Package, Users, AlertTriangle, DollarSign,
-  ShoppingCart, Calendar, Eye, EyeOff, Wallet,
+  ShoppingCart, Calendar, Wallet, Users, Eye, EyeOff,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, startOfMonth, subMonths } from "date-fns";
