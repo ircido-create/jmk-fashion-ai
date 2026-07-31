@@ -27,7 +27,7 @@ interface Stats {
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
-    customers: 0, products: 0, receivable: 0, payable: 0, overdue: 0, overdueAmount: 0, lowStock: 0,
+    customers: 0, products: 0, receivable: 0, payable: 0, overdue: 0, overdueAmount: 0, overdueMonth: 0, overdueMonthCount: 0, lowStock: 0,
     salesToday: 0, salesMonth: 0, receivedMonth: 0,
   });
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
