@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
-  ShoppingCart, Calendar, Wallet, Eye, EyeOff,
+  ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, startOfMonth, subMonths } from "date-fns";
@@ -17,6 +17,8 @@ interface Stats {
   payable: number;
   overdue: number;
   overdueAmount: number;
+  overdueMonth: number;
+  overdueMonthCount: number;
   lowStock: number;
   salesToday: number;
   salesMonth: number;
@@ -25,7 +27,7 @@ interface Stats {
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
-    customers: 0, products: 0, receivable: 0, payable: 0, overdue: 0, overdueAmount: 0, lowStock: 0,
+    customers: 0, products: 0, receivable: 0, payable: 0, overdue: 0, overdueAmount: 0, overdueMonth: 0, overdueMonthCount: 0, lowStock: 0,
     salesToday: 0, salesMonth: 0, receivedMonth: 0,
   });
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
@@ -36,12 +38,13 @@ export default function Dashboard() {
   const loadAll = async () => {
     const today = new Date().toISOString().slice(0, 10);
     const monthStart = startOfMonth(new Date()).toISOString().slice(0, 10);
-    const [c, p, r, ap, od, ls, salesRows, receivedRows] = await Promise.all([
+    const [c, p, r, ap, od, odm, ls, salesRows, receivedRows] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"])),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_payable").select("amount").in("status", ["pendente", "vencido"])),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"]).lt("due_date", today)),
+      fetchAll<{ amount: number; due_date: string }>((sb) => sb.from("accounts_receivable").select("amount, due_date").eq("status", "vencido").gte("due_date", monthStart)),
       fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
       fetchAll<{ total: number; sale_date: string }>((sb) => sb.from("sales").select("total, sale_date")),
       fetchAll<{ amount_paid: number; created_at: string }>((sb) => sb.from("receivable_payments").select("amount_paid, created_at")),
@@ -59,6 +62,9 @@ export default function Dashboard() {
       .filter((p) => p.created_at.slice(0, 10) >= monthStart)
       .reduce((sum, p) => sum + Number(p.amount_paid), 0);
 
+    const overdueMonth = odm.reduce((s, x) => s + Number(x.amount), 0);
+    const overdueMonthCount = odm.length;
+
     setStats({
       customers: c.count ?? 0,
       products: p.count ?? 0,
@@ -66,6 +72,8 @@ export default function Dashboard() {
       payable: ap.reduce((s, x) => s + Number(x.amount), 0),
       overdue: od.length,
       overdueAmount: od.reduce((s, x) => s + Number(x.amount), 0),
+      overdueMonth,
+      overdueMonthCount,
       lowStock,
       salesToday,
       salesMonth,
@@ -99,6 +107,7 @@ export default function Dashboard() {
     { label: "Vendas do Dia", value: showValues ? brl(stats.salesToday) : maskBrl(), sub: "Hoje", icon: ShoppingCart, gradient: "from-emerald-400 to-teal-500" },
     { label: "Vendas do Mês", value: showValues ? brl(stats.salesMonth) : maskBrl(), sub: format(new Date(), "MMMM", { locale: ptBR }), icon: Calendar, gradient: "from-violet-400 to-purple-500" },
     { label: "Recebido no Mês", value: showValues ? brl(stats.receivedMonth) : maskBrl(), sub: "Pagamentos", icon: Wallet, gradient: "from-sky-400 to-cyan-500" },
+    { label: "Atrasados do Mês", value: showValues ? brl(stats.overdueMonth) : maskBrl(), sub: `${stats.overdueMonthCount} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
   ];
 
   return (
