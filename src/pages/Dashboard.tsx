@@ -4,10 +4,12 @@ import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
   TrendingUp, TrendingDown, Package, Users, AlertTriangle, DollarSign,
+  ShoppingCart, Calendar, Eye, EyeOff,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { format, startOfMonth, subMonths } from "date-fns";
+import { format, startOfMonth, subMonths, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Button } from "@/components/ui/button";
 
 interface Stats {
   customers: number;
@@ -17,28 +19,41 @@ interface Stats {
   overdue: number;
   overdueAmount: number;
   lowStock: number;
+  salesToday: number;
+  salesMonth: number;
 }
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
     customers: 0, products: 0, receivable: 0, payable: 0, overdue: 0, overdueAmount: 0, lowStock: 0,
+    salesToday: 0, salesMonth: 0,
   });
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
+  const [showValues, setShowValues] = useState(true);
 
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const [c, p, r, ap, od, ls] = await Promise.all([
+    const monthStart = startOfMonth(new Date()).toISOString().slice(0, 10);
+    const [c, p, r, ap, od, ls, salesRows] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"])),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_payable").select("amount").in("status", ["pendente", "vencido"])),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"]).lt("due_date", today)),
       fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
+      fetchAll<{ total: number; sale_date: string }>((sb) => sb.from("sales").select("total, sale_date")),
     ]);
 
     const lowStock = ls.filter((v: any) => v.quantity <= (v.products?.low_stock_threshold ?? 5)).length;
+
+    const salesToday = salesRows
+      .filter((s) => s.sale_date.slice(0, 10) === today)
+      .reduce((sum, s) => sum + Number(s.total), 0);
+    const salesMonth = salesRows
+      .filter((s) => s.sale_date.slice(0, 10) >= monthStart)
+      .reduce((sum, s) => sum + Number(s.total), 0);
 
     setStats({
       customers: c.count ?? 0,
@@ -48,6 +63,8 @@ export default function Dashboard() {
       overdue: od.length,
       overdueAmount: od.reduce((s, x) => s + Number(x.amount), 0),
       lowStock,
+      salesToday,
+      salesMonth,
     });
 
     // chart: last 6 months
@@ -70,21 +87,39 @@ export default function Dashboard() {
   };
 
   const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const mask = () => "••••••";
+  const maskBrl = () => "R$ ••••••";
 
   const cards = [
-    { label: "A Receber", value: brl(stats.receivable), icon: TrendingUp, gradient: "from-emerald-400 to-teal-500" },
-    { label: "A Pagar", value: brl(stats.payable), icon: TrendingDown, gradient: "from-rose-400 to-pink-500" },
-    { label: "Vencidos", value: brl(stats.overdueAmount), sub: `${stats.overdue} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
-    { label: "Clientes", value: stats.customers.toLocaleString("pt-BR"), icon: Users, gradient: "from-violet-400 to-purple-500" },
-    { label: "Produtos", value: stats.products.toLocaleString("pt-BR"), icon: Package, gradient: "from-fuchsia-400 to-pink-500" },
-    { label: "Estoque baixo", value: stats.lowStock.toLocaleString("pt-BR"), icon: DollarSign, gradient: "from-blue-400 to-indigo-500" },
+    { label: "Vendas do Dia", value: showValues ? brl(stats.salesToday) : maskBrl(), sub: "Hoje", icon: ShoppingCart, gradient: "from-emerald-400 to-teal-500" },
+    { label: "Vendas do Mês", value: showValues ? brl(stats.salesMonth) : maskBrl(), sub: format(new Date(), "MMMM", { locale: ptBR }), icon: Calendar, gradient: "from-violet-400 to-purple-500" },
+    { label: "A Receber", value: showValues ? brl(stats.receivable) : maskBrl(), icon: TrendingUp, gradient: "from-emerald-400 to-teal-500" },
+    { label: "A Pagar", value: showValues ? brl(stats.payable) : maskBrl(), icon: TrendingDown, gradient: "from-rose-400 to-pink-500" },
+    { label: "Vencidos", value: showValues ? brl(stats.overdueAmount) : maskBrl(), sub: `${stats.overdue} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
+    { label: "Clientes", value: showValues ? stats.customers.toLocaleString("pt-BR") : mask(), icon: Users, gradient: "from-violet-400 to-purple-500" },
+    { label: "Produtos", value: showValues ? stats.products.toLocaleString("pt-BR") : mask(), icon: Package, gradient: "from-fuchsia-400 to-pink-500" },
+    { label: "Estoque baixo", value: showValues ? stats.lowStock.toLocaleString("pt-BR") : mask(), icon: DollarSign, gradient: "from-blue-400 to-indigo-500" },
   ];
 
   return (
     <div>
-      <PageHeader title="Painel" description="Visão geral da sua loja" />
+      <PageHeader
+        title="Painel"
+        description="Visão geral da sua loja"
+        actions={
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowValues((v) => !v)}
+            aria-label={showValues ? "Ocultar valores" : "Mostrar valores"}
+            className="rounded-full"
+          >
+            {showValues ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
         {cards.map((c, i) => (
           <div
             key={c.label}
@@ -112,7 +147,7 @@ export default function Dashboard() {
               <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
               <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => brl(Number(v))} />
               <Tooltip
-                formatter={(v: any) => brl(Number(v))}
+                formatter={(v: any) => showValues ? brl(Number(v)) : "••••••"}
                 contentStyle={{
                   background: "hsl(var(--card))",
                   border: "1px solid hsl(var(--border))",
