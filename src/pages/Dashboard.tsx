@@ -107,6 +107,7 @@ export default function Dashboard() {
     { label: "Vendas do Dia", value: showValues ? brl(stats.salesToday) : maskBrl(), sub: "Hoje", icon: ShoppingCart, gradient: "from-emerald-400 to-teal-500" },
     { label: "Vendas do Mês", value: showValues ? brl(stats.salesMonth) : maskBrl(), sub: format(new Date(), "MMMM", { locale: ptBR }), icon: Calendar, gradient: "from-violet-400 to-purple-500" },
     { label: "Recebido no Mês", value: showValues ? brl(stats.receivedMonth) : maskBrl(), sub: "Pagamentos", icon: Wallet, gradient: "from-sky-400 to-cyan-500" },
+    { label: "Atrasados do Mês", value: showValues ? brl(stats.overdueMonth) : maskBrl(), sub: `${stats.overdueMonthCount} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
   ];
 
   return (
