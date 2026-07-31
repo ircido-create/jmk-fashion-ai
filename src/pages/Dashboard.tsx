@@ -4,7 +4,7 @@ import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
   TrendingUp, TrendingDown, Package, Users, AlertTriangle, DollarSign,
-  ShoppingCart, Calendar, Eye, EyeOff,
+  ShoppingCart, Calendar, Eye, EyeOff, Wallet,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, startOfMonth, subMonths, startOfDay, endOfDay } from "date-fns";
@@ -21,6 +21,7 @@ interface Stats {
   lowStock: number;
   salesToday: number;
   salesMonth: number;
+  receivedMonth: number;
 }
 
 export default function Dashboard() {
