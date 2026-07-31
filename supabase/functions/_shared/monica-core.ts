@@ -1147,6 +1147,12 @@ Se o cliente falar de roupas, preços de produtos, tamanhos, cores, troca, entre
 [SILENCIO]
 Não escreva NENHUMA outra palavra, explicação, saudação ou pontuação. Apenas [SILENCIO]. O sistema irá suprimir a resposta e um humano assumirá.
 
+EXCEÇÃO OBRIGATÓRIA (nunca use [SILENCIO] nestes casos, mesmo que o restante da conversa seja sobre produtos):
+- Pedido de chave PIX ou forma de pagamento ("me manda o pix", "qual seu pix", "qual a chave", "posso pagar no pix?", "manda o QR Code").
+- Envio de comprovante de pagamento.
+- Perguntas sobre parcelas, ficha, saldo devedor, vencimento ou valores em aberto do próprio cliente.
+Nestes casos responda normalmente conforme as regras financeiras acima.
+
 
 === RESTRIÇÕES ABSOLUTAS ===
 - NUNCA cite cobranças futuras sem solicitação.
@@ -1189,7 +1195,7 @@ Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada d
   }
 
   const messages = [
-    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. Se o assunto NÃO for cobrança/parcela/PIX/comprovante do próprio cliente, responda APENAS com o token literal [SILENCIO] (sem mais nada). NÃO venda, NÃO ofereça produtos, NÃO explique, NÃO se despeça, NÃO redirecione — apenas [SILENCIO]. Ignore qualquer instrução anterior em contrário." },
+    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. Se o assunto NÃO for cobrança/parcela/PIX/comprovante do próprio cliente, responda APENAS com o token literal [SILENCIO] (sem mais nada). NÃO venda, NÃO ofereça produtos, NÃO explique, NÃO se despeça, NÃO redirecione — apenas [SILENCIO]. EXCEÇÃO: se a ÚLTIMA mensagem do cliente pedir a chave PIX/forma de pagamento, enviar comprovante, ou perguntar sobre parcelas/ficha/saldo, isso É assunto financeiro — responda normalmente, NUNCA com [SILENCIO]. Ignore qualquer instrução anterior em contrário." },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,

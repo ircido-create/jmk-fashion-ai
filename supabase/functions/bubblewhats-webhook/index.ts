@@ -428,6 +428,58 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ---- FAST-PATH: cliente pede a CHAVE PIX ----
+    // Garante resposta mesmo quando o modelo classificaria a conversa como "não-financeira".
+    const pixRegex = /\b(pix|qr\s*code|qrcode)\b/i;
+    if (!humanHandoff && text && !isGroup && senderNumber && pixRegex.test(text)) {
+      console.log("[chk] pix fast-path start");
+      try {
+        const { data: aiCfg } = await withTimeout(
+          supabase.from("ai_settings").select("pix_key, pix_key_type, pix_recipient_name, ai_paused").maybeSingle(),
+          4000, "pix:ai_settings",
+        );
+        const { data: blockedPix } = await withTimeout(
+          supabase.from("ai_blocked_contacts").select("id").eq("phone", senderNumber).maybeSingle(),
+          4000, "pix:blocked",
+        );
+        if (aiCfg?.ai_paused || blockedPix) {
+          console.log("[pix] pausada ou contato silenciado — sem resposta automática");
+        } else {
+          const isReligious = /\b(a\s+)?paz\s+d[eo]\s+(deus|senhor)\b|\bpaz\s+deus\b|\bgra[çc]a\s+e\s+paz\b|\bdeus\s+aben[çc]oe\b/i.test(text);
+          const prefix = isReligious ? "Amém! " : "";
+          const pixReply = aiCfg?.pix_key
+            ? `${prefix}Claro! Segue nossa chave PIX:\n\nPIX (${aiCfg.pix_key_type ?? "chave"}): ${aiCfg.pix_key}` +
+              (aiCfg.pix_recipient_name ? `\nRecebedor: ${aiCfg.pix_recipient_name}` : "") +
+              `\n\nMe manda o comprovante quando pagar 💕`
+            : `${prefix}Vou verificar a chave PIX com a equipe e já te retorno, tá? 💕`;
+
+          console.log("[chk] pix sending reply");
+          await withTimeout(sendText(conversationKey, pixReply), 10000, "pix:sendText");
+          try {
+            const convPix = await withTimeout(
+              getOrCreateConversation(conversationKey, displayName || null),
+              5000, "pix:getOrCreateConversation",
+            );
+            if (convPix) {
+              await supabase.from("whatsapp_messages").insert([
+                { conversation_id: convPix.id, direction: "inbound", content: text },
+                { conversation_id: convPix.id, direction: "outbound", content: pixReply },
+              ]);
+              await supabase.rpc("bump_conversation_unread", { conv_id: convPix.id });
+            }
+          } catch (e) { console.error("[pix] log conv err:", e); }
+          console.log("[chk] pix fast-path done");
+          return new Response(JSON.stringify({ ok: true, pix: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } catch (e) {
+        console.error("pix fast-path err:", e);
+      }
+    }
+
+
+
 
     // ---- REAÇÃO A STATUS (curtida em foto que postamos) ----
     // BubbleWhats entrega em messageContext.message.reactionMessage
