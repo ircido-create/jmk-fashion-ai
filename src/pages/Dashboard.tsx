@@ -35,6 +35,8 @@ export default function Dashboard() {
   });
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
   const [showValues, setShowValues] = useState(true);
+  const [reporting, setReporting] = useState<DashboardReportKey | null>(null);
+
 
   useEffect(() => { loadAll(); }, []);
 
