@@ -294,6 +294,7 @@ export default function Receivable() {
         case "a_vencer": return list.filter((r) => r.status === "pendente");
         case "vencido": return list.filter((r) => r.status === "vencido");
         case "pago": return list.filter((r) => r.status === "pago");
+        case "sem_cliente": return list.filter((r) => !r.customer_id && r.status !== "cancelado");
         default: return list;
       }
     })();
@@ -328,7 +329,9 @@ export default function Receivable() {
     a_vencer: "A Vencer",
     vencido: "Vencido",
     pago: "Pago",
+    sem_cliente: "Sem cliente",
   };
+
 
   // === Baixa em massa por extrato (conciliação) ===
   // Parser de extrato: aceita xlsx/xls/csv com colunas Cliente, Valor (e opcionalmente Data/CPF/CNPJ)
@@ -916,6 +919,7 @@ export default function Receivable() {
             { k: "a_vencer", label: "A Vencer" },
             { k: "vencido", label: "Vencido" },
             { k: "pago", label: "Pago" },
+            { k: "sem_cliente", label: `Sem cliente (${list.filter((r) => !r.customer_id && r.status !== "cancelado").length})` },
             { k: "todos", label: "Todos" },
           ].map(({ k, label }) => (
             <Button key={k} size="sm" variant={filter === k ? "default" : "outline"}
@@ -940,7 +944,9 @@ export default function Receivable() {
             <div key={r.id} className="p-3 rounded-xl bg-white/40 backdrop-blur flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium">{r.customers?.name ?? "—"}</span>
+                  <span className={`font-medium ${!r.customer_id ? "text-destructive" : ""}`}>
+                    {r.customers?.name ?? "— sem cliente —"}
+                  </span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>{r.status}</span>
                   {r.proofs && r.proofs.length > 0 && (
                     <button
