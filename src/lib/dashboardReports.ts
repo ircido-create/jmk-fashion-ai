@@ -107,7 +107,7 @@ function summarizeByCustomer(
     map.set(key, cur);
   }
   const body = [...map.entries()]
-    .sort((a, b) => b[1].total - a[1].total)
+    .sort((a, b) => a[0].localeCompare(b[0], "pt-BR", { sensitivity: "base" }))
     .map(([name, v]) => [name, v.qty, brl(v.total)]);
   return { title: "Resumo por cliente (total)", head: ["Cliente", "Títulos", valueLabel], body };
 }
