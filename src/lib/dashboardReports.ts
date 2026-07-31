@@ -93,23 +93,28 @@ function build(
   doc.save(filename);
 }
 
-/** Agrupa registros por cliente somando os valores (maior total primeiro). */
+/** Agrupa registros por cliente somando os valores (ordem alfabética). */
 function summarizeByCustomer(
-  rows: { name: string; amount: number }[],
+  rows: { name: string; phone?: string | null; amount: number }[],
   valueLabel: string
 ): Summary {
-  const map = new Map<string, { qty: number; total: number }>();
+  const map = new Map<string, { qty: number; total: number; phone: string }>();
   for (const r of rows) {
     const key = r.name || "—";
-    const cur = map.get(key) ?? { qty: 0, total: 0 };
+    const cur = map.get(key) ?? { qty: 0, total: 0, phone: "" };
     cur.qty += 1;
     cur.total += Number(r.amount || 0);
+    if (!cur.phone && r.phone) cur.phone = r.phone;
     map.set(key, cur);
   }
   const body = [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], "pt-BR", { sensitivity: "base" }))
-    .map(([name, v]) => [name, v.qty, brl(v.total)]);
-  return { title: "Resumo por cliente (total)", head: ["Cliente", "Títulos", valueLabel], body };
+    .map(([name, v]) => [name, v.phone || "—", v.qty, brl(v.total)]);
+  return {
+    title: "Resumo por cliente (total)",
+    head: ["Cliente", "Telefone", "Títulos", valueLabel],
+    body,
+  };
 }
 
 export async function generateDashboardReport(key: DashboardReportKey) {
@@ -124,7 +129,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     const rows = await fetchAll<any>((sb) =>
       sb
         .from("sales")
-        .select("total, sale_date, payment_method, installments, notes, customers(name, nickname)")
+        .select("total, sale_date, payment_method, installments, notes, customers(name, nickname, phone)")
         .gte("sale_date", isDay ? today : monthStart)
         .order("sale_date", { ascending: true })
     );
@@ -135,10 +140,11 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     build(
       isDay ? "Relatório de Vendas do Dia" : "Relatório de Vendas do Mês",
       `${isDay ? fmtDate(today) : format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
-      ["Data", "Cliente", "Pagamento", "Parcelas", "Valor"],
+      ["Data", "Cliente", "Telefone", "Pagamento", "Parcelas", "Valor"],
       filtered.map((r) => [
         fmtDate(String(r.sale_date).slice(0, 10)),
         r.customers?.name ?? r.customers?.nickname ?? "Consumidor",
+        r.customers?.phone ?? "—",
         r.payment_method ?? "—",
         r.installments ?? 1,
         brl(Number(r.total)),
@@ -148,6 +154,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       summarizeByCustomer(
         filtered.map((r) => ({
           name: r.customers?.name ?? r.customers?.nickname ?? "Consumidor",
+          phone: r.customers?.phone,
           amount: Number(r.total || 0),
         })),
         "Total"
@@ -160,7 +167,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     const rows = await fetchAll<any>((sb) =>
       sb
         .from("receivable_payments")
-        .select("amount_paid, created_at, accounts_receivable(description, due_date, customers(name))")
+        .select("amount_paid, created_at, accounts_receivable(description, due_date, customers(name, phone))")
         .gte("created_at", monthStart)
         .order("created_at", { ascending: true })
     );
@@ -168,10 +175,11 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     build(
       "Relatório de Recebimentos do Mês",
       `${format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
-      ["Data", "Cliente", "Descrição", "Vencimento", "Valor pago"],
+      ["Data", "Cliente", "Telefone", "Descrição", "Vencimento", "Valor pago"],
       rows.map((r) => [
         fmtDate(String(r.created_at).slice(0, 10)),
         r.accounts_receivable?.customers?.name ?? "—",
+        r.accounts_receivable?.customers?.phone ?? "—",
         r.accounts_receivable?.description ?? "—",
         r.accounts_receivable?.due_date ? fmtDate(r.accounts_receivable.due_date) : "—",
         brl(Number(r.amount_paid)),
@@ -181,6 +189,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       summarizeByCustomer(
         rows.map((r) => ({
           name: r.accounts_receivable?.customers?.name ?? "—",
+          phone: r.accounts_receivable?.customers?.phone,
           amount: Number(r.amount_paid || 0),
         })),
         "Total pago"
@@ -212,7 +221,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     total,
     `Relatorio_Atrasados_Mes_${stamp}.pdf`,
     summarizeByCustomer(
-      rows.map((r) => ({ name: r.customers?.name ?? "—", amount: Number(r.amount || 0) })),
+      rows.map((r) => ({ name: r.customers?.name ?? "—", phone: r.customers?.phone, amount: Number(r.amount || 0) })),
       "Total devido"
     )
   );
