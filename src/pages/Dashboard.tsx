@@ -17,6 +17,8 @@ interface Stats {
   payable: number;
   overdue: number;
   overdueAmount: number;
+  overdueMonth: number;
+  overdueMonthCount: number;
   lowStock: number;
   salesToday: number;
   salesMonth: number;
