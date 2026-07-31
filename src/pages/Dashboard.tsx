@@ -38,12 +38,13 @@ export default function Dashboard() {
   const loadAll = async () => {
     const today = new Date().toISOString().slice(0, 10);
     const monthStart = startOfMonth(new Date()).toISOString().slice(0, 10);
-    const [c, p, r, ap, od, ls, salesRows, receivedRows] = await Promise.all([
+    const [c, p, r, ap, od, odm, ls, salesRows, receivedRows] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"])),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_payable").select("amount").in("status", ["pendente", "vencido"])),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"]).lt("due_date", today)),
+      fetchAll<{ amount: number; due_date: string }>((sb) => sb.from("accounts_receivable").select("amount, due_date").eq("status", "vencido").gte("due_date", monthStart)),
       fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
       fetchAll<{ total: number; sale_date: string }>((sb) => sb.from("sales").select("total, sale_date")),
       fetchAll<{ amount_paid: number; created_at: string }>((sb) => sb.from("receivable_payments").select("amount_paid, created_at")),
