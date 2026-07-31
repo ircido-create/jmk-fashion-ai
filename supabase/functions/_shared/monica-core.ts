@@ -236,11 +236,36 @@ async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8
   return { bytes: new Uint8Array(buf), mime: "audio/mpeg" };
 }
 
-export async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
-  if (!Deno.env.get("ELEVENLABS_API_KEY")) {
-    console.error("ELEVENLABS_API_KEY ausente — não é possível sintetizar áudio");
+// Fallback de TTS via Lovable AI (usado quando a ElevenLabs falha, ex.: quota esgotada)
+async function callLovableTts(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) return null;
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini-tts",
+        input: text,
+        voice: "shimmer",
+        response_format: "mp3",
+        instructions: "Fale em português do Brasil, voz feminina calorosa, tom acolhedor e natural.",
+      }),
+    });
+    if (!res.ok) {
+      console.error("Lovable TTS error:", res.status, await res.text().catch(() => ""));
+      return null;
+    }
+    const buf = await res.arrayBuffer();
+    if (!buf.byteLength) return null;
+    return { bytes: new Uint8Array(buf), mime: "audio/mpeg" };
+  } catch (e) {
+    console.error("Lovable TTS exception:", e);
     return null;
   }
+}
+
+export async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   // Limita a 800 chars (economia de quota + áudios curtos e naturais)
   let safeText = preprocessForTts(text);
   if (!safeText) return null;
@@ -251,12 +276,19 @@ export async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array
   // ("soft breath..."), então não adicionamos nenhuma tag aqui.
 
   try {
-    // Tenta primeiro o modelo primário (multilingual_v2 — melhor qualidade humana).
-    // Fallback: turbo_v2_5 (mais rápido, ainda excelente).
-    let result = await callEleven(safeText, ELEVEN_MODEL_PRIMARY);
+    let result: { bytes: Uint8Array; mime: string } | null = null;
+    if (Deno.env.get("ELEVENLABS_API_KEY")) {
+      // Tenta primeiro o modelo primário (multilingual_v2 — melhor qualidade humana).
+      // Fallback: turbo_v2_5 (mais rápido, ainda excelente).
+      result = await callEleven(safeText, ELEVEN_MODEL_PRIMARY);
+      if (!result) {
+        console.warn(`[tts] Fallback para ${ELEVEN_MODEL_FALLBACK}`);
+        result = await callEleven(safeText, ELEVEN_MODEL_FALLBACK);
+      }
+    }
     if (!result) {
-      console.warn(`[tts] Fallback para ${ELEVEN_MODEL_FALLBACK}`);
-      result = await callEleven(safeText, ELEVEN_MODEL_FALLBACK);
+      console.warn("[tts] ElevenLabs indisponível — usando TTS da Lovable AI");
+      result = await callLovableTts(safeText);
     }
     return result;
   } catch (e) {
@@ -264,6 +296,7 @@ export async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array
     return null;
   }
 }
+
 
 
 
