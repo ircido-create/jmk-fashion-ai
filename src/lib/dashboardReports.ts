@@ -221,7 +221,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     total,
     `Relatorio_Atrasados_Mes_${stamp}.pdf`,
     summarizeByCustomer(
-      rows.map((r) => ({ name: r.customers?.name ?? "—", amount: Number(r.amount || 0) })),
+      rows.map((r) => ({ name: r.customers?.name ?? "—", phone: r.customers?.phone, amount: Number(r.amount || 0) })),
       "Total devido"
     )
   );
