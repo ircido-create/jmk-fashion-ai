@@ -4,10 +4,10 @@ import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
   TrendingUp, TrendingDown, Package, Users, AlertTriangle, DollarSign,
-  ShoppingCart, Calendar, Eye, EyeOff,
+  ShoppingCart, Calendar, Eye, EyeOff, Wallet,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { format, startOfMonth, subMonths, startOfDay, endOfDay } from "date-fns";
+import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 
@@ -21,12 +21,13 @@ interface Stats {
   lowStock: number;
   salesToday: number;
   salesMonth: number;
+  receivedMonth: number;
 }
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
     customers: 0, products: 0, receivable: 0, payable: 0, overdue: 0, overdueAmount: 0, lowStock: 0,
-    salesToday: 0, salesMonth: 0,
+    salesToday: 0, salesMonth: 0, receivedMonth: 0,
   });
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
   const [showValues, setShowValues] = useState(true);
@@ -36,7 +37,7 @@ export default function Dashboard() {
   const loadAll = async () => {
     const today = new Date().toISOString().slice(0, 10);
     const monthStart = startOfMonth(new Date()).toISOString().slice(0, 10);
-    const [c, p, r, ap, od, ls, salesRows] = await Promise.all([
+    const [c, p, r, ap, od, ls, salesRows, receivedRows] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"])),
@@ -44,6 +45,7 @@ export default function Dashboard() {
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"]).lt("due_date", today)),
       fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
       fetchAll<{ total: number; sale_date: string }>((sb) => sb.from("sales").select("total, sale_date")),
+      fetchAll<{ amount_paid: number; created_at: string }>((sb) => sb.from("receivable_payments").select("amount_paid, created_at")),
     ]);
 
     const lowStock = ls.filter((v: any) => v.quantity <= (v.products?.low_stock_threshold ?? 5)).length;
@@ -54,6 +56,9 @@ export default function Dashboard() {
     const salesMonth = salesRows
       .filter((s) => s.sale_date.slice(0, 10) >= monthStart)
       .reduce((sum, s) => sum + Number(s.total), 0);
+    const receivedMonth = receivedRows
+      .filter((p) => p.created_at.slice(0, 10) >= monthStart)
+      .reduce((sum, p) => sum + Number(p.amount_paid), 0);
 
     setStats({
       customers: c.count ?? 0,
@@ -65,6 +70,7 @@ export default function Dashboard() {
       lowStock,
       salesToday,
       salesMonth,
+      receivedMonth,
     });
 
     // chart: last 6 months
@@ -93,6 +99,7 @@ export default function Dashboard() {
   const cards = [
     { label: "Vendas do Dia", value: showValues ? brl(stats.salesToday) : maskBrl(), sub: "Hoje", icon: ShoppingCart, gradient: "from-emerald-400 to-teal-500" },
     { label: "Vendas do Mês", value: showValues ? brl(stats.salesMonth) : maskBrl(), sub: format(new Date(), "MMMM", { locale: ptBR }), icon: Calendar, gradient: "from-violet-400 to-purple-500" },
+    { label: "Recebido no Mês", value: showValues ? brl(stats.receivedMonth) : maskBrl(), sub: "Pagamentos", icon: Wallet, gradient: "from-sky-400 to-cyan-500" },
     { label: "A Receber", value: showValues ? brl(stats.receivable) : maskBrl(), icon: TrendingUp, gradient: "from-emerald-400 to-teal-500" },
     { label: "A Pagar", value: showValues ? brl(stats.payable) : maskBrl(), icon: TrendingDown, gradient: "from-rose-400 to-pink-500" },
     { label: "Vencidos", value: showValues ? brl(stats.overdueAmount) : maskBrl(), sub: `${stats.overdue} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },

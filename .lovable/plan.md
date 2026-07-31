@@ -1,35 +1,28 @@
 ## Objetivo
-Atualizar a homepage (Dashboard) para exibir **Vendas do Dia** e **Vendas do Mês**, e adicionar um botão de "olho" que permite ocultar/exibir todos os valores numéricos sensíveis da tela.
+Exibir na homepage (Dashboard) um novo indicador com o **valor total recebido no mês atual** (pagamentos efetivamente recebidos dos clientes).
 
 ## Alterações propostas
 
-### 1. Novos indicadores de venda
-- Adicionar dois novos cards no grid superior do Dashboard:
-  - **Vendas do Dia**: soma do campo `total` da tabela `sales` onde `sale_date` for igual à data atual.
-  - **Vendas do Mês**: soma do campo `total` da tabela `sales` onde `sale_date` estiver dentro do mês/ano atual.
-- Os valores serão formatados em reais (BRL) e exibidos com o mesmo estilo visual dos cards existentes (ícone em gradiente, tipografia, animação `animate-fade-in`).
+### 1. Novo indicador "Recebido no Mês"
+- Adicionar um novo card no grid superior do Dashboard com o label **"Recebido no Mês"**.
+- O valor será a soma dos registros da tabela `accounts_receivable` cujo `status` seja `pago` e o `paid_at` esteja dentro do mês atual.
+  - Alternativa: caso `paid_at` não esteja consistentemente preenchido, somar os registros da tabela `receivable_payments` com `created_at` no mês atual. A implementação escolherá a fonte que refletir o dado real do projeto.
+- O valor será formatado em reais (BRL) e respeitará o estado do botão de "olho" (ocultar/mostrar valores) já existente na tela.
 
-### 2. Botão de ocultar/exibir valores ("olho")
-- Adicionar um ícone de olho (aberto/fechado) no cabeçalho da página (ao lado do título ou nas ações do `PageHeader`).
-- Ao clicar, alterna um estado `showValues` (boolean).
-- Quando oculto (`showValues = false`), todos os valores monetários e quantitativos da tela serão substituídos por uma máscara (ex.: `R$ ••••••` ou `•••`).
-- A escolha de ocultar/exibir deve afetar:
-  - Vendas do Dia / Mês
-  - A Receber / A Pagar / Vencidos
-  - Total de Clientes / Produtos / Estoque baixo
-  - Tooltips do gráfico de movimentação
+### 2. Integração com o estado de visualização
+- O novo card será adicionado ao array de cards do Dashboard, já usando a lógica de `showValues` para exibir `R$ ••••••` quando os valores estiverem ocultos.
+- O ícone do card será um ícone de pagamento/baixa (ex.: `CheckCircle2` ou `Wallet`) com gradiente verde/tesouraria para diferenciar de vendas.
 
 ### 3. Ajustes no carregamento de dados
-- Atualizar a função `loadAll` em `src/pages/Dashboard.tsx` para buscar também as vendas do dia e do mês via `supabase.from("sales").select("total, sale_date")` com filtros de data.
-- Os cálculos serão feitos localmente após o fetch, mantendo o padrão atual da página.
+- Atualizar a função `loadAll` em `src/pages/Dashboard.tsx` para buscar os recebimentos pagos do mês junto com as demais métricas.
+- A query será feita com `supabase.from("accounts_receivable").select("amount, paid_at").eq("status", "pago").gte("paid_at", inicioDoMes)` (ou equivalente conforme a fonte de dados real).
 
 ## Arquivos modificados
 - `src/pages/Dashboard.tsx`
-- Possível importação adicional de ícones (`Eye`, `EyeOff`) do `lucide-react`.
 
 ## Não incluso no escopo
 - Não serão criadas novas tabelas, migrations, rotas ou backend.
-- Não serão alterados outros dashboards ou relatórios.
+- Não serão alterados outros relatórios ou páginas.
 
 ## Resultado esperado
-A homepage mostrará, de forma clara, quanto foi vendido hoje e no mês, com um botão prático para o usuário esconder todos os valores numéricos da tela (útil para privacidade em compartilhamentos de tela).
+A homepage mostrará, além de Vendas do Dia/Mês, o valor total efetivamente recebido no mês, ajudando a acompanhar o fluxo de caixa de forma imediata.
