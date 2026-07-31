@@ -3,12 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
-  ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff,
+  ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff, FileDown, Loader2,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { generateDashboardReport, DashboardReportKey } from "@/lib/dashboardReports";
+
 
 interface Stats {
   customers: number;
@@ -32,6 +35,8 @@ export default function Dashboard() {
   });
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
   const [showValues, setShowValues] = useState(true);
+  const [reporting, setReporting] = useState<DashboardReportKey | null>(null);
+
 
   useEffect(() => { loadAll(); }, []);
 
@@ -104,11 +109,24 @@ export default function Dashboard() {
   const maskBrl = () => "R$ ••••••";
 
   const cards = [
-    { label: "Vendas do Dia", value: showValues ? brl(stats.salesToday) : maskBrl(), sub: "Hoje", icon: ShoppingCart, gradient: "from-emerald-400 to-teal-500" },
-    { label: "Vendas do Mês", value: showValues ? brl(stats.salesMonth) : maskBrl(), sub: format(new Date(), "MMMM", { locale: ptBR }), icon: Calendar, gradient: "from-violet-400 to-purple-500" },
-    { label: "Recebido no Mês", value: showValues ? brl(stats.receivedMonth) : maskBrl(), sub: "Pagamentos", icon: Wallet, gradient: "from-sky-400 to-cyan-500" },
-    { label: "Atrasados do Mês", value: showValues ? brl(stats.overdueMonth) : maskBrl(), sub: `${stats.overdueMonthCount} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
+    { key: "salesToday" as DashboardReportKey, label: "Vendas do Dia", value: showValues ? brl(stats.salesToday) : maskBrl(), sub: "Hoje", icon: ShoppingCart, gradient: "from-emerald-400 to-teal-500" },
+    { key: "salesMonth" as DashboardReportKey, label: "Vendas do Mês", value: showValues ? brl(stats.salesMonth) : maskBrl(), sub: format(new Date(), "MMMM", { locale: ptBR }), icon: Calendar, gradient: "from-violet-400 to-purple-500" },
+    { key: "receivedMonth" as DashboardReportKey, label: "Recebido no Mês", value: showValues ? brl(stats.receivedMonth) : maskBrl(), sub: "Pagamentos", icon: Wallet, gradient: "from-sky-400 to-cyan-500" },
+    { key: "overdueMonth" as DashboardReportKey, label: "Atrasados do Mês", value: showValues ? brl(stats.overdueMonth) : maskBrl(), sub: `${stats.overdueMonthCount} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
   ];
+
+  const handleReport = async (key: DashboardReportKey, label: string) => {
+    setReporting(key);
+    try {
+      await generateDashboardReport(key);
+      toast.success("Relatório gerado com sucesso!");
+    } catch (e: any) {
+      console.error(e);
+      toast.error("Falha ao gerar o relatório. Tente novamente.");
+    } finally {
+      setReporting(null);
+    }
+  };
 
   return (
     <div>
@@ -139,7 +157,23 @@ export default function Dashboard() {
               <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${c.gradient} flex items-center justify-center shadow-soft`}>
                 <c.icon className="h-5 w-5 text-white" />
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                onClick={() => handleReport(c.key, c.label)}
+                disabled={reporting !== null}
+                aria-label={`Gerar relatório detalhado para ${c.label}`}
+                title="Gerar relatório"
+              >
+                {reporting === c.key ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <FileDown className="h-4 w-4" aria-hidden />
+                )}
+              </Button>
             </div>
+
             <div className="text-xs text-muted-foreground">{c.label}</div>
             <div className="text-xl md:text-2xl font-display font-bold mt-1">{c.value}</div>
             {(c as any).sub && <div className="text-[11px] text-muted-foreground mt-1">{(c as any).sub}</div>}
