@@ -601,6 +601,10 @@ Deno.serve(async (req) => {
     // ---- MÍDIA RECEBIDA ----
     const mediaUrl: string | undefined = payload.url || undefined;
     const mimetype: string | undefined = payload.mimetype || undefined;
+    // Entrada em áudio detectada pelo próprio payload (ptt/voice), mesmo que o download falhe.
+    const audioInbound =
+      (mimetype ?? "").toLowerCase().startsWith("audio/") ||
+      /ptt|voice|audio/i.test(String(payload.messageType ?? payload.type ?? ""));
     let mediaPath: string | null = null;
     let mediaKind: string | null = null;
     let mediaBytes: Uint8Array | null = null;
