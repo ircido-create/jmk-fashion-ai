@@ -3,8 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
-  TrendingUp, TrendingDown, Package, Users, AlertTriangle, DollarSign,
-  ShoppingCart, Calendar, Eye, EyeOff, Wallet,
+  ShoppingCart, Calendar, Wallet, Users, Eye, EyeOff,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, startOfMonth, subMonths } from "date-fns";
@@ -100,12 +99,7 @@ export default function Dashboard() {
     { label: "Vendas do Dia", value: showValues ? brl(stats.salesToday) : maskBrl(), sub: "Hoje", icon: ShoppingCart, gradient: "from-emerald-400 to-teal-500" },
     { label: "Vendas do Mês", value: showValues ? brl(stats.salesMonth) : maskBrl(), sub: format(new Date(), "MMMM", { locale: ptBR }), icon: Calendar, gradient: "from-violet-400 to-purple-500" },
     { label: "Recebido no Mês", value: showValues ? brl(stats.receivedMonth) : maskBrl(), sub: "Pagamentos", icon: Wallet, gradient: "from-sky-400 to-cyan-500" },
-    { label: "A Receber", value: showValues ? brl(stats.receivable) : maskBrl(), icon: TrendingUp, gradient: "from-emerald-400 to-teal-500" },
-    { label: "A Pagar", value: showValues ? brl(stats.payable) : maskBrl(), icon: TrendingDown, gradient: "from-rose-400 to-pink-500" },
-    { label: "Vencidos", value: showValues ? brl(stats.overdueAmount) : maskBrl(), sub: `${stats.overdue} título(s)`, icon: AlertTriangle, gradient: "from-amber-400 to-orange-500" },
     { label: "Clientes", value: showValues ? stats.customers.toLocaleString("pt-BR") : mask(), icon: Users, gradient: "from-violet-400 to-purple-500" },
-    { label: "Produtos", value: showValues ? stats.products.toLocaleString("pt-BR") : mask(), icon: Package, gradient: "from-fuchsia-400 to-pink-500" },
-    { label: "Estoque baixo", value: showValues ? stats.lowStock.toLocaleString("pt-BR") : mask(), icon: DollarSign, gradient: "from-blue-400 to-indigo-500" },
   ];
 
   return (
