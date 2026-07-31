@@ -62,6 +62,9 @@ export default function Dashboard() {
       .filter((p) => p.created_at.slice(0, 10) >= monthStart)
       .reduce((sum, p) => sum + Number(p.amount_paid), 0);
 
+    const overdueMonth = odm.reduce((s, x) => s + Number(x.amount), 0);
+    const overdueMonthCount = odm.length;
+
     setStats({
       customers: c.count ?? 0,
       products: p.count ?? 0,
@@ -69,6 +72,8 @@ export default function Dashboard() {
       payable: ap.reduce((s, x) => s + Number(x.amount), 0),
       overdue: od.length,
       overdueAmount: od.reduce((s, x) => s + Number(x.amount), 0),
+      overdueMonth,
+      overdueMonthCount,
       lowStock,
       salesToday,
       salesMonth,
