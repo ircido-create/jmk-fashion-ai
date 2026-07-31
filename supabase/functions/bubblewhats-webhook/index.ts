@@ -601,6 +601,10 @@ Deno.serve(async (req) => {
     // ---- MÍDIA RECEBIDA ----
     const mediaUrl: string | undefined = payload.url || undefined;
     const mimetype: string | undefined = payload.mimetype || undefined;
+    // Entrada em áudio detectada pelo próprio payload (ptt/voice), mesmo que o download falhe.
+    const audioInbound =
+      (mimetype ?? "").toLowerCase().startsWith("audio/") ||
+      /ptt|voice|audio/i.test(String(payload.messageType ?? payload.type ?? ""));
     let mediaPath: string | null = null;
     let mediaKind: string | null = null;
     let mediaBytes: Uint8Array | null = null;
@@ -775,7 +779,8 @@ Deno.serve(async (req) => {
     }
 
     // ---- ÁUDIO (quando cliente mandou áudio ou pediu) ----
-    const clientSentAudio = mediaKind === "audio";
+    // REGRA: se a entrada da cliente veio em áudio, a resposta SEMPRE sai em áudio.
+    const clientSentAudio = mediaKind === "audio" || audioInbound;
     const low = text.toLowerCase();
     const clientAskedForAudio =
       /\b(a[uú]dio|voz|falando|falada|por v[oó]z)\b/.test(low) ||
@@ -783,14 +788,19 @@ Deno.serve(async (req) => {
       /(me\s+)?(manda|envia|responde|fala)\s+(em|por|de)?\s*(a[uú]dio|voz)/.test(low);
     let audioSent = false;
     if (clientSentAudio || clientAskedForAudio) {
-      const voice = await synthesizeVoice(finalReply);
-      if (voice) {
-        audioSent = await sendVoiceNote(conversationKey, voice.bytes, voice.mime);
-        if (audioSent) await logOutboundMedia(conv.id, conversationKey, voice.bytes, voice.mime, "audio", finalReply);
+      // duas tentativas: TTS é obrigatório quando a entrada foi em áudio
+      for (let attempt = 1; attempt <= 2 && !audioSent; attempt++) {
+        const voice = await synthesizeVoice(finalReply);
+        if (voice) {
+          audioSent = await sendVoiceNote(conversationKey, voice.bytes, voice.mime);
+          if (audioSent) await logOutboundMedia(conv.id, conversationKey, voice.bytes, voice.mime, "audio", finalReply);
+        }
+        if (!audioSent) console.warn(`[audio] tentativa ${attempt} de resposta em áudio falhou`);
       }
     }
 
     if (!audioSent) {
+      if (clientSentAudio) console.error("[audio] fallback para texto — TTS/envio de voz indisponível");
       await sendText(conversationKey, finalReply);
       await supabase.from("whatsapp_messages").insert({
         conversation_id: conv.id,
