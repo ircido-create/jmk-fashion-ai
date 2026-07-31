@@ -167,7 +167,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     const rows = await fetchAll<any>((sb) =>
       sb
         .from("receivable_payments")
-        .select("amount_paid, created_at, accounts_receivable(description, due_date, customers(name))")
+        .select("amount_paid, created_at, accounts_receivable(description, due_date, customers(name, phone))")
         .gte("created_at", monthStart)
         .order("created_at", { ascending: true })
     );
@@ -175,10 +175,11 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     build(
       "Relatório de Recebimentos do Mês",
       `${format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
-      ["Data", "Cliente", "Descrição", "Vencimento", "Valor pago"],
+      ["Data", "Cliente", "Telefone", "Descrição", "Vencimento", "Valor pago"],
       rows.map((r) => [
         fmtDate(String(r.created_at).slice(0, 10)),
         r.accounts_receivable?.customers?.name ?? "—",
+        r.accounts_receivable?.customers?.phone ?? "—",
         r.accounts_receivable?.description ?? "—",
         r.accounts_receivable?.due_date ? fmtDate(r.accounts_receivable.due_date) : "—",
         brl(Number(r.amount_paid)),
@@ -188,6 +189,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       summarizeByCustomer(
         rows.map((r) => ({
           name: r.accounts_receivable?.customers?.name ?? "—",
+          phone: r.accounts_receivable?.customers?.phone,
           amount: Number(r.amount_paid || 0),
         })),
         "Total pago"
