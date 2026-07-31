@@ -3,12 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
-  ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff,
+  ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff, FileDown, Loader2,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { generateDashboardReport, DashboardReportKey } from "@/lib/dashboardReports";
+
 
 interface Stats {
   customers: number;
