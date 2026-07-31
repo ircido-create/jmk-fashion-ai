@@ -129,7 +129,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     const rows = await fetchAll<any>((sb) =>
       sb
         .from("sales")
-        .select("total, sale_date, payment_method, installments, notes, customers(name, nickname)")
+        .select("total, sale_date, payment_method, installments, notes, customers(name, nickname, phone)")
         .gte("sale_date", isDay ? today : monthStart)
         .order("sale_date", { ascending: true })
     );
@@ -140,10 +140,11 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     build(
       isDay ? "Relatório de Vendas do Dia" : "Relatório de Vendas do Mês",
       `${isDay ? fmtDate(today) : format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
-      ["Data", "Cliente", "Pagamento", "Parcelas", "Valor"],
+      ["Data", "Cliente", "Telefone", "Pagamento", "Parcelas", "Valor"],
       filtered.map((r) => [
         fmtDate(String(r.sale_date).slice(0, 10)),
         r.customers?.name ?? r.customers?.nickname ?? "Consumidor",
+        r.customers?.phone ?? "—",
         r.payment_method ?? "—",
         r.installments ?? 1,
         brl(Number(r.total)),
@@ -153,6 +154,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       summarizeByCustomer(
         filtered.map((r) => ({
           name: r.customers?.name ?? r.customers?.nickname ?? "Consumidor",
+          phone: r.customers?.phone,
           amount: Number(r.total || 0),
         })),
         "Total"
