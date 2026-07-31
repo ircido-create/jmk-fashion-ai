@@ -56,6 +56,9 @@ export default function Dashboard() {
     const salesMonth = salesRows
       .filter((s) => s.sale_date.slice(0, 10) >= monthStart)
       .reduce((sum, s) => sum + Number(s.total), 0);
+    const receivedMonth = receivedRows
+      .filter((p) => p.created_at.slice(0, 10) >= monthStart)
+      .reduce((sum, p) => sum + Number(p.amount_paid), 0);
 
     setStats({
       customers: c.count ?? 0,
@@ -67,6 +70,7 @@ export default function Dashboard() {
       lowStock,
       salesToday,
       salesMonth,
+      receivedMonth,
     });
 
     // chart: last 6 months
