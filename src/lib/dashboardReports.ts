@@ -144,7 +144,14 @@ export async function generateDashboardReport(key: DashboardReportKey) {
         brl(Number(r.total)),
       ]),
       total,
-      `Relatorio_${isDay ? "Vendas_Dia" : "Vendas_Mes"}_${stamp}.pdf`
+      `Relatorio_${isDay ? "Vendas_Dia" : "Vendas_Mes"}_${stamp}.pdf`,
+      summarizeByCustomer(
+        filtered.map((r) => ({
+          name: r.customers?.name ?? r.customers?.nickname ?? "Consumidor",
+          amount: Number(r.total || 0),
+        })),
+        "Total"
+      )
     );
     return;
   }
@@ -170,7 +177,14 @@ export async function generateDashboardReport(key: DashboardReportKey) {
         brl(Number(r.amount_paid)),
       ]),
       total,
-      `Relatorio_Recebido_Mes_${stamp}.pdf`
+      `Relatorio_Recebido_Mes_${stamp}.pdf`,
+      summarizeByCustomer(
+        rows.map((r) => ({
+          name: r.accounts_receivable?.customers?.name ?? "—",
+          amount: Number(r.amount_paid || 0),
+        })),
+        "Total pago"
+      )
     );
     return;
   }
@@ -196,6 +210,10 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       brl(Number(r.amount)),
     ]),
     total,
-    `Relatorio_Atrasados_Mes_${stamp}.pdf`
+    `Relatorio_Atrasados_Mes_${stamp}.pdf`,
+    summarizeByCustomer(
+      rows.map((r) => ({ name: r.customers?.name ?? "—", amount: Number(r.amount || 0) })),
+      "Total devido"
+    )
   );
 }
