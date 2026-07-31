@@ -128,8 +128,9 @@ export default function Receivable() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const cid = f.get("customer_id") as string;
+    if (!cid || cid === "none") { toast.error("Selecione o cliente"); return; }
     const parsed = schema.safeParse({
-      customer_id: cid && cid !== "none" ? cid : null,
+      customer_id: cid,
       description: f.get("description"),
       amount: Number(f.get("amount")),
       due_date: f.get("due_date"),
