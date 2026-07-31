@@ -93,23 +93,28 @@ function build(
   doc.save(filename);
 }
 
-/** Agrupa registros por cliente somando os valores (maior total primeiro). */
+/** Agrupa registros por cliente somando os valores (ordem alfabética). */
 function summarizeByCustomer(
-  rows: { name: string; amount: number }[],
+  rows: { name: string; phone?: string | null; amount: number }[],
   valueLabel: string
 ): Summary {
-  const map = new Map<string, { qty: number; total: number }>();
+  const map = new Map<string, { qty: number; total: number; phone: string }>();
   for (const r of rows) {
     const key = r.name || "—";
-    const cur = map.get(key) ?? { qty: 0, total: 0 };
+    const cur = map.get(key) ?? { qty: 0, total: 0, phone: "" };
     cur.qty += 1;
     cur.total += Number(r.amount || 0);
+    if (!cur.phone && r.phone) cur.phone = r.phone;
     map.set(key, cur);
   }
   const body = [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], "pt-BR", { sensitivity: "base" }))
-    .map(([name, v]) => [name, v.qty, brl(v.total)]);
-  return { title: "Resumo por cliente (total)", head: ["Cliente", "Títulos", valueLabel], body };
+    .map(([name, v]) => [name, v.phone || "—", v.qty, brl(v.total)]);
+  return {
+    title: "Resumo por cliente (total)",
+    head: ["Cliente", "Telefone", "Títulos", valueLabel],
+    body,
+  };
 }
 
 export async function generateDashboardReport(key: DashboardReportKey) {
