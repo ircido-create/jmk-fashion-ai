@@ -294,6 +294,7 @@ export default function Receivable() {
         case "a_vencer": return list.filter((r) => r.status === "pendente");
         case "vencido": return list.filter((r) => r.status === "vencido");
         case "pago": return list.filter((r) => r.status === "pago");
+        case "sem_cliente": return list.filter((r) => !r.customer_id && r.status !== "cancelado");
         default: return list;
       }
     })();
