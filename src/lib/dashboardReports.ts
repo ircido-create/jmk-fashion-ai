@@ -28,19 +28,43 @@ function header(doc: jsPDF, title: string, subtitle: string) {
   doc.setTextColor(0);
 }
 
+type Summary = { head: string[]; body: (string | number)[][]; title: string };
+
 function build(
   title: string,
   subtitle: string,
   head: string[],
   body: (string | number)[][],
   total: number,
-  filename: string
+  filename: string,
+  summary?: Summary
 ) {
   const doc = new jsPDF();
   header(doc, title, subtitle);
 
+  let startY = 28;
+
+  if (summary && summary.body.length) {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(summary.title, 14, startY);
+    autoTable(doc, {
+      startY: startY + 3,
+      head: [summary.head],
+      body: summary.body,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [22, 101, 52], textColor: 255 },
+      columnStyles: { [summary.head.length - 1]: { halign: "right" } },
+    });
+    startY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Detalhamento", 14, startY);
+    startY += 3;
+  }
+
   autoTable(doc, {
-    startY: 28,
+    startY,
     head: [head],
     body: body.length ? body : [head.map((_, i) => (i === 0 ? "Nenhum registro encontrado" : ""))],
     styles: { fontSize: 8, cellPadding: 2 },
@@ -67,6 +91,25 @@ function build(
   doc.text(`Total: ${brl(total)}  •  ${body.length} registro(s)`, 14, finalY);
 
   doc.save(filename);
+}
+
+/** Agrupa registros por cliente somando os valores (maior total primeiro). */
+function summarizeByCustomer(
+  rows: { name: string; amount: number }[],
+  valueLabel: string
+): Summary {
+  const map = new Map<string, { qty: number; total: number }>();
+  for (const r of rows) {
+    const key = r.name || "—";
+    const cur = map.get(key) ?? { qty: 0, total: 0 };
+    cur.qty += 1;
+    cur.total += Number(r.amount || 0);
+    map.set(key, cur);
+  }
+  const body = [...map.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([name, v]) => [name, v.qty, brl(v.total)]);
+  return { title: "Resumo por cliente (total)", head: ["Cliente", "Títulos", valueLabel], body };
 }
 
 export async function generateDashboardReport(key: DashboardReportKey) {
@@ -101,7 +144,14 @@ export async function generateDashboardReport(key: DashboardReportKey) {
         brl(Number(r.total)),
       ]),
       total,
-      `Relatorio_${isDay ? "Vendas_Dia" : "Vendas_Mes"}_${stamp}.pdf`
+      `Relatorio_${isDay ? "Vendas_Dia" : "Vendas_Mes"}_${stamp}.pdf`,
+      summarizeByCustomer(
+        filtered.map((r) => ({
+          name: r.customers?.name ?? r.customers?.nickname ?? "Consumidor",
+          amount: Number(r.total || 0),
+        })),
+        "Total"
+      )
     );
     return;
   }
@@ -127,7 +177,14 @@ export async function generateDashboardReport(key: DashboardReportKey) {
         brl(Number(r.amount_paid)),
       ]),
       total,
-      `Relatorio_Recebido_Mes_${stamp}.pdf`
+      `Relatorio_Recebido_Mes_${stamp}.pdf`,
+      summarizeByCustomer(
+        rows.map((r) => ({
+          name: r.accounts_receivable?.customers?.name ?? "—",
+          amount: Number(r.amount_paid || 0),
+        })),
+        "Total pago"
+      )
     );
     return;
   }
@@ -153,6 +210,10 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       brl(Number(r.amount)),
     ]),
     total,
-    `Relatorio_Atrasados_Mes_${stamp}.pdf`
+    `Relatorio_Atrasados_Mes_${stamp}.pdf`,
+    summarizeByCustomer(
+      rows.map((r) => ({ name: r.customers?.name ?? "—", amount: Number(r.amount || 0) })),
+      "Total devido"
+    )
   );
 }
