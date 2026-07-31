@@ -329,7 +329,9 @@ export default function Receivable() {
     a_vencer: "A Vencer",
     vencido: "Vencido",
     pago: "Pago",
+    sem_cliente: "Sem cliente",
   };
+
 
   // === Baixa em massa por extrato (conciliação) ===
   // Parser de extrato: aceita xlsx/xls/csv com colunas Cliente, Valor (e opcionalmente Data/CPF/CNPJ)
