@@ -7,7 +7,7 @@ import {
   ShoppingCart, Calendar, Eye, EyeOff, Wallet,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
-import { format, startOfMonth, subMonths, startOfDay, endOfDay } from "date-fns";
+import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 
