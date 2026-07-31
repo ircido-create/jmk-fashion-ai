@@ -128,8 +128,9 @@ export default function Receivable() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const cid = f.get("customer_id") as string;
+    if (!cid || cid === "none") { toast.error("Selecione o cliente"); return; }
     const parsed = schema.safeParse({
-      customer_id: cid && cid !== "none" ? cid : null,
+      customer_id: cid,
       description: f.get("description"),
       amount: Number(f.get("amount")),
       due_date: f.get("due_date"),
@@ -294,7 +295,7 @@ export default function Receivable() {
         case "a_vencer": return list.filter((r) => r.status === "pendente");
         case "vencido": return list.filter((r) => r.status === "vencido");
         case "pago": return list.filter((r) => r.status === "pago");
-        case "sem_cliente": return list.filter((r) => !r.customer_id && r.status !== "cancelado");
+        
         default: return list;
       }
     })();
@@ -329,7 +330,7 @@ export default function Receivable() {
     a_vencer: "A Vencer",
     vencido: "Vencido",
     pago: "Pago",
-    sem_cliente: "Sem cliente",
+    
   };
 
 
@@ -872,10 +873,9 @@ export default function Receivable() {
                 <form onSubmit={save} className="space-y-3">
                   <div>
                     <Label>Cliente</Label>
-                    <Select name="customer_id" defaultValue={editing?.customer_id ?? "none"}>
-                      <SelectTrigger className="glass-input"><SelectValue /></SelectTrigger>
+                    <Select name="customer_id" defaultValue={editing?.customer_id ?? undefined} required>
+                      <SelectTrigger className="glass-input"><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">— sem cliente —</SelectItem>
                         {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
@@ -919,7 +919,7 @@ export default function Receivable() {
             { k: "a_vencer", label: "A Vencer" },
             { k: "vencido", label: "Vencido" },
             { k: "pago", label: "Pago" },
-            { k: "sem_cliente", label: `Sem cliente (${list.filter((r) => !r.customer_id && r.status !== "cancelado").length})` },
+            
             { k: "todos", label: "Todos" },
           ].map(({ k, label }) => (
             <Button key={k} size="sm" variant={filter === k ? "default" : "outline"}
