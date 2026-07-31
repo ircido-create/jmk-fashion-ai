@@ -27,7 +27,7 @@ interface Stats {
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
     customers: 0, products: 0, receivable: 0, payable: 0, overdue: 0, overdueAmount: 0, lowStock: 0,
-    salesToday: 0, salesMonth: 0,
+    salesToday: 0, salesMonth: 0, receivedMonth: 0,
   });
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
   const [showValues, setShowValues] = useState(true);
@@ -37,7 +37,7 @@ export default function Dashboard() {
   const loadAll = async () => {
     const today = new Date().toISOString().slice(0, 10);
     const monthStart = startOfMonth(new Date()).toISOString().slice(0, 10);
-    const [c, p, r, ap, od, ls, salesRows] = await Promise.all([
+    const [c, p, r, ap, od, ls, salesRows, receivedRows] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"])),
@@ -45,6 +45,7 @@ export default function Dashboard() {
       fetchAll<{ amount: number }>((sb) => sb.from("accounts_receivable").select("amount").in("status", ["pendente", "vencido"]).lt("due_date", today)),
       fetchAll<any>((sb) => sb.from("product_variants").select("quantity, products!inner(low_stock_threshold)")),
       fetchAll<{ total: number; sale_date: string }>((sb) => sb.from("sales").select("total, sale_date")),
+      fetchAll<{ amount_paid: number; created_at: string }>((sb) => sb.from("receivable_payments").select("amount_paid, created_at")),
     ]);
 
     const lowStock = ls.filter((v: any) => v.quantity <= (v.products?.low_stock_threshold ?? 5)).length;
