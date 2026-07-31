@@ -944,7 +944,9 @@ export default function Receivable() {
             <div key={r.id} className="p-3 rounded-xl bg-white/40 backdrop-blur flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium">{r.customers?.name ?? "—"}</span>
+                  <span className={`font-medium ${!r.customer_id ? "text-destructive" : ""}`}>
+                    {r.customers?.name ?? "— sem cliente —"}
+                  </span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>{r.status}</span>
                   {r.proofs && r.proofs.length > 0 && (
                     <button
