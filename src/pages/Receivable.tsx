@@ -919,6 +919,7 @@ export default function Receivable() {
             { k: "a_vencer", label: "A Vencer" },
             { k: "vencido", label: "Vencido" },
             { k: "pago", label: "Pago" },
+            { k: "sem_cliente", label: `Sem cliente (${list.filter((r) => !r.customer_id && r.status !== "cancelado").length})` },
             { k: "todos", label: "Todos" },
           ].map(({ k, label }) => (
             <Button key={k} size="sm" variant={filter === k ? "default" : "outline"}
