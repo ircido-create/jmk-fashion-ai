@@ -167,8 +167,10 @@ export default function Inventory() {
         if (data?.skipped) {
           skipped++;
           const isHash = data.reason === "hash";
-          const label = isHash ? "já importado (arquivo idêntico)" : data.reason === "no_items" ? "IA não leu itens" : "duplicado";
+          if (isHash) duplicates.push(file.name);
+          const label = isHash ? "romaneio já importado — não importado" : data.reason === "no_items" ? "IA não leu itens" : "duplicado";
           updateItem(idx, { status: "skip", msg: label, retriable: !isHash });
+          if (isHash) toast.warning(`"${file.name}" já foi importado. Importação ignorada.`, { duration: 6000 });
           return;
         }
         imported++;
