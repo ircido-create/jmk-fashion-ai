@@ -6,10 +6,11 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const SYSTEM = `Você recebe imagens de páginas de um romaneio/catálogo de fornecedor de roupas e uma lista de SKUs de produtos.
-Para cada SKU, localize a foto do produto correspondente nas páginas (se houver uma foto visível associada àquele SKU/código).
-Retorne apenas as associações onde você tem alta confiança. Não invente. Se não houver foto para o SKU, omita.
-As coordenadas do bounding box devem ser normalizadas (0.0 a 1.0) em relação à página.`;
+const SYSTEM = `Você recebe imagens de páginas de um romaneio/catálogo de fornecedor de roupas.
+Localize TODAS as fotos de produtos visíveis nas páginas e, para cada foto, informe o código/SKU impresso ao lado dela (o código base, ex.: "05705" mesmo se aparecer "05705.008").
+Se uma lista de SKUs for fornecida, priorize esses códigos, mas NÃO se limite a ela: reporte toda foto cujo código consiga ler.
+Não invente códigos. Se a foto não tiver código legível, omita.
+As coordenadas do bounding box devem ser normalizadas (0.0 a 1.0) em relação à página e devem cobrir apenas a foto do produto.`;
 
 const tool = {
   type: "function",
