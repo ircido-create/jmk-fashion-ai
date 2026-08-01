@@ -68,14 +68,17 @@ export async function importRomaneioPhotos(file: File): Promise<{ imported: numb
     const canvases = await renderPdfPages(file);
     if (!canvases.length) return { imported: 0 };
 
-    // Buscar SKUs de produtos sem imagem (limita a ~200 para não estourar prompt)
-    const { data: prods, error } = await supabase
-      .from("products")
-      .select("id, sku, name")
-      .is("image_url", null)
-      .not("sku", "is", null)
-      .limit(200);
-    if (error || !prods?.length) return { imported: 0 };
+    // Buscar TODOS os SKUs de produtos sem imagem (sem limite de 200)
+    const prods = await fetchAll<{ id: string; sku: string | null; name: string }>((sb) =>
+      sb.from("products").select("id, sku, name").is("image_url", null).not("sku", "is", null)
+    );
+    if (!prods.length) return { imported: 0 };
+
+    const bySku = new Map<string, { id: string; sku: string | null }>();
+    for (const p of prods) {
+      const k = normSku(p.sku);
+      if (k && !bySku.has(k)) bySku.set(k, p);
+    }
 
     const skus = prods.map((p) => p.sku!).filter(Boolean);
     const pages = canvases.map((c) => canvasToDataUrl(c));
@@ -91,11 +94,11 @@ export async function importRomaneioPhotos(file: File): Promise<{ imported: numb
     for (const assoc of associations) {
       const canvas = canvases[assoc.page_index];
       if (!canvas) continue;
-      const product = prods.find((p) => p.sku === assoc.sku);
+      const product = bySku.get(normSku(assoc.sku));
       if (!product) continue;
       const blob = await cropToBlob(canvas, assoc.bbox);
       if (!blob) continue;
-      const path = `romaneio/${assoc.sku.replace(/[^a-zA-Z0-9._-]/g, "_")}_${Date.now()}.jpg`;
+      const path = `romaneio/${String(assoc.sku).replace(/[^a-zA-Z0-9._-]/g, "_")}_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("product-images")
         .upload(path, blob, { upsert: false, contentType: "image/jpeg" });
