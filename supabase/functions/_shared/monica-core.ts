@@ -249,7 +249,9 @@ async function callLovableTts(text: string): Promise<{ bytes: Uint8Array; mime: 
         input: text,
         voice: "shimmer",
         response_format: "mp3",
-        instructions: "Fale em português do Brasil, voz feminina calorosa, tom acolhedor e natural.",
+        speed: 0.97,
+        instructions:
+          "Fale em português do Brasil com voz feminina adulta, natural e humana. Tom calmo, cordial e acolhedor; entonação conversacional e amigável. Pronúncia clara, ritmo natural sem pressa, com pequenas pausas naturais entre as frases. Demonstre empatia e simpatia, nunca soe robótica, apressada ou fria.",
       }),
     });
     if (!res.ok) {
