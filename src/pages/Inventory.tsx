@@ -202,6 +202,12 @@ export default function Inventory() {
       await Promise.all(workers);
 
       toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro${cancelled ? " (cancelado)" : ""}`, { duration: 6000 });
+      if (duplicates.length) {
+        toast.warning(
+          `${duplicates.length} romaneio(s) já importado(s) anteriormente e não foram importados novamente: ${duplicates.join(", ")}`,
+          { duration: 10000 }
+        );
+      }
       load();
 
       if (photosQueue.length) {
