@@ -59,10 +59,12 @@ Deno.serve(async (req) => {
     }
     const { pages, skus } = body;
     if (!Array.isArray(pages) || !pages.length) return json({ error: "pages required" }, 400);
-    if (!Array.isArray(skus) || !skus.length) return json({ ok: true, associations: [] });
 
+    const skuHint = Array.isArray(skus) && skus.length
+      ? `SKUs prioritários (mas não exclusivos):\n${skus.slice(0, 400).join(", ")}\n\n`
+      : "";
     const content: any[] = [
-      { type: "text", text: `SKUs a localizar:\n${skus.join(", ")}\n\nAnalise as ${pages.length} página(s) a seguir e retorne as associações via tool call.` },
+      { type: "text", text: `${skuHint}Analise as ${pages.length} página(s) a seguir e retorne TODAS as fotos de produtos com seus códigos via tool call.` },
     ];
     for (const p of pages) {
       content.push({ type: "image_url", image_url: { url: p } });
