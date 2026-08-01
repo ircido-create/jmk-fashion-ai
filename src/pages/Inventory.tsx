@@ -101,6 +101,7 @@ export default function Inventory() {
     };
 
     const photosQueue: File[] = [];
+    const duplicates: string[] = [];
     let imported = 0, skipped = 0, failed = 0;
     let cancelled = false;
 
