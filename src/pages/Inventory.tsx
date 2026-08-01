@@ -101,6 +101,7 @@ export default function Inventory() {
     };
 
     const photosQueue: File[] = [];
+    const duplicates: string[] = [];
     let imported = 0, skipped = 0, failed = 0;
     let cancelled = false;
 
@@ -143,12 +144,17 @@ export default function Inventory() {
 
         const { data: existing } = await supabase
           .from("imported_romaneios")
-          .select("id")
+          .select("id, filename, created_at")
           .eq("file_hash", file_hash)
           .maybeSingle();
         if (existing) {
           skipped++;
-          updateItem(idx, { status: "skip", msg: "já importado" });
+          duplicates.push(file.name);
+          const when = existing.created_at
+            ? new Date(existing.created_at).toLocaleDateString("pt-BR")
+            : "";
+          updateItem(idx, { status: "skip", msg: `romaneio já importado${when ? ` em ${when}` : ""} — não importado` });
+          toast.warning(`"${file.name}" já foi importado${when ? ` em ${when}` : ""}. Importação ignorada.`, { duration: 6000 });
           return;
         }
 
@@ -161,8 +167,10 @@ export default function Inventory() {
         if (data?.skipped) {
           skipped++;
           const isHash = data.reason === "hash";
-          const label = isHash ? "já importado (arquivo idêntico)" : data.reason === "no_items" ? "IA não leu itens" : "duplicado";
+          if (isHash) duplicates.push(file.name);
+          const label = isHash ? "romaneio já importado — não importado" : data.reason === "no_items" ? "IA não leu itens" : "duplicado";
           updateItem(idx, { status: "skip", msg: label, retriable: !isHash });
+          if (isHash) toast.warning(`"${file.name}" já foi importado. Importação ignorada.`, { duration: 6000 });
           return;
         }
         imported++;
@@ -194,6 +202,12 @@ export default function Inventory() {
       await Promise.all(workers);
 
       toast.success(`Importação concluída: ${imported} importado(s), ${skipped} pulado(s), ${failed} com erro${cancelled ? " (cancelado)" : ""}`, { duration: 6000 });
+      if (duplicates.length) {
+        toast.warning(
+          `${duplicates.length} romaneio(s) já importado(s) anteriormente e não foram importados novamente: ${duplicates.join(", ")}`,
+          { duration: 10000 }
+        );
+      }
       load();
 
       if (photosQueue.length) {
