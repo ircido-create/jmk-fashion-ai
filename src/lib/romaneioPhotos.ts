@@ -1,4 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetchAll";
+
+/** Normaliza SKU: maiúsculo, sem sufixo de cor (.008) e sem separadores */
+function normSku(s?: string | null): string {
+  if (!s) return "";
+  return String(s).trim().toUpperCase().split(/[.\-/\s]/)[0].replace(/[^A-Z0-9]/g, "");
+}
 
 // Configure pdfjs worker (Vite-compatible)
 import * as pdfjsLib from "pdfjs-dist";
