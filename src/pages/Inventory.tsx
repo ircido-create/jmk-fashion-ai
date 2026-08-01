@@ -197,16 +197,32 @@ export default function Inventory() {
       load();
 
       if (photosQueue.length) {
-        toast.info(`Buscando fotos em ${photosQueue.length} PDF(s)...`);
+        const photoToast = toast.loading(`Importando fotos de ${photosQueue.length} romaneio(s)...`);
         (async () => {
           let totalPhotos = 0;
+          let photoFails = 0;
+          let lastWarning: string | undefined;
           for (const f of photosQueue) {
             const res = await importRomaneioPhotos(f);
             totalPhotos += res.imported;
+            if (res.warning) { photoFails++; lastWarning = res.warning; }
           }
-          if (totalPhotos > 0) { toast.success(`${totalPhotos} foto(s) de produto importada(s)`); load(); }
+          if (totalPhotos > 0) {
+            toast.success(
+              `Fotos do romaneio importadas com sucesso: ${totalPhotos} foto(s)${photoFails ? ` — ${photoFails} PDF(s) com falha` : ""}`,
+              { id: photoToast, duration: 6000 }
+            );
+            load();
+          } else if (photoFails) {
+            toast.error(`Não foi possível importar as fotos do romaneio${lastWarning ? `: ${lastWarning}` : ""}`, { id: photoToast, duration: 6000 });
+          } else {
+            toast.info("Importação concluída, mas nenhuma foto foi encontrada no romaneio", { id: photoToast, duration: 6000 });
+          }
         })();
+      } else {
+        toast.info("Importação concluída (sem PDFs elegíveis para extração de fotos)");
       }
+
     } catch (e: any) {
       toast.error("Falha na importação: " + (e?.message || "erro desconhecido"));
     } finally {
