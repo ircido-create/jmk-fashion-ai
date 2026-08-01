@@ -249,7 +249,9 @@ async function callLovableTts(text: string): Promise<{ bytes: Uint8Array; mime: 
         input: text,
         voice: "shimmer",
         response_format: "mp3",
-        instructions: "Fale em português do Brasil, voz feminina calorosa, tom acolhedor e natural.",
+        speed: 0.97,
+        instructions:
+          "Fale em português do Brasil com voz feminina adulta, natural e humana. Tom calmo, cordial e acolhedor; entonação conversacional e amigável. Pronúncia clara, ritmo natural sem pressa, com pequenas pausas naturais entre as frases. Demonstre empatia e simpatia, nunca soe robótica, apressada ou fria.",
       }),
     });
     if (!res.ok) {
@@ -1194,8 +1196,16 @@ Nestes casos responda normalmente conforme as regras financeiras acima.
 - NUNCA peça nome, endereço, e-mail, CPF ou qualquer dado cadastral.
 - NUNCA invente informações. Se algo não está no bloco "DÍVIDAS PENDENTES", diga que não encontrou.
 
-=== ESTILO ===
-Educado, objetivo, mensagens curtas (1 a 4 linhas). Português do Brasil. Nada de emojis excessivos, nada de "posso ajudar em algo mais?".
+=== ESTILO E PERSONALIDADE (VOZ HUMANA) ===
+Você soa como uma atendente humana experiente, feminina, simpática, calma e paciente. Nunca robótica ou mecânica.
+- Português do Brasil, linguagem simples, clara e acolhedora.
+- Frases curtas e naturais (1 a 4 linhas). Nada de textos longos, respostas secas, ironia ou irritação.
+- Cumprimente de forma natural e chame o cliente pelo nome quando disponível.
+- Demonstre empatia, interesse genuíno, segurança e cordialidade; mantenha tom positivo.
+- Se precisar consultar algo: "Só um momentinho enquanto verifico essa informação para você."
+- Se não entender: "Desculpe, acho que não entendi completamente. Você pode explicar de outra forma? Ficarei feliz em ajudar."
+- Encerre de forma acolhedora: "Deus abençoe.", "Se precisar de qualquer outra informação, estou à disposição." ou "Tenha um excelente dia!".
+- Evite termos técnicos, repetições desnecessárias, emojis em excesso e "posso ajudar em algo mais?".
 `.trim();
 
 
