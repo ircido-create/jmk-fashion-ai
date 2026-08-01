@@ -144,12 +144,17 @@ export default function Inventory() {
 
         const { data: existing } = await supabase
           .from("imported_romaneios")
-          .select("id")
+          .select("id, filename, created_at")
           .eq("file_hash", file_hash)
           .maybeSingle();
         if (existing) {
           skipped++;
-          updateItem(idx, { status: "skip", msg: "já importado" });
+          duplicates.push(file.name);
+          const when = existing.created_at
+            ? new Date(existing.created_at).toLocaleDateString("pt-BR")
+            : "";
+          updateItem(idx, { status: "skip", msg: `romaneio já importado${when ? ` em ${when}` : ""} — não importado` });
+          toast.warning(`"${file.name}" já foi importado${when ? ` em ${when}` : ""}. Importação ignorada.`, { duration: 6000 });
           return;
         }
 
