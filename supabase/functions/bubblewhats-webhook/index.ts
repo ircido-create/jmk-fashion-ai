@@ -345,8 +345,28 @@ Deno.serve(async (req) => {
     // ---- FAST-PATH: cliente pede FICHA/EXTRATO/PARCELAS ----
     // Executa ANTES de qualquer análise pesada (mídia, comprovante, IA) e usa
     // timeouts defensivos para nunca travar o worker.
-    const fichaRegex = /\b(fich[ao]|extrato|minhas?\s+parcelas?|quais?\s+parcelas?|carn[êe])\b/i;
-    if (!humanHandoff && text && !isGroup && senderNumber && fichaRegex.test(text)) {
+    const stripAccents = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const fichaText = stripAccents((text ?? "").toLowerCase());
+    const fichaRegex = new RegExp(
+      [
+        "\\b(ficha|fichao|extrato|carne)\\b",
+        "\\bminhas?\\s+parcelas?\\b",
+        "\\bquais?\\s+(as\\s+)?parcelas?\\b",
+        "\\bminhas?\\s+contas?\\b",
+        "\\b(manda|mande|envia|envie|passa|passe|manda\\s+a|me\\s+manda)\\b[^.!?]{0,20}\\bcontas?\\b",
+        "\\bquanto\\s+(eu\\s+)?(devo|estou\\s+devendo|falta\\s+pagar|ficou|fico|deu)\\b",
+        "\\bo\\s+que\\s+eu\\s+devo\\b",
+        "\\bmeu\\s+saldo\\b",
+        "\\bsaldo\\s+devedor\\b",
+        "\\bmeus?\\s+debitos?\\b",
+        "\\b(valores?|parcelas?|contas?|titulos?)\\s+em\\s+aberto\\b",
+        "\\bpendencias?\\b",
+        "\\bem\\s+aberto\\b",
+      ].join("|"),
+      "i",
+    );
+    if (!humanHandoff && text && !isGroup && senderNumber && fichaRegex.test(fichaText)) {
+
       console.log("[chk] ficha fast-path start");
       try {
         const digits = senderNumber.replace(/\D/g, "");
