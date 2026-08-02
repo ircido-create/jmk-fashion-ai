@@ -1,32 +1,28 @@
-## Diagnóstico (confirmado)
+## Diagnóstico (confirmado no banco e no código)
 
-Na conversa do número 5511969916627 ("agenda aberta cabelo bolo"), verifiquei no banco:
+- A cliente WILLIANE BARROS MONTEIRO DE SOUZA (5511954115772) tem **6 parcelas pendentes = R$ 1.012,00** (vencimentos 10/08, 10/09 e 10/10 de 2026). A conversa dela existe com esse mesmo telefone.
+- A mensagem foi "Depois me manda minha conta". O atalho determinístico de ficha no webhook usa a expressão `\b(ficha|extrato|minhas parcelas|quais parcelas|carnê)\b` — **"conta" / "minha conta" não bate**, então o atalho não disparou.
+- Sem o atalho, a resposta veio do modelo, que segue a Regra 3 do prompt: "Se NÃO houver parcela vencendo hoje, responda APENAS: 'No momento não encontramos nenhuma parcela com vencimento para hoje…'". Como nenhuma parcela vence hoje, o modelo devolveu exatamente essa frase — mesmo com as pendências no contexto.
 
-- A cliente pediu explicitamente: "Irmã Mônica me manda o pix pfv" (13:04) e "Qual seu pix?" (13:57).
-- Nenhuma mensagem de saída (`outbound`) foi registrada nessa conversa.
-- A conversa **não** está em atendimento humano (`ai_handoff = false`), o número **não** está silenciado, e a IA **não** está pausada globalmente.
-- Os logs da função do webhook mostram, exatamente nesses horários, `[MONICA] SILENCIO detectado — não respondendo (assunto não-financeiro)`.
-
-Causa: a regra atual "assistente exclusivamente financeira" faz o modelo devolver `[SILENCIO]` quando o histórico da conversa é sobre produto/venda — mesmo quando o pedido da vez é um pedido explícito de chave PIX, que é justamente um assunto financeiro. O pedido de PIX depende hoje 100% do julgamento do modelo, sem nenhuma rota garantida.
+Ou seja: nada de dado faltando; é a expressão do atalho estreita demais + a Regra 3 sendo aplicada até quando o cliente pede a conta.
 
 ## O que fazer
 
-### 1. Atalho determinístico de PIX no webhook
-Espelhar o atalho de "ficha" que já existe em `bubblewhats-webhook`, agora para pedidos de PIX em conversas individuais (não grupo, sem atendimento humano, contato não silenciado, IA não pausada):
+### 1. Ampliar o atalho de ficha no webhook
+Em `supabase/functions/bubblewhats-webhook/index.ts`, expandir a expressão para cobrir os pedidos reais de extrato, incluindo variações com/sem acento:
+- "minha conta", "minhas contas", "me manda a conta", "quanto eu devo", "quanto estou devendo", "meu saldo", "saldo devedor", "meu débito/débitos", "o que eu devo", "quanto falta pagar", "quanto ficou", "valores em aberto", "parcelas em aberto", "pendências".
+- Manter as guardas atuais: não dispara em grupo, em atendimento humano, com contato silenciado ou IA pausada.
+- Resposta continua a mesma já implementada: lista de parcelas em aberto com vencimento + total.
 
-- Detectar por expressão: "pix", "manda o pix", "qual seu pix", "chave pix", "me envia o pix", "qr code" e variações com/sem acento.
-- Buscar a chave configurada em `ai_settings` (`pix_key`, `pix_key_type`, `pix_recipient_name`).
-- Responder no formato curto já definido: chave PIX + recebedor + "Me manda o comprovante quando pagar", com saudação "Amém" quando a mensagem tiver saudação religiosa.
-- Se não houver chave configurada, responder que vai verificar com a equipe (sem inventar chave).
-- Registrar a resposta como mensagem `outbound` na conversa, como o atalho de ficha já faz.
+### 2. Corrigir a Regra 3 do prompt
+Em `supabase/functions/_shared/monica-core.ts`, deixar a Regra 3 válida **apenas para cobrança espontânea** (quando a Mônica inicia o contato). Quando o cliente pergunta sobre conta/saldo/parcelas, a resposta obrigatória passa a ser a lista de pendências do bloco "DÍVIDAS PENDENTES" com valores, vencimentos e total — e a frase "nenhuma parcela com vencimento para hoje" fica proibida nesse caso. Só responder que não há nada em aberto quando o bloco estiver realmente vazio.
 
-### 2. Blindar a regra de SILÊNCIO
-Em `_shared/monica-core.ts`, deixar explícito na regra final que pedido de chave PIX, comprovante e valores de parcela **são sempre assunto financeiro** e nunca podem gerar `[SILENCIO]`. Isso cobre os casos em que o pedido chega com texto misturado (áudio transcrito, mensagem longa) e não bate na expressão do atalho.
+### 3. Evitar resposta duplicada
+No print aparecem duas respostas seguidas (14:05). Vale confirmar nos logs se foram duas mensagens de entrada distintas; se for reentrega do mesmo evento, tratar com deduplicação pelo ID da mensagem do webhook.
 
-### 3. Validação
-- Reprocessar/testar o webhook com uma mensagem "me manda o pix pfv" para esse número de teste e confirmar nos logs que o atalho dispara e a resposta é enviada e gravada.
+### 4. Validação
+- Reenviar "depois me manda minha conta" pelo número de teste e conferir nos logs que o atalho dispara e a ficha com R$ 1.012,00 é enviada e gravada como mensagem de saída.
 - Conferir que conversas em atendimento humano, contatos silenciados e IA pausada continuam sem resposta automática.
 
 ## Detalhes técnicos
-- Arquivos: `supabase/functions/bubblewhats-webhook/index.ts` (novo fast-path, posicionado logo após o de ficha e antes da chamada ao modelo) e `supabase/functions/_shared/monica-core.ts` (ajuste do prompt final).
-- Sem mudanças de banco de dados nem de interface.
+Arquivos: `supabase/functions/bubblewhats-webhook/index.ts` (expressão do atalho + possível dedupe) e `supabase/functions/_shared/monica-core.ts` (Regra 3). Sem mudanças de banco nem de interface.
