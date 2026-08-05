@@ -502,80 +502,18 @@ Deno.serve(async (req) => {
 
 
     // ---- REAÇÃO A STATUS (curtida em foto que postamos) ----
-    // BubbleWhats entrega em messageContext.message.reactionMessage
+    // Resposta automática DESATIVADA: a Mônica não responde reações a status.
+    // A reação continua registrada na aba de Conversas para atendimento manual.
     try {
       const reactionMsg = payload.messageContext?.message?.reactionMessage;
-      if (reactionMsg && !isGroup && !humanHandoff) {
-        const reactedKey = reactionMsg.key ?? {};
-        const reactedRemote = String(reactedKey.remoteJid ?? "");
-        const reactedFromMe = Boolean(reactedKey.fromMe);
-        const reactedId = String(reactedKey.id ?? "");
-        const emoji = String(reactionMsg.text ?? "").trim();
-        const isStatusReaction = reactedRemote.includes("status@broadcast") || reactedFromMe;
-        const POSITIVE_EMOJIS = ["👍","❤️","♥️","❤","🧡","💛","💚","💙","💜","🤎","🖤","🤍","💖","💗","💓","💕","💞","💘","💝","😍","🥰","😘","🤩","😻","🔥","👏","🙌","✨","🌹","💐","😊","🙏"];
-        const isPositive = !emoji || POSITIVE_EMOJIS.some(e => emoji.includes(e)) || /like|love|heart/i.test(emoji);
-
-        if (isStatusReaction && isPositive && senderNumber) {
-          const targetKey = reactedId || `status-${Date.now()}`;
-          // Dedupe: já enviamos para esse cliente + esse item do status?
-          const { data: already } = await supabase
-            .from("status_reaction_sent")
-            .select("id")
-            .eq("phone", senderNumber)
-            .eq("target_key", targetKey)
-            .maybeSingle();
-          if (!already) {
-            const conv = await getOrCreateConversation(senderNumber, senderAlias || null);
-            const firstName = (senderAlias || "").split(" ")[0]?.trim();
-            const greet = firstName ? `Bacana, ${firstName}!` : "Bacana!";
-
-            // Verifica estoque dos itens atualmente no status (não expirados)
-            let outOfStock = false;
-            try {
-              const { data: activePosts } = await supabase
-                .from("status_posts")
-                .select("product_id, variant_id")
-                .gt("expires_at", new Date().toISOString());
-              if (activePosts && activePosts.length > 0) {
-                const variantIds = activePosts.map((p: any) => p.variant_id).filter(Boolean);
-                let totalStock = 0;
-                if (variantIds.length > 0) {
-                  const { data: vars } = await supabase
-                    .from("product_variants").select("quantity").in("id", variantIds);
-                  totalStock += (vars ?? []).reduce((s: number, v: any) => s + (v.quantity ?? 0), 0);
-                }
-                const productsWithoutVariant = activePosts
-                  .filter((p: any) => !p.variant_id && p.product_id)
-                  .map((p: any) => p.product_id);
-                if (productsWithoutVariant.length > 0) {
-                  const { data: vars2 } = await supabase
-                    .from("product_variants").select("quantity").in("product_id", productsWithoutVariant);
-                  totalStock += (vars2 ?? []).reduce((s: number, v: any) => s + (v.quantity ?? 0), 0);
-                }
-                outOfStock = totalStock <= 0;
-              }
-            } catch (e) { console.error("stock check err:", e); }
-
-            const msg = outOfStock
-              ? `${greet}\n\nQue pena, essa peça já esgotou 😥 Quer que eu te avise assim que voltar ou te mostre algo parecido?`
-              : `${greet}\n\nMe fala o tamanho e a cor que você gostaria pra eu separar aqui.`;
-            const send = await sendText(senderNumber, msg);
-            if (send.ok && conv) {
-              await supabase.from("whatsapp_messages").insert({
-                conversation_id: conv.id,
-                direction: "outbound",
-                content: msg,
-              });
-              await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
-            }
-            await supabase.from("status_reaction_sent").insert({ phone: senderNumber, target_key: targetKey });
-          }
-          return new Response(JSON.stringify({ ok: true, statusReaction: true }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
+      if (reactionMsg && !isGroup) {
+        console.log("[WEBHOOK] status reaction received — no auto reply");
+        return new Response(JSON.stringify({ ok: true, statusReaction: true, skippedAI: "reaction-no-reply" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     } catch (e) { console.error("reaction parse err:", e); }
+
 
 
 
