@@ -19,15 +19,31 @@ import CustomerReconciliation from "@/components/customers/Reconciliation";
 
 interface Customer { id: string; name: string; nickname: string | null; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
 
+const optional = (max: number, label: string) =>
+  z
+    .string()
+    .trim()
+    .max(max, { message: `${label} deve ter no máximo ${max} caracteres` })
+    .optional()
+    .transform((v) => v ?? "");
+
 const schema = z.object({
-  name: z.string().trim().min(2, "Nome muito curto").max(100),
-  nickname: z.string().trim().max(60).optional().or(z.literal("")),
-  tax_id: z.string().trim().max(20).optional().or(z.literal("")),
-  phone: z.string().trim().max(20).optional().or(z.literal("")),
-  email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
-  address: z.string().trim().max(300).optional().or(z.literal("")),
-  notes: z.string().trim().max(500).optional().or(z.literal("")),
+  name: z.string().trim().min(2, "Nome muito curto").max(100, "Nome deve ter no máximo 100 caracteres"),
+  nickname: optional(60, "Apelido"),
+  tax_id: optional(20, "CPF/CNPJ"),
+  phone: optional(20, "Telefone"),
+  email: z
+    .string()
+    .trim()
+    .max(255, "E-mail deve ter no máximo 255 caracteres")
+    .email("E-mail inválido")
+    .optional()
+    .or(z.literal(""))
+    .transform((v) => v ?? ""),
+  address: optional(600, "Endereço"),
+  notes: optional(1000, "Observações"),
 });
+
 
 export default function Customers() {
   const [list, setList] = useState<Customer[]>([]);
@@ -92,7 +108,11 @@ export default function Customers() {
     const parsed = schema.safeParse({
       name: f.get("name"), nickname: f.get("nickname"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
     });
-    if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      toast.error(issue.message || `Campo inválido: ${String(issue.path[0] ?? "")}`);
+      return;
+    }
     const taxIdDigits = digitsOnly(parsed.data.tax_id);
     if (!isValidTaxIdLength(taxIdDigits)) {
       toast.error("CPF deve ter 11 dígitos ou CNPJ 14 dígitos");
