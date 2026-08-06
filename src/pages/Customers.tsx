@@ -108,7 +108,11 @@ export default function Customers() {
     const parsed = schema.safeParse({
       name: f.get("name"), nickname: f.get("nickname"), tax_id: f.get("tax_id"), phone: f.get("phone"), email: f.get("email"), address: f.get("address"), notes: f.get("notes"),
     });
-    if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      toast.error(issue.message || `Campo inválido: ${String(issue.path[0] ?? "")}`);
+      return;
+    }
     const taxIdDigits = digitsOnly(parsed.data.tax_id);
     if (!isValidTaxIdLength(taxIdDigits)) {
       toast.error("CPF deve ter 11 dígitos ou CNPJ 14 dígitos");
