@@ -203,8 +203,9 @@ export default function Conversations() {
   const loadConversations = async () => {
     const { data } = await supabase
       .from("whatsapp_conversations")
-      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, ai_handoff, customers(name)")
-      .order("last_message_at", { ascending: false });
+      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, ai_handoff, last_message_preview, customers(name)")
+      .order("last_message_at", { ascending: false })
+      .limit(300);
 
     const list: Conversation[] = (data ?? []).map((c: any) => ({
       id: c.id,
@@ -215,18 +216,9 @@ export default function Conversations() {
       customer: c.customers,
       unread_count: c.unread_count ?? 0,
       ai_handoff: !!c.ai_handoff,
+      lastMessage: isMediaPlaceholder(c.last_message_preview) ? "" : (c.last_message_preview ?? undefined),
     }));
 
-    for (const c of list) {
-      const { data: m } = await supabase
-        .from("whatsapp_messages")
-        .select("content")
-        .eq("conversation_id", c.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      c.lastMessage = isMediaPlaceholder(m?.content) ? "" : m?.content;
-    }
     // Não lidas primeiro, depois por data de última mensagem
     list.sort((a, b) => {
       const au = (a.unread_count ?? 0) > 0 ? 1 : 0;
@@ -236,6 +228,7 @@ export default function Conversations() {
     });
     setConversations(list);
   };
+
 
   const fetchSignedUrls = async (msgs: Message[]) => {
     const paths = [
