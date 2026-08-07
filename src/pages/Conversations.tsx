@@ -1010,6 +1010,14 @@ export default function Conversations() {
                   backgroundSize: "20px 20px",
                 }}
               >
+                {hasMore && (
+                  <div className="flex justify-center pb-2">
+                    <Button variant="secondary" size="sm" className="rounded-full" onClick={loadOlder} disabled={loadingOlder}>
+                      {loadingOlder ? "Carregando..." : "Carregar mensagens antigas"}
+                    </Button>
+                  </div>
+                )}
+
                 {messages.length === 0 && (
                   <div className="text-center text-muted-foreground text-sm py-8">
                     Sem mensagens ainda
