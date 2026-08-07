@@ -168,6 +168,10 @@ export default function Conversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const reloadTimerRef = useRef<number | null>(null);
+
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState("");
