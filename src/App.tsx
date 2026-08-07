@@ -11,6 +11,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageSkeleton } from "@/components/layout/PageSkeleton";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Rotas críticas de autenticação — carregadas de imediato (bundle pequeno).
 import Auth from "./pages/Auth";
