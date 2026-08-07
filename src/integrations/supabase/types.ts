@@ -994,6 +994,7 @@ export type Database = {
           display_name: string | null
           id: string
           last_message_at: string
+          last_message_preview: string | null
           unread_count: number
         }
         Insert: {
@@ -1004,6 +1005,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           last_message_at?: string
+          last_message_preview?: string | null
           unread_count?: number
         }
         Update: {
@@ -1014,6 +1016,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           last_message_at?: string
+          last_message_preview?: string | null
           unread_count?: number
         }
         Relationships: [

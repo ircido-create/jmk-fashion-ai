@@ -168,6 +168,10 @@ export default function Conversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const reloadTimerRef = useRef<number | null>(null);
+
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState("");
@@ -203,8 +207,9 @@ export default function Conversations() {
   const loadConversations = async () => {
     const { data } = await supabase
       .from("whatsapp_conversations")
-      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, ai_handoff, customers(name)")
-      .order("last_message_at", { ascending: false });
+      .select("id, customer_phone, customer_id, last_message_at, display_name, unread_count, ai_handoff, last_message_preview, customers(name)")
+      .order("last_message_at", { ascending: false })
+      .limit(300);
 
     const list: Conversation[] = (data ?? []).map((c: any) => ({
       id: c.id,
@@ -215,18 +220,9 @@ export default function Conversations() {
       customer: c.customers,
       unread_count: c.unread_count ?? 0,
       ai_handoff: !!c.ai_handoff,
+      lastMessage: isMediaPlaceholder(c.last_message_preview) ? "" : (c.last_message_preview ?? undefined),
     }));
 
-    for (const c of list) {
-      const { data: m } = await supabase
-        .from("whatsapp_messages")
-        .select("content")
-        .eq("conversation_id", c.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      c.lastMessage = isMediaPlaceholder(m?.content) ? "" : m?.content;
-    }
     // Não lidas primeiro, depois por data de última mensagem
     list.sort((a, b) => {
       const au = (a.unread_count ?? 0) > 0 ? 1 : 0;
@@ -236,6 +232,7 @@ export default function Conversations() {
     });
     setConversations(list);
   };
+
 
   const fetchSignedUrls = async (msgs: Message[]) => {
     const paths = [
@@ -248,16 +245,42 @@ export default function Conversations() {
     setMediaUrls((prev) => ({ ...prev, ...urls }));
   };
 
+  const PAGE = 100;
+
   const loadMessages = async (convId: string) => {
     const { data } = await supabase
       .from("whatsapp_messages")
       .select("*")
       .eq("conversation_id", convId)
-      .order("created_at", { ascending: true });
-    const list = (data as any as Message[]) ?? [];
+      .order("created_at", { ascending: false })
+      .limit(PAGE);
+    const list = ((data as any as Message[]) ?? []).slice().reverse();
+    setHasMore((data?.length ?? 0) === PAGE);
     setMessages(list);
     fetchSignedUrls(list);
     setTimeout(() => scrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" }), 50);
+  };
+
+  const loadOlder = async () => {
+    if (!active || messages.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const { data } = await supabase
+        .from("whatsapp_messages")
+        .select("*")
+        .eq("conversation_id", active.id)
+        .lt("created_at", messages[0].created_at)
+        .order("created_at", { ascending: false })
+        .limit(PAGE);
+      const older = ((data as any as Message[]) ?? []).slice().reverse();
+      setHasMore((data?.length ?? 0) === PAGE);
+      if (older.length) {
+        setMessages((prev) => [...older, ...prev]);
+        fetchSignedUrls(older);
+      }
+    } finally {
+      setLoadingOlder(false);
+    }
   };
 
   useEffect(() => { loadConversations(); }, []);
@@ -272,8 +295,16 @@ export default function Conversations() {
     }
   };
 
-  // Realtime
+  // Realtime — atualização incremental (sem recarregar a lista inteira)
   useEffect(() => {
+    const scheduleReload = () => {
+      if (reloadTimerRef.current) return;
+      reloadTimerRef.current = window.setTimeout(() => {
+        reloadTimerRef.current = null;
+        loadConversations();
+      }, 3000);
+    };
+
     const ch = supabase
       .channel("conv-rt")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "whatsapp_messages" },
@@ -284,13 +315,40 @@ export default function Conversations() {
             if (msg.media_path) fetchSignedUrls([msg]);
             setTimeout(() => scrollRef.current?.scrollTo({ top: 999999, behavior: "smooth" }), 50);
           }
-          loadConversations();
+          // atualiza apenas a conversa afetada na lista
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c.id === msg.conversation_id);
+            if (idx === -1) { scheduleReload(); return prev; }
+            const updated = {
+              ...prev[idx],
+              lastMessage: isMediaPlaceholder(msg.content) ? "" : msg.content,
+              last_message_at: msg.created_at,
+            };
+            const rest = prev.filter((_, i) => i !== idx);
+            return [updated, ...rest];
+          });
         })
-      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_conversations" },
-        () => loadConversations())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "whatsapp_conversations" },
+        (payload) => {
+          const row = payload.new as any;
+          setConversations((prev) => prev.map((c) => c.id === row.id ? {
+            ...c,
+            unread_count: row.unread_count ?? c.unread_count,
+            ai_handoff: !!row.ai_handoff,
+            display_name: row.display_name ?? c.display_name,
+            customer_id: row.customer_id ?? c.customer_id,
+            last_message_at: row.last_message_at ?? c.last_message_at,
+          } : c));
+        })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "whatsapp_conversations" },
+        () => scheduleReload())
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      supabase.removeChannel(ch);
+      if (reloadTimerRef.current) { clearTimeout(reloadTimerRef.current); reloadTimerRef.current = null; }
+    };
   }, [active?.id]);
+
 
   const send = async () => {
     if (!draft.trim() || !active) return;
@@ -952,6 +1010,14 @@ export default function Conversations() {
                   backgroundSize: "20px 20px",
                 }}
               >
+                {hasMore && (
+                  <div className="flex justify-center pb-2">
+                    <Button variant="secondary" size="sm" className="rounded-full" onClick={loadOlder} disabled={loadingOlder}>
+                      {loadingOlder ? "Carregando..." : "Carregar mensagens antigas"}
+                    </Button>
+                  </div>
+                )}
+
                 {messages.length === 0 && (
                   <div className="text-center text-muted-foreground text-sm py-8">
                     Sem mensagens ainda
