@@ -13,7 +13,10 @@ dist-ssr
 *.local
 
 # Environment
-.env
+# ATENCAO: .env NAO pode ser ignorado aqui. Ele contem apenas variaveis VITE_
+# (publicas por definicao — o Vite as embute no bundle do cliente) e e o meio
+# pelo qual o build do Lovable recebe a URL e a chave publishable do Supabase.
+# Ignorar o .env quebra o deploy com "supabaseUrl is required".
 .env.local
 .env.*.local
 
