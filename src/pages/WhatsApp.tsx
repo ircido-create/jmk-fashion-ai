@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle, Settings } from "lucide-react";
+import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle, Settings, Activity, RefreshCw, Wifi, WifiOff } from "lucide-react";
 
 interface Config {
   id?: string;
@@ -52,22 +52,50 @@ export default function WhatsApp() {
   const [blocked, setBlocked] = useState<BlockedContact[]>([]);
   const [newBlockedPhone, setNewBlockedPhone] = useState("");
   const [newBlockedNote, setNewBlockedNote] = useState("");
+  const [diag, setDiag] = useState<any>(null);
+  const [checking, setChecking] = useState(false);
+  const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/bubblewhats-webhook`;
 
   const load = async () => {
     setLoading(true);
-    const [{ data: c }, { data: a }, { data: bl }] = await Promise.all([
+    const [{ data: c }, { data: a }, { data: bl }, { data: lm }] = await Promise.all([
       supabase.from("whatsapp_config").select("*").maybeSingle(),
       supabase.from("ai_settings").select("*").maybeSingle(),
       supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
+      supabase.from("whatsapp_messages").select("created_at").eq("direction", "inbound")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
     setBlocked((bl ?? []) as BlockedContact[]);
+    setLastInboundAt((lm as any)?.created_at ?? null);
     setLoading(false);
   };
+
+  const runDiagnostics = async () => {
+    setChecking(true);
+    const { data, error } = await supabase.functions.invoke("bubblewhats-status", { body: {} });
+    setChecking(false);
+    if (error || (data as any)?.error) {
+      toast({
+        title: "Falha ao verificar conexão",
+        description: error?.message ?? (data as any)?.error,
+        variant: "destructive",
+      });
+      return;
+    }
+    setDiag(data);
+    if ((data as any)?.lastInboundAt) setLastInboundAt((data as any).lastInboundAt);
+  };
+
+  const hoursSinceInbound = lastInboundAt
+    ? (Date.now() - new Date(lastInboundAt).getTime()) / 3600000
+    : null;
+  const inactive = hoursSinceInbound === null || hoursSinceInbound > 6;
+
 
   const toggleAIPaused = async (value: boolean) => {
     setAI({ ...ai, ai_paused: value });
@@ -193,6 +221,80 @@ export default function WhatsApp() {
   return (
     <div className="space-y-6">
       <PageHeader title="WhatsApp + IA" description="Atendimento automático via BubbleWhats" />
+
+      {inactive && (
+        <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
+          <WifiOff className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-destructive">Possível desconexão do WhatsApp</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {lastInboundAt
+                ? `Nenhuma mensagem recebida há ${Math.floor(hoursSinceInbound!)}h (última em ${new Date(lastInboundAt).toLocaleString("pt-BR")}).`
+                : "Nenhuma mensagem recebida até agora."}{" "}
+              Clique em <strong>Verificar conexão</strong> abaixo para diagnosticar.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <GlassCard>
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <Activity className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-display font-bold">Diagnóstico da conexão</h2>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={runDiagnostics} disabled={checking} variant="outline">
+              <RefreshCw className={`h-4 w-4 mr-2 ${checking ? "animate-spin" : ""}`} />
+              {checking ? "Verificando…" : "Verificar conexão"}
+            </Button>
+            <Button onClick={configureBubbleWhatsGroups} disabled={configuringGroups} variant="outline">
+              <Settings className="h-4 w-4 mr-2" />
+              {configuringGroups ? "Reconfigurando…" : "Reconfigurar webhook"}
+            </Button>
+          </div>
+        </div>
+
+        <ul className="space-y-2 text-sm">
+          <li className="flex items-center gap-2">
+            {lastInboundAt && !inactive ? <Wifi className="h-4 w-4 text-primary" /> : <AlertTriangle className="h-4 w-4 text-destructive" />}
+            <span>
+              Última mensagem recebida:{" "}
+              <strong>{lastInboundAt ? new Date(lastInboundAt).toLocaleString("pt-BR") : "nunca"}</strong>
+            </span>
+          </li>
+          {diag && (
+            <>
+              <li className="flex items-center gap-2">
+                {diag.connected ? <Wifi className="h-4 w-4 text-primary" /> : <WifiOff className="h-4 w-4 text-destructive" />}
+                <span>
+                  Aparelho:{" "}
+                  <strong>{diag.connected ? "conectado" : "desconectado — releia o QR Code no painel do BubbleWhats"}</strong>
+                  {diag.rawState ? ` (${diag.rawState})` : ""}
+                </span>
+              </li>
+              <li className="flex items-center gap-2">
+                {diag.webhookOk ? <Check className="h-4 w-4 text-primary" /> : <AlertTriangle className="h-4 w-4 text-destructive" />}
+                <span>
+                  Webhook registrado:{" "}
+                  <strong>{diag.webhookOk ? "correto" : (diag.registeredWebhook || "não configurado")}</strong>
+                  {!diag.webhookOk && " — use “Reconfigurar webhook”"}
+                </span>
+              </li>
+              <li className="flex items-center gap-2">
+                {diag.groupsEnabled ? <Check className="h-4 w-4 text-primary" /> : <AlertTriangle className="h-4 w-4 text-muted-foreground" />}
+                <span>Recebimento de grupos: <strong>{diag.groupsEnabled ? "ativo" : "inativo/desconhecido"}</strong></span>
+              </li>
+            </>
+          )}
+          {!diag && (
+            <li className="text-xs text-muted-foreground">
+              Clique em “Verificar conexão” para consultar o status do aparelho no BubbleWhats.
+            </li>
+          )}
+        </ul>
+      </GlassCard>
+
 
       {cfg.last_error_at && (
         <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
