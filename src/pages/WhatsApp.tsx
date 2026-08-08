@@ -52,6 +52,9 @@ export default function WhatsApp() {
   const [blocked, setBlocked] = useState<BlockedContact[]>([]);
   const [newBlockedPhone, setNewBlockedPhone] = useState("");
   const [newBlockedNote, setNewBlockedNote] = useState("");
+  const [diag, setDiag] = useState<any>(null);
+  const [checking, setChecking] = useState(false);
+  const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/bubblewhats-webhook`;
