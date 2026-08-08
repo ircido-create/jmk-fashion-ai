@@ -61,16 +61,41 @@ export default function WhatsApp() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: c }, { data: a }, { data: bl }] = await Promise.all([
+    const [{ data: c }, { data: a }, { data: bl }, { data: lm }] = await Promise.all([
       supabase.from("whatsapp_config").select("*").maybeSingle(),
       supabase.from("ai_settings").select("*").maybeSingle(),
       supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
+      supabase.from("whatsapp_messages").select("created_at").eq("direction", "inbound")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
     setBlocked((bl ?? []) as BlockedContact[]);
+    setLastInboundAt((lm as any)?.created_at ?? null);
     setLoading(false);
   };
+
+  const runDiagnostics = async () => {
+    setChecking(true);
+    const { data, error } = await supabase.functions.invoke("bubblewhats-status", { body: {} });
+    setChecking(false);
+    if (error || (data as any)?.error) {
+      toast({
+        title: "Falha ao verificar conexão",
+        description: error?.message ?? (data as any)?.error,
+        variant: "destructive",
+      });
+      return;
+    }
+    setDiag(data);
+    if ((data as any)?.lastInboundAt) setLastInboundAt((data as any).lastInboundAt);
+  };
+
+  const hoursSinceInbound = lastInboundAt
+    ? (Date.now() - new Date(lastInboundAt).getTime()) / 3600000
+    : null;
+  const inactive = hoursSinceInbound === null || hoursSinceInbound > 6;
+
 
   const toggleAIPaused = async (value: boolean) => {
     setAI({ ...ai, ai_paused: value });
