@@ -36,7 +36,27 @@ export default function Dashboard() {
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
   const [showValues, setShowValues] = useState(true);
   const [reporting, setReporting] = useState<DashboardReportKey | null>(null);
+  const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
+  const [inboundChecked, setInboundChecked] = useState(false);
 
+  useEffect(() => {
+    supabase
+      .from("whatsapp_messages")
+      .select("created_at")
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        setLastInboundAt((data as any)?.created_at ?? null);
+        setInboundChecked(true);
+      });
+  }, []);
+
+  const hoursSinceInbound = lastInboundAt
+    ? (Date.now() - new Date(lastInboundAt).getTime()) / 3600000
+    : null;
+  const whatsappInactive = inboundChecked && (hoursSinceInbound === null || hoursSinceInbound > 6);
 
   useEffect(() => { loadAll(); }, []);
 
