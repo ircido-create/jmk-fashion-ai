@@ -166,6 +166,23 @@ export default function Dashboard() {
         }
       />
 
+      {whatsappInactive && (
+        <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 mb-6 flex gap-3 items-start">
+          <WifiOff className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-destructive">WhatsApp possivelmente desconectado</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {lastInboundAt
+                ? `Nenhuma mensagem recebida há ${Math.floor(hoursSinceInbound!)}h.`
+                : "Nenhuma mensagem recebida até agora."}{" "}
+              Abra <strong>WhatsApp + IA</strong> e clique em “Verificar conexão”.
+            </p>
+          </div>
+        </div>
+      )}
+
+
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
         {cards.map((c, i) => (
           <div
