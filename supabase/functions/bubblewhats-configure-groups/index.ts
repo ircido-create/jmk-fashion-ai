@@ -46,22 +46,47 @@ Deno.serve(async (req) => {
     if (!DEVICE_ID || !BW_TOKEN) return json({ error: "BubbleWhats não configurado" }, 500);
 
     const webhookUrl = `${SUPABASE_URL}/functions/v1/bubblewhats-webhook`;
-    const res = await fetch(`https://${DEVICE_ID}.bubblewhats.com/config`, {
-      method: "POST",
-      headers: {
-        Authorization: BW_TOKEN,
-        Authentication: BW_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        receiveMessagesWebhook: webhookUrl,
-        receiveMessagesFromGroups: true,
-      }),
-    });
-    const raw = await res.text();
-    if (!res.ok) {
-      console.error("BubbleWhats config error:", res.status, raw.slice(0, 500));
-      return json({ error: "Falha ao configurar BubbleWhats", status: res.status, details: raw.slice(0, 300) }, 502);
+
+    let res: Response | null = null;
+    let raw = "";
+    let lastErr = "";
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        res = await fetch(`https://${DEVICE_ID}.bubblewhats.com/config`, {
+          method: "POST",
+          headers: {
+            Authorization: BW_TOKEN,
+            Authentication: BW_TOKEN,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            receiveMessagesWebhook: webhookUrl,
+            receiveMessagesFromGroups: true,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        raw = await res.text();
+        if (res.ok) break;
+        lastErr = `HTTP ${res.status}`;
+        console.error(`BubbleWhats config tentativa ${attempt}:`, res.status, raw.slice(0, 300));
+        // 502/503/504 = servidor do BubbleWhats instável: vale retentar
+        if (res.status < 500) break;
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : "erro de rede";
+        console.error(`BubbleWhats config tentativa ${attempt} falhou:`, lastErr);
+      }
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
+    }
+
+    if (!res || !res.ok) {
+      const status = res?.status ?? 0;
+      const msg =
+        status >= 500 || status === 0
+          ? "O servidor do BubbleWhats está fora do ar no momento (erro temporário do provedor). Aguarde alguns minutos e tente novamente."
+          : status === 401 || status === 403
+            ? "Credenciais do BubbleWhats inválidas ou expiradas."
+            : "Falha ao configurar o BubbleWhats.";
+      return json({ error: msg, status, details: (raw || lastErr).slice(0, 300) }, 502);
     }
 
     return json({ ok: true, receiveMessagesFromGroups: true, receiveMessagesWebhook: webhookUrl });
