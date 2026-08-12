@@ -25,6 +25,8 @@ interface Customer { id: string; name: string; phone: string | null; }
 interface SaleRow {
   id: string; sale_date: string; total: number; notes: string | null;
   customer_id: string | null;
+  receivable_id: string | null;
+
   payment_method: string | null;
   installments: number | null;
   customers: { name: string; phone: string | null } | null;
