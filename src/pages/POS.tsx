@@ -479,7 +479,11 @@ export default function POS() {
       const splitNote = splitMode
         ? "Misto: " + splits.map((s) => `${PAYMENT_LABELS[s.method]} ${fmtBRL(s.amount)}`).join(" + ")
         : "";
-      const finalNotes = [notes, splitNote].filter(Boolean).join(" | ") || null;
+      const discountNote =
+        discountAmount > 0
+          ? `Desconto: ${fmtBRL(discountAmount)}${discountType === "percent" ? ` (${discountValue}%)` : ""} sobre ${fmtBRL(subtotal)}`
+          : "";
+      const finalNotes = [notes, discountNote, splitNote].filter(Boolean).join(" | ") || null;
 
       // 2) Cria venda
       const { data: sale, error: saleErr } = await supabase
