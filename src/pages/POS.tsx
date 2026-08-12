@@ -559,6 +559,8 @@ export default function POS() {
         customer: cust,
         items: [...cart],
         subtotal: total,
+        grossSubtotal: subtotal,
+        discount: discountAmount,
         payment: effectiveMethod,
         installments: numInstallments,
         cashReceived: cashNum,
