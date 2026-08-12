@@ -101,6 +101,10 @@ export default function POS() {
   const [splitAmount, setSplitAmount] = useState<string>("");
   const [splitFiadoInstallments, setSplitFiadoInstallments] = useState<number>(1);
 
+  // Desconto
+  const [discountValue, setDiscountValue] = useState<string>("");
+  const [discountType, setDiscountType] = useState<"valor" | "percent">("valor");
+
   // Saving + receipt
   const [saving, setSaving] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -110,6 +114,8 @@ export default function POS() {
     customer: Customer | null;
     items: CartItem[];
     subtotal: number;
+    grossSubtotal?: number;
+    discount?: number;
     payment: PaymentMethod | "misto";
     installments: number;
     cashReceived: number;
@@ -136,7 +142,14 @@ export default function POS() {
   }, []);
 
   // ---------- Cart logic ----------
-  const total = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
+  const subtotal = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
+  const discountAmount = useMemo(() => {
+    const raw = Number(String(discountValue).replace(",", ".")) || 0;
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    const val = discountType === "percent" ? (subtotal * raw) / 100 : raw;
+    return Math.round(Math.min(Math.max(val, 0), subtotal) * 100) / 100;
+  }, [discountValue, discountType, subtotal]);
+  const total = Math.round((subtotal - discountAmount) * 100) / 100;
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -301,6 +314,8 @@ export default function POS() {
     setSplits([]);
     setSplitMethod("pix");
     setSplitAmount("");
+    setDiscountValue("");
+    setDiscountType("valor");
     const d = new Date();
     d.setDate(d.getDate() + 30);
     setFirstDueDate(d.toISOString().slice(0, 10));
@@ -464,7 +479,11 @@ export default function POS() {
       const splitNote = splitMode
         ? "Misto: " + splits.map((s) => `${PAYMENT_LABELS[s.method]} ${fmtBRL(s.amount)}`).join(" + ")
         : "";
-      const finalNotes = [notes, splitNote].filter(Boolean).join(" | ") || null;
+      const discountNote =
+        discountAmount > 0
+          ? `Desconto: ${fmtBRL(discountAmount)}${discountType === "percent" ? ` (${discountValue}%)` : ""} sobre ${fmtBRL(subtotal)}`
+          : "";
+      const finalNotes = [notes, discountNote, splitNote].filter(Boolean).join(" | ") || null;
 
       // 2) Cria venda
       const { data: sale, error: saleErr } = await supabase
@@ -540,6 +559,8 @@ export default function POS() {
         customer: cust,
         items: [...cart],
         subtotal: total,
+        grossSubtotal: subtotal,
+        discount: discountAmount,
         payment: effectiveMethod,
         installments: numInstallments,
         cashReceived: cashNum,
@@ -1136,6 +1157,49 @@ export default function POS() {
                 <span className="text-muted-foreground">Itens:</span>
                 <span>{cart.reduce((s, i) => s + i.quantity, 0)}</span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal:</span>
+                <span>{fmtBRL(subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">Desconto:</span>
+                <div className="flex items-center gap-1">
+                  <div className="flex rounded-md overflow-hidden border border-border">
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType("valor")}
+                      className={`px-2 py-0.5 text-xs ${discountType === "valor" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground"}`}
+                      aria-pressed={discountType === "valor"}
+                    >
+                      R$
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountType("percent")}
+                      className={`px-2 py-0.5 text-xs ${discountType === "percent" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground"}`}
+                      aria-pressed={discountType === "percent"}
+                    >
+                      %
+                    </button>
+                  </div>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    placeholder="0"
+                    className="h-7 w-24 px-2 text-right text-sm glass-input"
+                    aria-label="Desconto"
+                  />
+                </div>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-sm text-destructive">
+                  <span>Desconto aplicado:</span>
+                  <span>- {fmtBRL(discountAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-lg">
                 <span>Total:</span>
                 <span className="text-primary">{fmtBRL(total)}</span>
@@ -1324,6 +1388,18 @@ export default function POS() {
                 </tbody>
               </table>
               <div className="sep" />
+              {(receipt.discount ?? 0) > 0 && (
+                <>
+                  <div className="row">
+                    <span>Subtotal</span>
+                    <span>{fmtBRL(receipt.grossSubtotal ?? receipt.subtotal)}</span>
+                  </div>
+                  <div className="row">
+                    <span>Desconto</span>
+                    <span>- {fmtBRL(receipt.discount ?? 0)}</span>
+                  </div>
+                </>
+              )}
               <div className="row bold" style={{ fontSize: 13 }}>
                 <span>TOTAL</span>
                 <span>{fmtBRL(receipt.subtotal)}</span>
