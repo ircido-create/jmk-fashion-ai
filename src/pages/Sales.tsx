@@ -25,6 +25,8 @@ interface Customer { id: string; name: string; phone: string | null; }
 interface SaleRow {
   id: string; sale_date: string; total: number; notes: string | null;
   customer_id: string | null;
+  receivable_id: string | null;
+
   payment_method: string | null;
   installments: number | null;
   customers: { name: string; phone: string | null } | null;
@@ -107,6 +109,50 @@ export default function Sales() {
   const [payFiadoDueDate, setPayFiadoDueDate] = useState<string>(todayISO());
   const [savingPay, setSavingPay] = useState(false);
 
+  // Contas a receber já existentes desta venda
+  const [payExistingOpen, setPayExistingOpen] = useState<{ id: string; amount: number }[]>([]);
+  const [payExistingPaid, setPayExistingPaid] = useState<{ id: string; amount: number }[]>([]);
+  const [payLoadingExisting, setPayLoadingExisting] = useState(false);
+
+  const loadSaleReceivables = async (s: SaleRow) => {
+    setPayLoadingExisting(true);
+    setPayExistingOpen([]);
+    setPayExistingPaid([]);
+    try {
+      const short = s.id.slice(0, 8).toUpperCase();
+      const orFilter = [`description.ilike.%venda ${short}%`]
+        .concat(s.receivable_id ? [`id.eq.${s.receivable_id}`] : [])
+        .join(",");
+      const { data, error } = await supabase
+        .from("accounts_receivable")
+        .select("id, amount, status")
+        .or(orFilter);
+      if (error) throw error;
+      const rows = data ?? [];
+      const ids = rows.map((r) => r.id);
+      let paidIds = new Set<string>();
+      if (ids.length) {
+        const { data: pays } = await supabase
+          .from("receivable_payments")
+          .select("receivable_id")
+          .in("receivable_id", ids);
+        paidIds = new Set((pays ?? []).map((p) => p.receivable_id as string));
+      }
+      const open: { id: string; amount: number }[] = [];
+      const paid: { id: string; amount: number }[] = [];
+      for (const r of rows) {
+        const isPaid = r.status === "pago" || paidIds.has(r.id);
+        (isPaid ? paid : open).push({ id: r.id, amount: Number(r.amount) });
+      }
+      setPayExistingOpen(open);
+      setPayExistingPaid(paid);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao carregar contas da venda");
+    } finally {
+      setPayLoadingExisting(false);
+    }
+  };
+
   const openPayEdit = (s: SaleRow) => {
     setPayEdit(s);
     const isMisto = (s.payment_method ?? "") === "misto";
@@ -127,7 +173,9 @@ export default function Sales() {
         { method: "dinheiro", amount: Math.round(Number(s.total) * 100) / 200 },
       ]);
     }
+    loadSaleReceivables(s);
   };
+
 
   const splitsSum = useMemo(
     () => paySplits.reduce((a, b) => a + (Number(b.amount) || 0), 0),
@@ -163,56 +211,76 @@ export default function Sales() {
         newInstallments = (payMethod === "credito" || payMethod === "fiado") ? Math.max(1, payInstallments) : 1;
       }
 
+      // 1) Remove as contas a receber EM ABERTO desta venda (substitui, não soma)
+      const openIds = payExistingOpen.map((r) => r.id);
+      if (openIds.length) {
+        const { error: dErr } = await supabase
+          .from("accounts_receivable")
+          .delete()
+          .in("id", openIds);
+        if (dErr) throw dErr;
+      }
+
+      const paidSum = payExistingPaid.reduce((a, b) => a + b.amount, 0);
+
+      // 2) Calcula o valor que deve virar carteira (fiado)
+      const fiadoTarget = paySplitMode
+        ? paySplits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
+        : (payMethod === "fiado" ? total : 0);
+      const remaining = Math.round(Math.max(0, fiadoTarget - paidSum) * 100) / 100;
+
+      let newReceivableId: string | null = null;
+
+      if (remaining > 0 && payEdit.customer_id) {
+        const shortId = payEdit.id.slice(0, 8).toUpperCase();
+        const totalParts = paySplitMode ? 1 : Math.max(1, newInstallments);
+        const parcela = Math.round((remaining / totalParts) * 100) / 100;
+        const base = new Date(payFiadoDueDate + "T00:00:00");
+        const records = Array.from({ length: totalParts }).map((_, i) => {
+          const due = new Date(base); due.setMonth(base.getMonth() + i);
+          const valor = i === totalParts - 1
+            ? Math.round((remaining - parcela * (totalParts - 1)) * 100) / 100
+            : parcela;
+          return {
+            customer_id: payEdit.customer_id!,
+            amount: valor,
+            due_date: due.toISOString().slice(0, 10),
+            description: paySplitMode
+              ? `Pagamento misto — parte na carteira — venda ${shortId}`
+              : (totalParts === 1
+                ? `Fiado — venda ${shortId}`
+                : `Fiado (${i + 1}/${totalParts}) — venda ${shortId}`),
+            status: "pendente" as const,
+          };
+        });
+        const { data: inserted, error: rErr } = await supabase
+          .from("accounts_receivable")
+          .insert(records)
+          .select("id");
+        if (rErr) throw rErr;
+        newReceivableId = inserted?.[0]?.id ?? null;
+      }
+
+      // 3) Atualiza a venda (inclui vínculo com a cobrança gerada)
       const { error } = await supabase
         .from("sales")
         .update({
           payment_method: newMethod,
           installments: newInstallments,
           notes: newNotes || null,
+          receivable_id: newReceivableId,
         })
         .eq("id", payEdit.id);
       if (error) throw error;
 
-      // Cria contas a receber se aplicável
-      const fiadoInSplit = paySplitMode
-        ? paySplits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
-        : 0;
-
-      if (paySplitMode && fiadoInSplit > 0 && payEdit.customer_id) {
-        const { error: rErr } = await supabase.from("accounts_receivable").insert({
-          customer_id: payEdit.customer_id,
-          amount: Math.round(fiadoInSplit * 100) / 100,
-          due_date: payFiadoDueDate,
-          description: `Pagamento misto — parte na carteira — venda ${payEdit.id.slice(0, 8).toUpperCase()}`,
-          status: "pendente",
-        });
-        if (rErr) throw rErr;
-      } else if (!paySplitMode && payMethod === "fiado" && payEdit.customer_id) {
-        const totalParts = newInstallments;
-        const parcela = Math.round((total / totalParts) * 100) / 100;
-        const base = new Date(payFiadoDueDate + "T00:00:00");
-        const records = Array.from({ length: totalParts }).map((_, i) => {
-          const due = new Date(base); due.setMonth(base.getMonth() + i);
-          const valor = i === totalParts - 1
-            ? Math.round((total - parcela * (totalParts - 1)) * 100) / 100
-            : parcela;
-          return {
-            customer_id: payEdit.customer_id!,
-            amount: valor,
-            due_date: due.toISOString().slice(0, 10),
-            description: totalParts === 1
-              ? `Fiado — venda ${payEdit.id.slice(0, 8).toUpperCase()}`
-              : `Fiado (${i + 1}/${totalParts}) — venda ${payEdit.id.slice(0, 8).toUpperCase()}`,
-            status: "pendente" as const,
-          };
-        });
-        const { error: rErr } = await supabase.from("accounts_receivable").insert(records);
-        if (rErr) throw rErr;
-      }
-
-      toast.success("Forma de pagamento atualizada");
+      toast.success(
+        openIds.length
+          ? `Forma de pagamento atualizada — ${openIds.length} cobrança(s) em aberto substituída(s)`
+          : "Forma de pagamento atualizada",
+      );
       setPayEdit(null);
       load();
+
     } catch (e: any) {
       toast.error(e?.message ?? "Erro ao atualizar");
     } finally {
@@ -696,9 +764,26 @@ export default function Sales() {
                 </div>
               )}
 
-              <p className="text-xs text-muted-foreground">
-                Nota: se houver Fiado, novas contas a receber serão criadas. Contas antigas dessa venda continuam existindo — ajuste-as em <b>Contas a Receber</b>.
-              </p>
+              <div className="rounded-xl bg-white/40 dark:bg-white/5 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                {payLoadingExisting ? (
+                  <span>Verificando cobranças desta venda...</span>
+                ) : (
+                  <>
+                    <p>
+                      Esta é uma <b>alteração</b> da mesma venda: as cobranças em aberto desta venda
+                      {payExistingOpen.length > 0
+                        ? ` (${payExistingOpen.length} — ${fmtBRL(payExistingOpen.reduce((a, b) => a + b.amount, 0))})`
+                        : ""} serão <b>substituídas</b>, não somadas.
+                    </p>
+                    {payExistingPaid.length > 0 && (
+                      <p className="text-emerald-600 dark:text-emerald-400">
+                        {payExistingPaid.length} parcela(s) já paga(s) ({fmtBRL(payExistingPaid.reduce((a, b) => a + b.amount, 0))}) serão mantidas e descontadas do novo saldo.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
             </div>
           )}
           <DialogFooter>
