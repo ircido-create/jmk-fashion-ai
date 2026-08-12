@@ -107,6 +107,50 @@ export default function Sales() {
   const [payFiadoDueDate, setPayFiadoDueDate] = useState<string>(todayISO());
   const [savingPay, setSavingPay] = useState(false);
 
+  // Contas a receber já existentes desta venda
+  const [payExistingOpen, setPayExistingOpen] = useState<{ id: string; amount: number }[]>([]);
+  const [payExistingPaid, setPayExistingPaid] = useState<{ id: string; amount: number }[]>([]);
+  const [payLoadingExisting, setPayLoadingExisting] = useState(false);
+
+  const loadSaleReceivables = async (s: SaleRow) => {
+    setPayLoadingExisting(true);
+    setPayExistingOpen([]);
+    setPayExistingPaid([]);
+    try {
+      const short = s.id.slice(0, 8).toUpperCase();
+      const orFilter = [`description.ilike.%venda ${short}%`]
+        .concat(s.receivable_id ? [`id.eq.${s.receivable_id}`] : [])
+        .join(",");
+      const { data, error } = await supabase
+        .from("accounts_receivable")
+        .select("id, amount, status")
+        .or(orFilter);
+      if (error) throw error;
+      const rows = data ?? [];
+      const ids = rows.map((r) => r.id);
+      let paidIds = new Set<string>();
+      if (ids.length) {
+        const { data: pays } = await supabase
+          .from("receivable_payments")
+          .select("receivable_id")
+          .in("receivable_id", ids);
+        paidIds = new Set((pays ?? []).map((p) => p.receivable_id as string));
+      }
+      const open: { id: string; amount: number }[] = [];
+      const paid: { id: string; amount: number }[] = [];
+      for (const r of rows) {
+        const isPaid = r.status === "pago" || paidIds.has(r.id);
+        (isPaid ? paid : open).push({ id: r.id, amount: Number(r.amount) });
+      }
+      setPayExistingOpen(open);
+      setPayExistingPaid(paid);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao carregar contas da venda");
+    } finally {
+      setPayLoadingExisting(false);
+    }
+  };
+
   const openPayEdit = (s: SaleRow) => {
     setPayEdit(s);
     const isMisto = (s.payment_method ?? "") === "misto";
@@ -127,7 +171,9 @@ export default function Sales() {
         { method: "dinheiro", amount: Math.round(Number(s.total) * 100) / 200 },
       ]);
     }
+    loadSaleReceivables(s);
   };
+
 
   const splitsSum = useMemo(
     () => paySplits.reduce((a, b) => a + (Number(b.amount) || 0), 0),
