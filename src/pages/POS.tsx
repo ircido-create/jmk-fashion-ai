@@ -363,14 +363,20 @@ export default function POS() {
     const effectiveMethod: PaymentMethod | "misto" = splitMode ? "misto" : paymentMethod;
     const isCredit = !splitMode && paymentMethod === "credito";
     const isFiado = !splitMode && paymentMethod === "fiado";
-    const numInstallments =
-      isCredit || isFiado ? Math.max(1, installments) : 1;
     const willCreateReceivables = isFiado || (isCredit && generateReceivables);
 
-    // Portion na carteira (fiado) no modo misto — gera 1 conta a receber no vencimento escolhido
+    // Portion na carteira (fiado) no modo misto — pode ser parcelada
     const splitFiadoAmount = splitMode
       ? splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
       : 0;
+
+    const numInstallments =
+      isCredit || isFiado
+        ? Math.max(1, installments)
+        : splitFiadoAmount > 0
+          ? Math.max(1, splitFiadoInstallments)
+          : 1;
+
 
     setSaving(true);
     try {
