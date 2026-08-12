@@ -99,6 +99,7 @@ export default function POS() {
   const [splits, setSplits] = useState<SplitEntry[]>([]);
   const [splitMethod, setSplitMethod] = useState<PaymentMethod>("pix");
   const [splitAmount, setSplitAmount] = useState<string>("");
+  const [splitFiadoInstallments, setSplitFiadoInstallments] = useState<number>(1);
 
   // Saving + receipt
   const [saving, setSaving] = useState(false);
