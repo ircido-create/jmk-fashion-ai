@@ -764,9 +764,26 @@ export default function Sales() {
                 </div>
               )}
 
-              <p className="text-xs text-muted-foreground">
-                Nota: se houver Fiado, novas contas a receber serão criadas. Contas antigas dessa venda continuam existindo — ajuste-as em <b>Contas a Receber</b>.
-              </p>
+              <div className="rounded-xl bg-white/40 dark:bg-white/5 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                {payLoadingExisting ? (
+                  <span>Verificando cobranças desta venda...</span>
+                ) : (
+                  <>
+                    <p>
+                      Esta é uma <b>alteração</b> da mesma venda: as cobranças em aberto desta venda
+                      {payExistingOpen.length > 0
+                        ? ` (${payExistingOpen.length} — ${fmtBRL(payExistingOpen.reduce((a, b) => a + b.amount, 0))})`
+                        : ""} serão <b>substituídas</b>, não somadas.
+                    </p>
+                    {payExistingPaid.length > 0 && (
+                      <p className="text-emerald-600 dark:text-emerald-400">
+                        {payExistingPaid.length} parcela(s) já paga(s) ({fmtBRL(payExistingPaid.reduce((a, b) => a + b.amount, 0))}) serão mantidas e descontadas do novo saldo.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
             </div>
           )}
           <DialogFooter>
