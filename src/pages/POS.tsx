@@ -840,17 +840,45 @@ export default function POS() {
                     </span>
                   </div>
 
-                  {splits.some((s) => s.method === "fiado") && (
-                    <div>
-                      <Label>Vencimento da parte na carteira</Label>
-                      <Input
-                        type="date"
-                        value={firstDueDate}
-                        onChange={(e) => setFirstDueDate(e.target.value)}
-                        className="glass-input mt-1"
-                      />
-                    </div>
-                  )}
+                  {splits.some((s) => s.method === "fiado") && (() => {
+                    const fiadoAmount = splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0);
+                    const parts = Math.max(1, splitFiadoInstallments);
+                    return (
+                      <div className="space-y-3 rounded-xl bg-white/40 dark:bg-white/5 p-3">
+                        <div>
+                          <Label>Parcelas da parte na carteira</Label>
+                          <Select
+                            value={String(splitFiadoInstallments)}
+                            onValueChange={(v) => setSplitFiadoInstallments(Number(v))}
+                          >
+                            <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                                <SelectItem key={n} value={String(n)}>
+                                  {n}x de {fmtBRL(fiadoAmount / n)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Vencimento da 1ª parcela</Label>
+                          <Input
+                            type="date"
+                            value={firstDueDate}
+                            onChange={(e) => setFirstDueDate(e.target.value)}
+                            className="glass-input mt-1"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {parts === 1
+                            ? `1 conta a receber de ${fmtBRL(fiadoAmount)} em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}.`
+                            : `${parts}x de ${fmtBRL(fiadoAmount / parts)} — 1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}, demais mensais.`}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                 </div>
               )}
 
