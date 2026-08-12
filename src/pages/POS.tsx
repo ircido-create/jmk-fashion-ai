@@ -1388,6 +1388,18 @@ export default function POS() {
                 </tbody>
               </table>
               <div className="sep" />
+              {(receipt.discount ?? 0) > 0 && (
+                <>
+                  <div className="row">
+                    <span>Subtotal</span>
+                    <span>{fmtBRL(receipt.grossSubtotal ?? receipt.subtotal)}</span>
+                  </div>
+                  <div className="row">
+                    <span>Desconto</span>
+                    <span>- {fmtBRL(receipt.discount ?? 0)}</span>
+                  </div>
+                </>
+              )}
               <div className="row bold" style={{ fontSize: 13 }}>
                 <span>TOTAL</span>
                 <span>{fmtBRL(receipt.subtotal)}</span>
