@@ -101,6 +101,10 @@ export default function POS() {
   const [splitAmount, setSplitAmount] = useState<string>("");
   const [splitFiadoInstallments, setSplitFiadoInstallments] = useState<number>(1);
 
+  // Desconto
+  const [discountValue, setDiscountValue] = useState<string>("");
+  const [discountType, setDiscountType] = useState<"valor" | "percent">("valor");
+
   // Saving + receipt
   const [saving, setSaving] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
