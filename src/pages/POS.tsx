@@ -762,7 +762,7 @@ export default function POS() {
                   <input
                     type="checkbox"
                     checked={splitMode}
-                    onChange={(e) => { setSplitMode(e.target.checked); setSplits([]); setSplitAmount(""); }}
+                    onChange={(e) => { setSplitMode(e.target.checked); setSplits([]); setSplitAmount(""); setSplitFiadoInstallments(1); }}
                     className="h-4 w-4"
                   />
                   Pagamento misto (várias formas)
