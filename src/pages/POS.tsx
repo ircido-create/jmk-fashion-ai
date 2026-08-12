@@ -138,7 +138,14 @@ export default function POS() {
   }, []);
 
   // ---------- Cart logic ----------
-  const total = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
+  const subtotal = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
+  const discountAmount = useMemo(() => {
+    const raw = Number(String(discountValue).replace(",", ".")) || 0;
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    const val = discountType === "percent" ? (subtotal * raw) / 100 : raw;
+    return Math.round(Math.min(Math.max(val, 0), subtotal) * 100) / 100;
+  }, [discountValue, discountType, subtotal]);
+  const total = Math.round((subtotal - discountAmount) * 100) / 100;
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
