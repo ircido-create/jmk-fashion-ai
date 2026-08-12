@@ -110,6 +110,8 @@ export default function POS() {
     customer: Customer | null;
     items: CartItem[];
     subtotal: number;
+    grossSubtotal?: number;
+    discount?: number;
     payment: PaymentMethod | "misto";
     installments: number;
     cashReceived: number;
