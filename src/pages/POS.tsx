@@ -99,6 +99,7 @@ export default function POS() {
   const [splits, setSplits] = useState<SplitEntry[]>([]);
   const [splitMethod, setSplitMethod] = useState<PaymentMethod>("pix");
   const [splitAmount, setSplitAmount] = useState<string>("");
+  const [splitFiadoInstallments, setSplitFiadoInstallments] = useState<number>(1);
 
   // Saving + receipt
   const [saving, setSaving] = useState(false);
@@ -362,14 +363,20 @@ export default function POS() {
     const effectiveMethod: PaymentMethod | "misto" = splitMode ? "misto" : paymentMethod;
     const isCredit = !splitMode && paymentMethod === "credito";
     const isFiado = !splitMode && paymentMethod === "fiado";
-    const numInstallments =
-      isCredit || isFiado ? Math.max(1, installments) : 1;
     const willCreateReceivables = isFiado || (isCredit && generateReceivables);
 
-    // Portion na carteira (fiado) no modo misto — gera 1 conta a receber no vencimento escolhido
+    // Portion na carteira (fiado) no modo misto — pode ser parcelada
     const splitFiadoAmount = splitMode
       ? splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0)
       : 0;
+
+    const numInstallments =
+      isCredit || isFiado
+        ? Math.max(1, installments)
+        : splitFiadoAmount > 0
+          ? Math.max(1, splitFiadoInstallments)
+          : 1;
+
 
     setSaving(true);
     try {
@@ -424,19 +431,35 @@ export default function POS() {
         firstReceivableId = recs?.[0]?.id ?? null;
       } else if (splitFiadoAmount > 0) {
         const baseDate = new Date(firstDueDate + "T00:00:00");
+        const totalParts = Math.max(1, splitFiadoInstallments);
+        const amountCents = Math.round(splitFiadoAmount * 100);
+        const parcelaValor = Math.round(amountCents / totalParts) / 100;
+        const records: any[] = [];
+        for (let i = 0; i < totalParts; i++) {
+          const due = i === 0 ? baseDate : addMonths(baseDate, i);
+          const valor =
+            i === totalParts - 1
+              ? Math.round((amountCents - Math.round(parcelaValor * 100) * (totalParts - 1))) / 100
+              : parcelaValor;
+          records.push({
+            customer_id: customerId,
+            amount: valor,
+            due_date: due.toISOString().slice(0, 10),
+            description:
+              totalParts === 1
+                ? `Pagamento misto — parte na carteira — ${cart.length} item(ns)`
+                : `Pagamento misto — carteira (${i + 1}/${totalParts}) — ${cart.length} item(ns)`,
+            status: "pendente",
+          });
+        }
         const { data: recs, error: recErr } = await supabase
           .from("accounts_receivable")
-          .insert([{
-            customer_id: customerId,
-            amount: Math.round(splitFiadoAmount * 100) / 100,
-            due_date: baseDate.toISOString().slice(0, 10),
-            description: `Pagamento misto — parte na carteira — ${cart.length} item(ns)`,
-            status: "pendente",
-          }])
+          .insert(records)
           .select();
         if (recErr) throw recErr;
         firstReceivableId = recs?.[0]?.id ?? null;
       }
+
 
       const splitNote = splitMode
         ? "Misto: " + splits.map((s) => `${PAYMENT_LABELS[s.method]} ${fmtBRL(s.amount)}`).join(" + ")
@@ -739,7 +762,7 @@ export default function POS() {
                   <input
                     type="checkbox"
                     checked={splitMode}
-                    onChange={(e) => { setSplitMode(e.target.checked); setSplits([]); setSplitAmount(""); }}
+                    onChange={(e) => { setSplitMode(e.target.checked); setSplits([]); setSplitAmount(""); setSplitFiadoInstallments(1); }}
                     className="h-4 w-4"
                   />
                   Pagamento misto (várias formas)
@@ -817,17 +840,45 @@ export default function POS() {
                     </span>
                   </div>
 
-                  {splits.some((s) => s.method === "fiado") && (
-                    <div>
-                      <Label>Vencimento da parte na carteira</Label>
-                      <Input
-                        type="date"
-                        value={firstDueDate}
-                        onChange={(e) => setFirstDueDate(e.target.value)}
-                        className="glass-input mt-1"
-                      />
-                    </div>
-                  )}
+                  {splits.some((s) => s.method === "fiado") && (() => {
+                    const fiadoAmount = splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0);
+                    const parts = Math.max(1, splitFiadoInstallments);
+                    return (
+                      <div className="space-y-3 rounded-xl bg-white/40 dark:bg-white/5 p-3">
+                        <div>
+                          <Label>Parcelas da parte na carteira</Label>
+                          <Select
+                            value={String(splitFiadoInstallments)}
+                            onValueChange={(v) => setSplitFiadoInstallments(Number(v))}
+                          >
+                            <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                                <SelectItem key={n} value={String(n)}>
+                                  {n}x de {fmtBRL(fiadoAmount / n)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Vencimento da 1ª parcela</Label>
+                          <Input
+                            type="date"
+                            value={firstDueDate}
+                            onChange={(e) => setFirstDueDate(e.target.value)}
+                            className="glass-input mt-1"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {parts === 1
+                            ? `1 conta a receber de ${fmtBRL(fiadoAmount)} em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}.`
+                            : `${parts}x de ${fmtBRL(fiadoAmount / parts)} — 1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}, demais mensais.`}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                 </div>
               )}
 
