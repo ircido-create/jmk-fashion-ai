@@ -92,7 +92,7 @@ export default function Sales() {
 
   // Form state
   const [customerId, setCustomerId] = useState<string>("");
-  const { debt: customerDebt, credit: customerCredit, loading: debtLoading } = useCustomerDebt(customerId || null);
+  const { debt: customerDebt, loading: debtLoading } = useCustomerDebt(customerId || null);
   const [dueDate, setDueDate] = useState<string>(todayISO());
   const [notes, setNotes] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -480,15 +480,7 @@ export default function Sales() {
                   )}
                 </div>
 
-                {customerId && !debtLoading && customerCredit > 0 && (
-                  <div
-                    aria-live="polite"
-                    className="flex items-center justify-between rounded-xl bg-emerald-500/10 px-3 py-2"
-                  >
-                    <span className="text-xs text-muted-foreground">Crédito disponível</span>
-                    <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{fmtBRL(customerCredit)}</span>
-                  </div>
-                )}
+
 
 
                 <div className="border-t border-white/30 pt-4">

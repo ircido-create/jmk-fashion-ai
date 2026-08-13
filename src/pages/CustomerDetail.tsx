@@ -253,30 +253,7 @@ export default function CustomerDetail() {
         )}
       </GlassCard>
 
-      {totalCredit > 0 && (
-        <GlassCard>
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="font-semibold flex items-center gap-2 text-success">
-              <Wallet className="h-4 w-4" />
-              Crédito disponível
-            </h3>
-            <span className="text-2xl font-bold text-success">{fmtBRL(totalCredit)}</span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Valor pago acima do total das parcelas. Fica a favor do cliente em compras futuras.
-          </p>
-          <div className="mt-3 space-y-1">
-            {creditItems.map(({ r, excess, paid }) => (
-              <div key={r.id} className="flex justify-between text-xs text-muted-foreground">
-                <span className="truncate">
-                  {r.description || "Parcela"} — venc. {fmtDate(r.due_date)} ({fmtBRL(Number(r.amount))} • pago {fmtBRL(paid)})
-                </span>
-                <span className="text-success font-medium ml-2">+{fmtBRL(excess)}</span>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-      )}
+
 
       {/* Dados de contato */}
       <GlassCard>
