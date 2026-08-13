@@ -89,6 +89,8 @@ export default function Customers() {
   };
 
 
+  const [credits, setCredits] = useState<Record<string, number>>({});
+
   const load = async () => {
     try {
       const all = await fetchAll<Customer>((sb) =>
