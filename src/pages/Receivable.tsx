@@ -963,6 +963,11 @@ export default function Receivable() {
                     {r.customers?.name ?? "— sem cliente —"}
                   </span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>{r.status}</span>
+                  {r.customer_id && (credits[r.customer_id] ?? 0) > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
+                      Crédito {fmtBRL(credits[r.customer_id])}
+                    </span>
+                  )}
                   {r.proofs && r.proofs.length > 0 && (
                     <button
                       type="button"
