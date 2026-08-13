@@ -100,7 +100,31 @@ export default function Customers() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  const loadCredits = async () => {
+    try {
+      const rows = await fetchAll<any>((sb) =>
+        sb
+          .from("accounts_receivable")
+          .select("customer_id, amount, status, receivable_payments(amount_paid)")
+          .neq("status", "cancelado")
+      );
+      const map: Record<string, number> = {};
+      for (const r of rows) {
+        if (!r.customer_id) continue;
+        const paid = (r.receivable_payments ?? []).reduce(
+          (s: number, p: any) => s + Number(p.amount_paid || 0),
+          0
+        );
+        const excess = Math.max(0, paid - Number(r.amount || 0));
+        if (excess > 0.009) map[r.customer_id] = (map[r.customer_id] ?? 0) + excess;
+      }
+      setCredits(map);
+    } catch {
+      /* indicador opcional */
+    }
+  };
+
+  useEffect(() => { load(); loadCredits(); }, []);
 
   const save = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
