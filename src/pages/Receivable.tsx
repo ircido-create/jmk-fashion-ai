@@ -79,6 +79,8 @@ export default function Receivable() {
   const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string; skip?: boolean; dupReason?: string }[]>([]);
   const [importSaving, setImportSaving] = useState(false);
 
+  const [credits, setCredits] = useState<Record<string, number>>({});
+
   const load = async () => {
     try {
       const data = await fetchAll<any>((sb) =>
