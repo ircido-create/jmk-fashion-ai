@@ -79,6 +79,8 @@ export default function Receivable() {
   const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string; skip?: boolean; dupReason?: string }[]>([]);
   const [importSaving, setImportSaving] = useState(false);
 
+  const [credits, setCredits] = useState<Record<string, number>>({});
+
   const load = async () => {
     try {
       const data = await fetchAll<any>((sb) =>
@@ -97,9 +99,10 @@ export default function Receivable() {
       if (ids.length > 0) {
         const { data: rp } = await supabase
           .from("receivable_payments")
-          .select("receivable_id, proof_id, payment_proofs(original_filename, storage_path)")
+          .select("receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path)")
           .in("receivable_id", ids);
         const map = new Map<string, Receivable["proofs"]>();
+        const paidByReceivable = new Map<string, number>();
         (rp ?? []).forEach((row: any) => {
           const arr = map.get(row.receivable_id) ?? [];
           arr!.push({
@@ -108,8 +111,20 @@ export default function Receivable() {
             storage_path: row.payment_proofs?.storage_path ?? "",
           });
           map.set(row.receivable_id, arr);
+          paidByReceivable.set(
+            row.receivable_id,
+            (paidByReceivable.get(row.receivable_id) ?? 0) + Number(row.amount_paid || 0)
+          );
         });
         items.forEach((i) => { i.proofs = map.get(i.id) ?? []; });
+
+        const credMap: Record<string, number> = {};
+        for (const i of items) {
+          if (!i.customer_id || i.status === "cancelado") continue;
+          const excess = (paidByReceivable.get(i.id) ?? 0) - Number(i.amount || 0);
+          if (excess > 0.009) credMap[i.customer_id] = (credMap[i.customer_id] ?? 0) + excess;
+        }
+        setCredits(credMap);
       }
       setList(items);
 
@@ -948,6 +963,11 @@ export default function Receivable() {
                     {r.customers?.name ?? "— sem cliente —"}
                   </span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>{r.status}</span>
+                  {r.customer_id && (credits[r.customer_id] ?? 0) > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
+                      Crédito {Number(credits[r.customer_id]).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                  )}
                   {r.proofs && r.proofs.length > 0 && (
                     <button
                       type="button"

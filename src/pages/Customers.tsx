@@ -89,6 +89,8 @@ export default function Customers() {
   };
 
 
+  const [credits, setCredits] = useState<Record<string, number>>({});
+
   const load = async () => {
     try {
       const all = await fetchAll<Customer>((sb) =>
@@ -100,7 +102,31 @@ export default function Customers() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  const loadCredits = async () => {
+    try {
+      const rows = await fetchAll<any>((sb) =>
+        sb
+          .from("accounts_receivable")
+          .select("customer_id, amount, status, receivable_payments(amount_paid)")
+          .neq("status", "cancelado")
+      );
+      const map: Record<string, number> = {};
+      for (const r of rows) {
+        if (!r.customer_id) continue;
+        const paid = (r.receivable_payments ?? []).reduce(
+          (s: number, p: any) => s + Number(p.amount_paid || 0),
+          0
+        );
+        const excess = Math.max(0, paid - Number(r.amount || 0));
+        if (excess > 0.009) map[r.customer_id] = (map[r.customer_id] ?? 0) + excess;
+      }
+      setCredits(map);
+    } catch {
+      /* indicador opcional */
+    }
+  };
+
+  useEffect(() => { load(); loadCredits(); }, []);
 
   const save = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -288,6 +314,11 @@ export default function Customers() {
                         <span className="text-xs text-muted-foreground font-normal">({c.nickname})</span>
                       )}
                       <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      {(credits[c.id] ?? 0) > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-success/15 text-success font-medium">
+                          Crédito {Number(credits[c.id]).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground truncate">
                       {c.tax_id ? formatTaxId(c.tax_id) : "—"} {c.phone ? `• ${c.phone}` : ""} {c.email ? `• ${c.email}` : ""}

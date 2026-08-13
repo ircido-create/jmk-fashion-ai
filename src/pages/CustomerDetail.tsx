@@ -29,6 +29,7 @@ interface Sale {
 interface Receivable {
   id: string; amount: number; due_date: string;
   status: string; paid_at: string | null; description: string | null;
+  receivable_payments?: { amount_paid: number }[];
 }
 
 const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -53,7 +54,7 @@ export default function CustomerDetail() {
     const [c, s, r] = await Promise.all([
       supabase.from("customers").select("*").eq("id", id).maybeSingle(),
       supabase.from("sales").select("*, sale_items(*)").eq("customer_id", id).order("sale_date", { ascending: false }),
-      supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at, description").eq("customer_id", id).order("due_date", { ascending: true }),
+      supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at, description, receivable_payments(amount_paid)").eq("customer_id", id).order("due_date", { ascending: true }),
     ]);
     if (c.error) toast.error(c.error.message);
     setCustomer(c.data as Customer | null);
@@ -81,6 +82,24 @@ export default function CustomerDetail() {
     () => pendingReceivables.reduce((s, r) => s + Number(r.amount), 0),
     [pendingReceivables]
   );
+
+  const creditItems = useMemo(
+    () =>
+      receivables
+        .filter((r) => r.status !== "cancelado")
+        .map((r) => {
+          const paid = (r.receivable_payments ?? []).reduce((s, p) => s + Number(p.amount_paid || 0), 0);
+          return { r, excess: Math.max(0, paid - Number(r.amount || 0)), paid };
+        })
+        .filter((x) => x.excess > 0.009),
+    [receivables]
+  );
+
+  const totalCredit = useMemo(
+    () => creditItems.reduce((s, x) => s + x.excess, 0),
+    [creditItems]
+  );
+
 
   const toggle = (id: string) => {
     setSelected(prev => {
@@ -247,6 +266,31 @@ export default function CustomerDetail() {
           </div>
         )}
       </GlassCard>
+
+      {totalCredit > 0 && (
+        <GlassCard>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="font-semibold flex items-center gap-2 text-success">
+              <Wallet className="h-4 w-4" />
+              Crédito disponível
+            </h3>
+            <span className="text-2xl font-bold text-success">{fmtBRL(totalCredit)}</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Valor pago acima do total das parcelas. Fica a favor do cliente em compras futuras.
+          </p>
+          <div className="mt-3 space-y-1">
+            {creditItems.map(({ r, excess, paid }) => (
+              <div key={r.id} className="flex justify-between text-xs text-muted-foreground">
+                <span className="truncate">
+                  {r.description || "Parcela"} — venc. {fmtDate(r.due_date)} ({fmtBRL(Number(r.amount))} • pago {fmtBRL(paid)})
+                </span>
+                <span className="text-success font-medium ml-2">+{fmtBRL(excess)}</span>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      )}
 
       {/* Dados de contato */}
       <GlassCard>
