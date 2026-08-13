@@ -2,18 +2,15 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Retorna o valor total da dívida em aberto (contas a receber pendentes/vencidas)
- * e o crédito do cliente (soma do que foi pago a mais em cada parcela).
+ * Retorna o valor total da dívida em aberto (contas a receber pendentes/vencidas).
  */
 export function useCustomerDebt(customerId: string | null | undefined) {
   const [debt, setDebt] = useState<number | null>(0);
-  const [credit, setCredit] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!customerId) {
       setDebt(null);
-      setCredit(0);
       setLoading(false);
       return;
     }
@@ -22,30 +19,18 @@ export function useCustomerDebt(customerId: string | null | undefined) {
     (async () => {
       const { data, error } = await supabase
         .from("accounts_receivable")
-        .select("amount, status, receivable_payments(amount_paid)")
-        .eq("customer_id", customerId);
+        .select("amount, status")
+        .eq("customer_id", customerId)
+        .in("status", ["pendente", "vencido"]);
       if (cancelled) return;
       if (error) {
         setDebt(0);
-        setCredit(0);
       } else {
-        let open = 0;
-        let over = 0;
-        for (const r of (data ?? []) as any[]) {
-          const paid = (r.receivable_payments ?? []).reduce(
-            (s: number, p: any) => s + Number(p.amount_paid || 0),
-            0,
-          );
-          const amount = Number(r.amount || 0);
-          if (r.status === "pendente" || r.status === "vencido") {
-            open += Math.max(0, amount - paid);
-          }
-          if (r.status !== "cancelado") {
-            over += Math.max(0, paid - amount);
-          }
-        }
+        const open = (data ?? []).reduce(
+          (s: number, r: any) => s + Number(r.amount || 0),
+          0,
+        );
         setDebt(open);
-        setCredit(over);
       }
       setLoading(false);
     })();
@@ -54,7 +39,7 @@ export function useCustomerDebt(customerId: string | null | undefined) {
     };
   }, [customerId]);
 
-  return { debt, credit, loading };
+  return { debt, loading };
 }
 
 export const fmtBRL = (n: number) =>

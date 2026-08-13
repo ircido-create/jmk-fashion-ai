@@ -83,22 +83,8 @@ export default function CustomerDetail() {
     [pendingReceivables]
   );
 
-  const creditItems = useMemo(
-    () =>
-      receivables
-        .filter((r) => r.status !== "cancelado")
-        .map((r) => {
-          const paid = (r.receivable_payments ?? []).reduce((s, p) => s + Number(p.amount_paid || 0), 0);
-          return { r, excess: Math.max(0, paid - Number(r.amount || 0)), paid };
-        })
-        .filter((x) => x.excess > 0.009),
-    [receivables]
-  );
 
-  const totalCredit = useMemo(
-    () => creditItems.reduce((s, x) => s + x.excess, 0),
-    [creditItems]
-  );
+
 
 
   const toggle = (id: string) => {
