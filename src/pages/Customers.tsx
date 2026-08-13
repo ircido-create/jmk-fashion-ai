@@ -314,6 +314,11 @@ export default function Customers() {
                         <span className="text-xs text-muted-foreground font-normal">({c.nickname})</span>
                       )}
                       <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      {(credits[c.id] ?? 0) > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-success/15 text-success font-medium">
+                          Crédito {Number(credits[c.id]).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground truncate">
                       {c.tax_id ? formatTaxId(c.tax_id) : "—"} {c.phone ? `• ${c.phone}` : ""} {c.email ? `• ${c.email}` : ""}
