@@ -29,6 +29,7 @@ interface Sale {
 interface Receivable {
   id: string; amount: number; due_date: string;
   status: string; paid_at: string | null; description: string | null;
+  receivable_payments?: { amount_paid: number }[];
 }
 
 const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -53,7 +54,7 @@ export default function CustomerDetail() {
     const [c, s, r] = await Promise.all([
       supabase.from("customers").select("*").eq("id", id).maybeSingle(),
       supabase.from("sales").select("*, sale_items(*)").eq("customer_id", id).order("sale_date", { ascending: false }),
-      supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at, description").eq("customer_id", id).order("due_date", { ascending: true }),
+      supabase.from("accounts_receivable").select("id, amount, due_date, status, paid_at, description, receivable_payments(amount_paid)").eq("customer_id", id).order("due_date", { ascending: true }),
     ]);
     if (c.error) toast.error(c.error.message);
     setCustomer(c.data as Customer | null);
