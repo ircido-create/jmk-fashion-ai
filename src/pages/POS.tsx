@@ -76,7 +76,7 @@ export default function POS() {
   // Step 2
   const [customerId, setCustomerId] = useState<string>("");
   const [customerSearch, setCustomerSearch] = useState("");
-  const { debt: customerDebt, credit: customerCredit, loading: debtLoading } = useCustomerDebt(customerId || null);
+  const { debt: customerDebt, loading: debtLoading } = useCustomerDebt(customerId || null);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
@@ -1219,12 +1219,6 @@ export default function POS() {
                       <span className="font-medium text-emerald-600 dark:text-emerald-400">Nenhuma dívida</span>
                     )}
                   </div>
-                  {!debtLoading && customerCredit > 0 && (
-                    <div className="flex items-center justify-between" aria-live="polite">
-                      <span>Crédito disponível:</span>
-                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtBRL(customerCredit)}</span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
