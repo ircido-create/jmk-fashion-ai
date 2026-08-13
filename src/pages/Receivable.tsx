@@ -97,9 +97,10 @@ export default function Receivable() {
       if (ids.length > 0) {
         const { data: rp } = await supabase
           .from("receivable_payments")
-          .select("receivable_id, proof_id, payment_proofs(original_filename, storage_path)")
+          .select("receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path)")
           .in("receivable_id", ids);
         const map = new Map<string, Receivable["proofs"]>();
+        const paidByReceivable = new Map<string, number>();
         (rp ?? []).forEach((row: any) => {
           const arr = map.get(row.receivable_id) ?? [];
           arr!.push({
@@ -108,8 +109,20 @@ export default function Receivable() {
             storage_path: row.payment_proofs?.storage_path ?? "",
           });
           map.set(row.receivable_id, arr);
+          paidByReceivable.set(
+            row.receivable_id,
+            (paidByReceivable.get(row.receivable_id) ?? 0) + Number(row.amount_paid || 0)
+          );
         });
         items.forEach((i) => { i.proofs = map.get(i.id) ?? []; });
+
+        const credMap: Record<string, number> = {};
+        for (const i of items) {
+          if (!i.customer_id || i.status === "cancelado") continue;
+          const excess = (paidByReceivable.get(i.id) ?? 0) - Number(i.amount || 0);
+          if (excess > 0.009) credMap[i.customer_id] = (credMap[i.customer_id] ?? 0) + excess;
+        }
+        setCredits(credMap);
       }
       setList(items);
 
