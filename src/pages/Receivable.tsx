@@ -79,7 +79,6 @@ export default function Receivable() {
   const [importPreview, setImportPreview] = useState<{ customer_name: string; tax_id: string; description: string; amount: number; due_date: string; skip?: boolean; dupReason?: string }[]>([]);
   const [importSaving, setImportSaving] = useState(false);
 
-  const [credits, setCredits] = useState<Record<string, number>>({});
 
   const load = async () => {
     try {
@@ -963,11 +962,6 @@ export default function Receivable() {
                     {r.customers?.name ?? "— sem cliente —"}
                   </span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>{r.status}</span>
-                  {r.customer_id && (credits[r.customer_id] ?? 0) > 0 && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/15 text-success font-medium">
-                      Crédito {Number(credits[r.customer_id]).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </span>
-                  )}
                   {r.proofs && r.proofs.length > 0 && (
                     <button
                       type="button"
