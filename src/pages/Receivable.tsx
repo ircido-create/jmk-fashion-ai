@@ -116,14 +116,6 @@ export default function Receivable() {
           );
         });
         items.forEach((i) => { i.proofs = map.get(i.id) ?? []; });
-
-        const credMap: Record<string, number> = {};
-        for (const i of items) {
-          if (!i.customer_id || i.status === "cancelado") continue;
-          const excess = (paidByReceivable.get(i.id) ?? 0) - Number(i.amount || 0);
-          if (excess > 0.009) credMap[i.customer_id] = (credMap[i.customer_id] ?? 0) + excess;
-        }
-        setCredits(credMap);
       }
       setList(items);
 
