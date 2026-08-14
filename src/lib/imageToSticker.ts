@@ -1,4 +1,4 @@
-// Converte qualquer imagem em WebP 512x512 ≤100KB (formato exigido pela Meta para stickers).
+// Converte qualquer imagem em WebP 512x512 ≤100KB (formato de figurinha do WhatsApp).
 export async function toStickerWebp(file: File): Promise<File> {
   const url = URL.createObjectURL(file);
   try {

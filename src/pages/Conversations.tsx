@@ -449,7 +449,7 @@ export default function Conversations() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Grava no formato nativo do navegador, depois converte para MP3 (audio/mpeg),
-      // formato aceito universalmente pela Meta WhatsApp Cloud API.
+      // formato aceito universalmente no envio via BubbleWhats.
       const mr = new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };

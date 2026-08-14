@@ -10,14 +10,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle, Settings, Activity, RefreshCw, Wifi, WifiOff } from "lucide-react";
 
+// As credenciais da Meta (access_token, phone_number_id, waba_id, app_secret,
+// verify_token) sairam junto com a integracao Cloud API. As colunas continuam no
+// banco, mas nada mais as le nem escreve. O envio hoje e todo BubbleWhats, com
+// device e token vindos de variaveis de ambiente das edge functions.
 interface Config {
   id?: string;
-  enabled: boolean;
-  access_token: string | null;
-  phone_number_id: string | null;
-  waba_id: string | null;
-  app_secret: string | null;
-  verify_token: string | null;
   last_error_at?: string | null;
   last_error_message?: string | null;
 }
@@ -38,10 +36,7 @@ interface BlockedContact {
 export default function WhatsApp() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
-  const [cfg, setCfg] = useState<Config>({
-    enabled: false, access_token: "", phone_number_id: "",
-    waba_id: "", app_secret: "", verify_token: "",
-  });
+  const [cfg, setCfg] = useState<Config>({});
   const [ai, setAI] = useState<AISettings>({ persona: "amigavel", system_prompt: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -144,24 +139,20 @@ export default function WhatsApp() {
 
   useEffect(() => { load(); }, []);
 
+  // whatsapp_config nao e mais salvo aqui: sobraram nela apenas last_error_at e
+  // last_error_message, escritos pelas edge functions. Regravar o que foi lido
+  // apagaria um erro registrado entre o carregamento da tela e o clique em salvar.
   const save = async () => {
     setSaving(true);
-    const cfgPayload: any = { ...cfg };
-    if (!cfgPayload.id) delete cfgPayload.id;
     const aiPayload: any = { ...ai };
     if (!aiPayload.id) delete aiPayload.id;
 
-    const [r1, r2] = await Promise.all([
-      cfg.id
-        ? supabase.from("whatsapp_config").update(cfgPayload).eq("id", cfg.id)
-        : supabase.from("whatsapp_config").insert(cfgPayload),
-      ai.id
-        ? supabase.from("ai_settings").update(aiPayload).eq("id", ai.id)
-        : supabase.from("ai_settings").insert(aiPayload),
-    ]);
+    const { error } = ai.id
+      ? await supabase.from("ai_settings").update(aiPayload).eq("id", ai.id)
+      : await supabase.from("ai_settings").insert(aiPayload);
     setSaving(false);
-    if (r1.error || r2.error) {
-      toast({ title: "Erro ao salvar", description: r1.error?.message || r2.error?.message, variant: "destructive" });
+    if (error) {
+      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Configurações salvas com sucesso 💕" });
       load();
@@ -349,19 +340,16 @@ export default function WhatsApp() {
         <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
           <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-destructive">Token do WhatsApp expirado ou inválido</p>
+            <p className="font-semibold text-destructive">Falha na resposta automática da IA</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Última falha: {new Date(cfg.last_error_at).toLocaleString("pt-BR")}. Mensagens (incluindo áudios)
-              podem não estar sendo entregues. Gere um <strong>System User Token permanente</strong> no Meta
-              Business Suite (Configurações → Usuários do sistema) com permissões{" "}
-              <code className="text-xs">whatsapp_business_messaging</code> e{" "}
-              <code className="text-xs">whatsapp_business_management</code>, marque <strong>"Nunca expira"</strong>,
-              e cole abaixo no campo Access Token.
+              Última falha: {new Date(cfg.last_error_at).toLocaleString("pt-BR")}. A Mônica pode não estar
+              respondendo às mensagens recebidas. Causas comuns são crédito esgotado ou limite de requisições
+              no provedor de IA — veja o detalhe abaixo.
             </p>
             {cfg.last_error_message && (
               <details className="mt-2">
                 <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                  Detalhes do erro retornado pela Meta
+                  Detalhes do erro
                 </summary>
                 <pre className="text-xs mt-1 p-2 bg-background/50 rounded overflow-x-auto">
                   {cfg.last_error_message}
@@ -383,56 +371,9 @@ export default function WhatsApp() {
               <p className="text-xs text-muted-foreground">Webhook e automações do aparelho conectado</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-sm">Ativo</Label>
-            <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
-          </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <Label>Access Token</Label>
-            <Input
-              type="password"
-              value={cfg.access_token ?? ""}
-              onChange={(e) => setCfg({ ...cfg, access_token: e.target.value })}
-              placeholder="EAAG..."
-            />
-          </div>
-          <div>
-            <Label>Phone Number ID</Label>
-            <Input
-              value={cfg.phone_number_id ?? ""}
-              onChange={(e) => setCfg({ ...cfg, phone_number_id: e.target.value })}
-              placeholder="1234567890"
-            />
-          </div>
-          <div>
-            <Label>WABA ID</Label>
-            <Input
-              value={cfg.waba_id ?? ""}
-              onChange={(e) => setCfg({ ...cfg, waba_id: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>App Secret</Label>
-            <Input
-              type="password"
-              value={cfg.app_secret ?? ""}
-              onChange={(e) => setCfg({ ...cfg, app_secret: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>Verify Token (defina e use no painel da Meta)</Label>
-            <Input
-              value={cfg.verify_token ?? ""}
-              onChange={(e) => setCfg({ ...cfg, verify_token: e.target.value })}
-              placeholder="jmk-verify-2024"
-            />
-          </div>
-        </div>
-
-        <div className="mt-6 p-4 rounded-2xl bg-white/40 backdrop-blur">
+        <div className="p-4 rounded-2xl bg-white/40 backdrop-blur">
           <Label className="text-xs">URL do Webhook BubbleWhats (receiveMessagesWebhook)</Label>
           <div className="flex gap-2 mt-1">
             <Input readOnly value={webhookUrl} className="font-mono text-xs" />

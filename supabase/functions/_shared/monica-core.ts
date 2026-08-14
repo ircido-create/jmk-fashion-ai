@@ -41,11 +41,6 @@ function extractKeywords(text: string): string[] {
     .slice(0, 8);
 }
 
-async function loadConfig() {
-  const { data } = await supabase.from("whatsapp_config").select("*").maybeSingle();
-  return data;
-}
-
 export async function loadAISettings() {
   const { data } = await supabase.from("ai_settings").select("*").maybeSingle();
   return data;

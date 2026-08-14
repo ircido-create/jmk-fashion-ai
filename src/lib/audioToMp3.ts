@@ -1,5 +1,5 @@
 // Converte gravações do navegador (webm/ogg/mp4) para MP3 mono 128kbps.
-// Meta WhatsApp aceita audio/mpeg em todos os números — formato mais confiável.
+// audio/mpeg é aceito em todos os números — formato mais confiável no WhatsApp.
 import { Mp3Encoder } from "@breezystack/lamejs";
 
 export async function convertToMp3(blob: Blob): Promise<Blob> {
