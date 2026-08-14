@@ -640,6 +640,8 @@ Deno.serve(async (req) => {
       quoted_thumbnail_path: quotedThumbnailPath,
       quoted_is_status: quotedIsStatus,
       quoted_caption: quotedCaption,
+      sent_at: sentAtIso,
+
     }).select("id").single();
     await supabase.from("whatsapp_conversations")
       .update({ last_message_at: new Date().toISOString() })
