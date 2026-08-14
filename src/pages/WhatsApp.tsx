@@ -80,22 +80,28 @@ export default function WhatsApp() {
   };
 
 
-  const runDiagnostics = async () => {
+  // silencioso: usado na checagem automática de abertura da tela, onde um toast de
+  // erro apareceria sozinho sem o usuário ter pedido nada (inclusive o 403 de quem
+  // não é admin).
+  const runDiagnostics = async (silencioso = false) => {
     setChecking(true);
     const { data, error } = await supabase.functions.invoke("bubblewhats-status", { body: {} });
     setChecking(false);
     if (error || (data as any)?.error) {
-      toast({
-        title: "Falha ao verificar conexão",
-        description: error?.message ?? (data as any)?.error,
-        variant: "destructive",
-      });
+      setDiag(null);
+      if (!silencioso) {
+        toast({
+          title: "Falha ao verificar conexão",
+          description: error?.message ?? (data as any)?.error,
+          variant: "destructive",
+        });
+      }
       return;
     }
     setDiag(data);
     if ((data as any)?.lastInboundAt) setLastInboundAt((data as any).lastInboundAt);
-    // A verificação grava ou limpa last_error_* no banco; sem recarregar, o alerta
-    // continuaria na tela com o valor antigo mesmo após a sessão voltar.
+    // A verificação grava ou limpa last_error_* no banco; sem recarregar, o registro
+    // antigo continuaria na tela mesmo após a sessão voltar.
     load();
   };
 
@@ -140,7 +146,14 @@ export default function WhatsApp() {
     load();
   };
 
-  useEffect(() => { load(); }, []);
+  // Consulta o BubbleWhats já na abertura: o que o admin precisa saber é como a
+  // conexão está agora, não qual foi a última falha registrada.
+  useEffect(() => {
+    (async () => {
+      await load();
+      await runDiagnostics(true);
+    })();
+  }, []);
 
   // whatsapp_config nao e mais salvo aqui: sobraram nela apenas last_error_at e
   // last_error_message, escritos pelas edge functions. Regravar o que foi lido
@@ -268,7 +281,7 @@ export default function WhatsApp() {
             <h2 className="text-lg font-display font-bold">Diagnóstico da conexão</h2>
           </div>
           <div className="flex gap-2">
-            <Button onClick={runDiagnostics} disabled={checking} variant="outline">
+            <Button onClick={() => runDiagnostics()} disabled={checking} variant="outline">
               <RefreshCw className={`h-4 w-4 mr-2 ${checking ? "animate-spin" : ""}`} />
               {checking ? "Verificando…" : "Verificar conexão"}
             </Button>
@@ -332,28 +345,49 @@ export default function WhatsApp() {
           )}
           {!diag && (
             <li className="text-xs text-muted-foreground">
-              Clique em “Verificar conexão” para consultar o status do aparelho no BubbleWhats.
+              {checking
+                ? "Consultando o status do aparelho no BubbleWhats…"
+                : "Não foi possível consultar o BubbleWhats agora. Use “Verificar conexão” para tentar de novo."}
+            </li>
+          )}
+          {cfg.last_error_at && (
+            <li className="flex items-start gap-2 text-xs text-muted-foreground pt-1 border-t border-border/40 mt-2">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-60" />
+              <span>
+                Última falha registrada em{" "}
+                <strong className="font-medium">
+                  {new Date(cfg.last_error_at).toLocaleString("pt-BR")}
+                </strong>
+                {diag?.connected && " — já superada, a conexão está no ar agora"}. {cfg.last_error_message}
+              </span>
             </li>
           )}
         </ul>
       </GlassCard>
 
 
-      {cfg.last_error_at && (
+      {/* Alerta do estado ATUAL, vindo da consulta ao BubbleWhats feita agora. A
+          falha antiga foi para o card de diagnóstico como nota discreta: exibi-la
+          aqui em vermelho fazia parecer problema em aberto, levando a reconectar o
+          aparelho à toa quando a sessão já havia se estabilizado sozinha. */}
+      {diag && (!diag.connected || diag.tokenValid === false) && (
         <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
           <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-destructive">Última falha registrada</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Em {new Date(cfg.last_error_at).toLocaleString("pt-BR")}. Este é um registro do passado, não o
-              estado atual — pode já ter se resolvido. Use "Verificar conexão" para confirmar como está agora;
-              se a sessão estiver no ar, o aviso some.
+            <p className="font-semibold text-destructive">
+              {diag.tokenValid === false
+                ? "Token do BubbleWhats recusado"
+                : diag.tokenValid === null
+                  ? "BubbleWhats não respondeu"
+                  : "Aparelho desconectado agora"}
             </p>
-            {cfg.last_error_message && (
-              <pre className="text-xs mt-2 p-2 bg-background/50 rounded overflow-x-auto whitespace-pre-wrap">
-                {cfg.last_error_message}
-              </pre>
-            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              {diag.tokenValid === false
+                ? "Nada entra nem sai enquanto isso. Confira BUBBLEWHATS_TOKEN nas variáveis das edge functions."
+                : diag.tokenValid === null
+                  ? "Não foi possível falar com o provedor neste momento — pode ser instabilidade passageira do lado deles. Não é preciso reconectar o aparelho; tente novamente em alguns minutos."
+                  : "A sessão caiu de verdade. Releia o QR Code no painel do BubbleWhats para reconectar."}
+            </p>
           </div>
         </div>
       )}
