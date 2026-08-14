@@ -1079,10 +1079,31 @@ export default function Conversations() {
                             isOut ? "text-primary-foreground/80" : "text-muted-foreground",
                           )}
                         >
-                          {new Date(m.created_at).toLocaleTimeString("pt-BR", {
-                            hour: "2-digit", minute: "2-digit",
-                          })}
+                          {(() => {
+                            const sent = (m as any).sent_at as string | null | undefined;
+                            const delayMin = sent
+                              ? (new Date(m.created_at).getTime() - new Date(sent).getTime()) / 60000
+                              : 0;
+                            if (!isOut && delayMin > 15) {
+                              return (
+                                <>
+                                  enviada {new Date(sent!).toLocaleString("pt-BR", {
+                                    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                                  })}
+                                  {" · "}
+                                  <span className="text-amber-600 dark:text-amber-400">
+                                    recebida com atraso de{" "}
+                                    {delayMin >= 60 ? `${(delayMin / 60).toFixed(1)}h` : `${Math.round(delayMin)}min`}
+                                  </span>
+                                </>
+                              );
+                            }
+                            return new Date(m.created_at).toLocaleTimeString("pt-BR", {
+                              hour: "2-digit", minute: "2-digit",
+                            });
+                          })()}
                         </div>
+
                       </div>
                     </div>
                   );
