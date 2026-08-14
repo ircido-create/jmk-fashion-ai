@@ -39,6 +39,8 @@ export default function Dashboard() {
   const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
   const [inboundChecked, setInboundChecked] = useState(false);
 
+  const [avgDelayMin, setAvgDelayMin] = useState<number | null>(null);
+
   useEffect(() => {
     supabase
       .from("whatsapp_messages")
@@ -51,12 +53,30 @@ export default function Dashboard() {
         setLastInboundAt((data as any)?.created_at ?? null);
         setInboundChecked(true);
       });
+
+    supabase
+      .from("whatsapp_messages")
+      .select("created_at, sent_at")
+      .eq("direction", "inbound")
+      .not("sent_at", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => {
+        const rows = (data ?? []) as { created_at: string; sent_at: string }[];
+        setAvgDelayMin(
+          rows.length
+            ? rows.reduce((s, r) => s + (new Date(r.created_at).getTime() - new Date(r.sent_at).getTime()) / 60000, 0) / rows.length
+            : null,
+        );
+      });
   }, []);
 
   const hoursSinceInbound = lastInboundAt
     ? (Date.now() - new Date(lastInboundAt).getTime()) / 3600000
     : null;
   const whatsappInactive = inboundChecked && (hoursSinceInbound === null || hoursSinceInbound > 6);
+  const whatsappDelayed = avgDelayMin !== null && avgDelayMin > 15;
+
 
   useEffect(() => { loadAll(); }, []);
 
