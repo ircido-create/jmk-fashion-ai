@@ -738,7 +738,11 @@ Deno.serve(async (req) => {
     // Mônica é assistente exclusivamente financeira — não envia fotos de produtos
     // nem faz "handoff fantasma" por foto. Qualquer pedido não-financeiro é
     // tratado pelo próprio prompt da IA (encaminha à equipe).
-    const finalReply = reply;
+    // Se a mensagem chegou com muito atraso (fila do provedor), avisa antes de responder.
+    const finalReply = reply && reply.trim() && delayMinutes > 360
+      ? `Desculpe a demora, sua mensagem só chegou para nós agora 🙏\n\n${reply}`
+      : reply;
+
 
     // Assunto não-financeiro → IA retorna vazio ([SILENCIO]). Não enviamos nada.
     if (!finalReply || !finalReply.trim()) {
