@@ -117,14 +117,38 @@ Deno.serve(async (req) => {
           ? true
           : null;
 
-    // Registra falha para histórico quando a sessão está caída
-    if (!connected) {
+    // last_error_* é compartilhado com o monica-core, que registra falhas da IA
+    // ("IA sem créditos", "IA falhou (HTTP ...)"). Só mexemos no que foi escrito
+    // por esta verificação — identificável por citar o BubbleWhats — para não
+    // esconder um problema de IA nem ser apagado por ele.
+    const { data: cfgAtual } = await adminClient
+      .from("whatsapp_config")
+      .select("last_error_message")
+      .maybeSingle();
+    const erroRegistradoEraDeSessao = /bubblewhats/i.test(cfgAtual?.last_error_message ?? "");
+
+    if (connected) {
+      // Sem este ramo o erro ficava gravado para sempre: a sessão voltava, o painel
+      // mostrava o aparelho conectado e o alerta antigo continuava na tela.
+      if (erroRegistradoEraDeSessao) {
+        await adminClient
+          .from("whatsapp_config")
+          .update({ last_error_at: null, last_error_message: null })
+          .not("id", "is", null);
+      }
+    } else {
+      // Distingue sessão caída de provedor inalcançável. Antes, qualquer falha virava
+      // "releia o QR Code" — conselho errado quando o BubbleWhats é que estava fora,
+      // caso em que o proprio codigo assume nao dar para concluir nada (ver tokenValid).
+      const motivo =
+        tokenValid === false
+          ? "Token do BubbleWhats recusado (HTTP 401/403). Confira BUBBLEWHATS_TOKEN nas variáveis da edge function."
+          : tokenValid === null
+            ? `Não foi possível falar com o BubbleWhats (HTTP ${statusRes.status}). Provedor fora do ar ou instável — não é possível concluir nada sobre a sessão.`
+            : `Sessão BubbleWhats desconectada (status: ${rawState}). Releia o QR Code no painel do BubbleWhats.`;
       await adminClient
         .from("whatsapp_config")
-        .update({
-          last_error_at: new Date().toISOString(),
-          last_error_message: `Sessão BubbleWhats indisponível (status: ${rawState}). Releia o QR Code no painel do BubbleWhats.`,
-        })
+        .update({ last_error_at: new Date().toISOString(), last_error_message: motivo })
         .not("id", "is", null);
     }
 

@@ -94,6 +94,9 @@ export default function WhatsApp() {
     }
     setDiag(data);
     if ((data as any)?.lastInboundAt) setLastInboundAt((data as any).lastInboundAt);
+    // A verificação grava ou limpa last_error_* no banco; sem recarregar, o alerta
+    // continuaria na tela com o valor antigo mesmo após a sessão voltar.
+    load();
   };
 
   const hoursSinceInbound = lastInboundAt
@@ -340,21 +343,16 @@ export default function WhatsApp() {
         <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
           <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-destructive">Falha na resposta automática da IA</p>
+            <p className="font-semibold text-destructive">Última falha registrada</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Última falha: {new Date(cfg.last_error_at).toLocaleString("pt-BR")}. A Mônica pode não estar
-              respondendo às mensagens recebidas. Causas comuns são crédito esgotado ou limite de requisições
-              no provedor de IA — veja o detalhe abaixo.
+              Em {new Date(cfg.last_error_at).toLocaleString("pt-BR")}. Este é um registro do passado, não o
+              estado atual — pode já ter se resolvido. Use "Verificar conexão" para confirmar como está agora;
+              se a sessão estiver no ar, o aviso some.
             </p>
             {cfg.last_error_message && (
-              <details className="mt-2">
-                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                  Detalhes do erro
-                </summary>
-                <pre className="text-xs mt-1 p-2 bg-background/50 rounded overflow-x-auto">
-                  {cfg.last_error_message}
-                </pre>
-              </details>
+              <pre className="text-xs mt-2 p-2 bg-background/50 rounded overflow-x-auto whitespace-pre-wrap">
+                {cfg.last_error_message}
+              </pre>
             )}
           </div>
         </div>
