@@ -266,6 +266,25 @@ export default function WhatsApp() {
           {diag && (
             <>
               <li className="flex items-center gap-2">
+                {diag.tokenValid === true ? (
+                  <Check className="h-4 w-4 text-primary" />
+                ) : diag.tokenValid === false ? (
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                )}
+                <span>
+                  Token:{" "}
+                  <strong>
+                    {diag.tokenValid === true
+                      ? "válido"
+                      : diag.tokenValid === false
+                        ? "inválido ou expirado — salve novamente o token do painel do BubbleWhats"
+                        : "provedor indisponível — tente de novo em alguns minutos"}
+                  </strong>
+                </span>
+              </li>
+              <li className="flex items-center gap-2">
                 {diag.connected ? <Wifi className="h-4 w-4 text-primary" /> : <WifiOff className="h-4 w-4 text-destructive" />}
                 <span>
                   Aparelho:{" "}
