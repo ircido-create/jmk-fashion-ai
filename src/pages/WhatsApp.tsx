@@ -247,6 +247,26 @@ export default function WhatsApp() {
         </div>
       )}
 
+      {avgDelayMin !== null && avgDelayMin > 15 && (
+        <div className="rounded-2xl border-2 border-amber-500/40 bg-amber-500/10 backdrop-blur p-4 flex gap-3 items-start">
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-amber-700 dark:text-amber-400">Mensagens chegando com atraso</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              As últimas mensagens levaram em média{" "}
+              <strong>
+                {avgDelayMin >= 60
+                  ? `${(avgDelayMin / 60).toFixed(1)} h`
+                  : `${Math.round(avgDelayMin)} min`}
+              </strong>{" "}
+              para chegar até o sistema — fila de entrega do provedor BubbleWhats. A Mônica só
+              consegue responder depois que a mensagem chega.
+            </p>
+          </div>
+        </div>
+      )}
+
+
       <GlassCard>
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <div className="flex items-center gap-3">
