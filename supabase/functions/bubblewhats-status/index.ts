@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
+      tokenValid,
       connected,
       rawState,
       statusHttp: statusRes.status,
