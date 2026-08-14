@@ -1043,6 +1043,7 @@ export type Database = {
           quoted_caption: string | null
           quoted_is_status: boolean
           quoted_thumbnail_path: string | null
+          sent_at: string | null
         }
         Insert: {
           content: string
@@ -1057,6 +1058,7 @@ export type Database = {
           quoted_caption?: string | null
           quoted_is_status?: boolean
           quoted_thumbnail_path?: string | null
+          sent_at?: string | null
         }
         Update: {
           content?: string
@@ -1071,6 +1073,7 @@ export type Database = {
           quoted_caption?: string | null
           quoted_is_status?: boolean
           quoted_thumbnail_path?: string | null
+          sent_at?: string | null
         }
         Relationships: [
           {

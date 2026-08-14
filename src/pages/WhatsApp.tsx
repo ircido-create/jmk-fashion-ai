@@ -55,25 +55,35 @@ export default function WhatsApp() {
   const [diag, setDiag] = useState<any>(null);
   const [checking, setChecking] = useState(false);
   const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
+  const [avgDelayMin, setAvgDelayMin] = useState<number | null>(null);
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/bubblewhats-webhook`;
 
   const load = async () => {
     setLoading(true);
-    const [{ data: c }, { data: a }, { data: bl }, { data: lm }] = await Promise.all([
+    const [{ data: c }, { data: a }, { data: bl }, { data: lm }, { data: delays }] = await Promise.all([
       supabase.from("whatsapp_config").select("*").maybeSingle(),
       supabase.from("ai_settings").select("*").maybeSingle(),
       supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
       supabase.from("whatsapp_messages").select("created_at").eq("direction", "inbound")
         .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("whatsapp_messages").select("created_at, sent_at").eq("direction", "inbound")
+        .not("sent_at", "is", null).order("created_at", { ascending: false }).limit(20),
     ]);
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
     setBlocked((bl ?? []) as BlockedContact[]);
     setLastInboundAt((lm as any)?.created_at ?? null);
+    const rows = (delays ?? []) as { created_at: string; sent_at: string }[];
+    setAvgDelayMin(
+      rows.length
+        ? rows.reduce((s, r) => s + (new Date(r.created_at).getTime() - new Date(r.sent_at).getTime()) / 60000, 0) / rows.length
+        : null,
+    );
     setLoading(false);
   };
+
 
   const runDiagnostics = async () => {
     setChecking(true);
@@ -236,6 +246,26 @@ export default function WhatsApp() {
           </div>
         </div>
       )}
+
+      {avgDelayMin !== null && avgDelayMin > 15 && (
+        <div className="rounded-2xl border-2 border-amber-500/40 bg-amber-500/10 backdrop-blur p-4 flex gap-3 items-start">
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-amber-700 dark:text-amber-400">Mensagens chegando com atraso</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              As últimas mensagens levaram em média{" "}
+              <strong>
+                {avgDelayMin >= 60
+                  ? `${(avgDelayMin / 60).toFixed(1)} h`
+                  : `${Math.round(avgDelayMin)} min`}
+              </strong>{" "}
+              para chegar até o sistema — fila de entrega do provedor BubbleWhats. A Mônica só
+              consegue responder depois que a mensagem chega.
+            </p>
+          </div>
+        </div>
+      )}
+
 
       <GlassCard>
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
