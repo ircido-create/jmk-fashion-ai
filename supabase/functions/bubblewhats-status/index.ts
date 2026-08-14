@@ -91,6 +91,16 @@ Deno.serve(async (req) => {
 
     const webhookOk = !!registeredWebhook && registeredWebhook === expectedWebhook;
 
+    // Validade do token: 401/403 em qualquer endpoint = credencial inválida.
+    // 5xx/0 = provedor indisponível (não dá para concluir nada sobre o token).
+    const codes = [statusRes.status, configRes.status];
+    const tokenValid: boolean | null =
+      codes.some((c) => c === 401 || c === 403)
+        ? false
+        : codes.some((c) => c >= 200 && c < 400)
+          ? true
+          : null;
+
     // Registra falha para histórico quando a sessão está caída
     if (!connected) {
       await adminClient
