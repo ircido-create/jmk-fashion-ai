@@ -320,7 +320,18 @@ Deno.serve(async (req) => {
     const caption: string = (payload.caption ?? "").toString();
     if (!text && caption) text = caption;
 
-    console.log("[chk] parsed", { conversationKey, isGroup, hasText: !!text, senderNumber });
+    // ---- HORA REAL DE ENVIO (para medir atraso do provedor) ----
+    const rawSentTs = Number(payload.messageContext?.messageTimestamp ?? payload.timestamp ?? 0);
+    const sentAtIso = rawSentTs > 0
+      ? new Date(rawSentTs > 1e12 ? rawSentTs : rawSentTs * 1000).toISOString()
+      : null;
+    const delayMinutes = sentAtIso ? (Date.now() - new Date(sentAtIso).getTime()) / 60000 : 0;
+    if (delayMinutes > 15) {
+      console.warn(`[atraso] mensagem entregue com ${Math.round(delayMinutes)} min de atraso pelo BubbleWhats`);
+    }
+
+    console.log("[chk] parsed", { conversationKey, isGroup, hasText: !!text, senderNumber, delayMinutes: Math.round(delayMinutes) });
+
 
     // ---- ATENDIMENTO HUMANO (prioridade máxima) ----
     // Se a conversa está marcada como handoff humano, a Mônica fica em silêncio total:
