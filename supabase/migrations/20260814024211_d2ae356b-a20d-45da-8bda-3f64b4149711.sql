@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_messages ADD COLUMN IF NOT EXISTS sent_at timestamptz;
