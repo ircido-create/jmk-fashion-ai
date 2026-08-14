@@ -193,7 +193,7 @@ async function handleSave(req: SaveRequest, supabase: any) {
   if (!image_url) throw new Error("image_url é obrigatório");
 
   // Baixa SEMPRE como JPEG via wsrv.nl (proxy de imagens) — converte webp/avif/etc para JPEG
-  // que é o formato aceito pelo WhatsApp Cloud API. Mantém qualidade boa (q=90) e largura máx 1600.
+  // que é o formato aceito no envio de imagem pelo WhatsApp. Mantém qualidade boa (q=90) e largura máx 1600.
   const proxied = `https://wsrv.nl/?url=${encodeURIComponent(image_url)}&output=jpg&q=90&w=1600`;
   let imgRes = await fetch(proxied);
   let contentType = imgRes.headers.get("content-type") || "";

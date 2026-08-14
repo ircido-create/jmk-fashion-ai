@@ -10,10 +10,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle, Settings, Activity, RefreshCw, Wifi, WifiOff } from "lucide-react";
 
-// As credenciais da Meta (access_token, phone_number_id, waba_id, app_secret,
-// verify_token) sairam junto com a integracao Cloud API. As colunas continuam no
-// banco, mas nada mais as le nem escreve. O envio hoje e todo BubbleWhats, com
-// device e token vindos de variaveis de ambiente das edge functions.
+// A integracao com a Meta foi removida por completo — codigo e colunas. O envio e
+// todo BubbleWhats, com device e token vindos de variaveis de ambiente das edge
+// functions. Sobrou aqui so o par de erro, escrito por bubblewhats-status (estado
+// da sessao) e por monica-core (falhas da IA).
 interface Config {
   id?: string;
   last_error_at?: string | null;
