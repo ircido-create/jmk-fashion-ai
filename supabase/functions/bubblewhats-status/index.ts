@@ -72,10 +72,26 @@ Deno.serve(async (req) => {
     ]);
 
     const cfg = (configRes.ok && typeof configRes.data === "object" && configRes.data) ? configRes.data as any : {};
+    // O BubbleWhats varia os nomes dos campos entre versões: procura em profundidade.
+    function deepFind(obj: any, match: (k: string, v: any) => boolean, depth = 4): any {
+      if (!obj || typeof obj !== "object" || depth < 0) return undefined;
+      for (const [k, v] of Object.entries(obj)) {
+        if (match(k.toLowerCase(), v)) return v;
+      }
+      for (const v of Object.values(obj)) {
+        const found = deepFind(v, match, depth - 1);
+        if (found !== undefined) return found;
+      }
+      return undefined;
+    }
+
     const registeredWebhook: string | null =
-      cfg.receiveMessagesWebhook ?? cfg.webhook ?? cfg?.config?.receiveMessagesWebhook ?? null;
+      deepFind(cfg, (k, v) =>
+        typeof v === "string" && v.startsWith("http") &&
+        (k.includes("webhook") || k.includes("endpoint")) && !k.includes("status") && !k.includes("update"),
+      ) ?? null;
     const groupsEnabled: boolean | null =
-      cfg.receiveMessagesFromGroups ?? cfg?.config?.receiveMessagesFromGroups ?? null;
+      deepFind(cfg, (k, v) => typeof v === "boolean" && k.includes("group")) ?? null;
 
     const st = (statusRes.ok && typeof statusRes.data === "object" && statusRes.data) ? statusRes.data as any : {};
     const rawState = String(st.status ?? st.state ?? st.connection ?? (statusRes.ok ? "desconhecido" : "indisponivel")).toLowerCase();
