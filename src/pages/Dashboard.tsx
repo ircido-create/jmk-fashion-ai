@@ -201,6 +201,23 @@ export default function Dashboard() {
         </div>
       )}
 
+      {whatsappDelayed && (
+        <div className="rounded-2xl border-2 border-amber-500/40 bg-amber-500/10 backdrop-blur p-4 mb-6 flex gap-3 items-start">
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-amber-700 dark:text-amber-400">Mensagens do WhatsApp com atraso</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              As últimas mensagens chegaram em média{" "}
+              <strong>
+                {avgDelayMin! >= 60 ? `${(avgDelayMin! / 60).toFixed(1)} h` : `${Math.round(avgDelayMin!)} min`}
+              </strong>{" "}
+              depois de enviadas — fila do provedor BubbleWhats.
+            </p>
+          </div>
+        </div>
+      )}
+
+
 
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
