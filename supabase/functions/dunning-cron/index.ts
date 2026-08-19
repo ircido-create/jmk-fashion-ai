@@ -31,14 +31,12 @@ Deno.serve(async (req) => {
       .eq("status", "pendente");
 
     // 3. Busca débitos vencidos (status 'vencido') que possuem cliente com telefone
-    // Limitamos a 50 para não estourar o tempo de execução da Edge Function
+    // Filtramos para ignorar os que já foram cobrados hoje via dunning_logs
     const { data: overdue } = await supabase
-      .from("accounts_receivable")
-      .select("id, amount, due_date, description, customer_id, customers(name, phone)")
-      .eq("status", "vencido")
-      .not("customer_id", "is", null)
-      .order("due_date", { ascending: true })
-      .limit(50);
+      .rpc('get_overdue_receivables_to_dunning', { 
+        p_today: today,
+        p_limit: 50 
+      });
 
     let sent = 0;
     const url = `https://${deviceId}.bubblewhats.com/send-message`;
