@@ -9,13 +9,14 @@ Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const today = new Date().toISOString().slice(0, 10);
 
-  // 1. Débitos de 15/08 que não foram cobrados hoje
+  // Débitos de 15/08 que não foram cobrados hoje, limitando para evitar timeout
   const { data: overdue } = await supabase
     .from("accounts_receivable")
     .select("id, amount, due_date, description, customer_id, customers(name, phone)")
     .eq("status", "vencido")
     .eq("due_date", "2026-08-15")
-    .not("customer_id", "is", null);
+    .not("customer_id", "is", null)
+    .limit(10);
 
   let sent = 0;
   const url = `https://${DEVICE_ID}.bubblewhats.com/send-message`;
@@ -25,7 +26,9 @@ Deno.serve(async (req) => {
     const phone = String(cust?.phone || "").replace(/\D/g, "");
     if (!phone) continue;
 
-    // Verifica se já cobrou hoje
+    // Pula se for formato Meta legada ou tiver @
+    if (phone.length < 10) continue;
+
     const { count } = await supabase
       .from("dunning_logs")
       .select("*", { count: "exact", head: true })
@@ -34,13 +37,13 @@ Deno.serve(async (req) => {
     
     if ((count ?? 0) > 0) continue;
 
-    const dueBR = "15/08/2026";
-    const msg = `Olá, ${cust.name} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${dueBR}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸\n\n👉🏻 Caso tenha efetuado o pagamento, desconsidere este lembrete!`;
+    const msg = `Olá, ${cust.name} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} que venceu em 15/08. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸`;
 
     const jid = `${phone}@s.whatsapp.net`;
     const res = await fetch(url, {
       method: "POST",
       headers: { Authorization: BW_TOKEN, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(10000),
       body: JSON.stringify({ jid, message: msg }),
     });
 
@@ -52,6 +55,8 @@ Deno.serve(async (req) => {
         sent_at: new Date().toISOString()
       });
       sent++;
+      // Espera 1s entre envios
+      await new Promise(res => setTimeout(res, 1000));
     }
   }
 
