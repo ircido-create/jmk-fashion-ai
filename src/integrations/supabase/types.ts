@@ -948,22 +948,40 @@ export type Database = {
       }
       whatsapp_config: {
         Row: {
+          access_token: string | null
+          app_secret: string | null
+          enabled: boolean
           id: string
           last_error_at: string | null
           last_error_message: string | null
+          phone_number_id: string | null
           updated_at: string
+          verify_token: string | null
+          waba_id: string | null
         }
         Insert: {
+          access_token?: string | null
+          app_secret?: string | null
+          enabled?: boolean
           id?: string
           last_error_at?: string | null
           last_error_message?: string | null
+          phone_number_id?: string | null
           updated_at?: string
+          verify_token?: string | null
+          waba_id?: string | null
         }
         Update: {
+          access_token?: string | null
+          app_secret?: string | null
+          enabled?: boolean
           id?: string
           last_error_at?: string | null
           last_error_message?: string | null
+          phone_number_id?: string | null
           updated_at?: string
+          verify_token?: string | null
+          waba_id?: string | null
         }
         Relationships: []
       }
