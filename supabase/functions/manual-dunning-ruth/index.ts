@@ -8,8 +8,8 @@ const BW_TOKEN = Deno.env.get("BUBBLEWHATS_TOKEN")!;
 Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   
-  // 1. Get Ruth's phone
-  const { data: cust } = await supabase.from("customers").select("id, name, phone").ilike("name", "%RUTH DA SILVA LUCAS PINTO%").maybeSingle();
+  // 1. Get Ruth's phone (selecting the one with phone)
+  const { data: cust } = await supabase.from("customers").select("id, name, phone").ilike("name", "%RUTH DA SILVA LUCAS PINTO%").not("phone", "is", null).maybeSingle();
   if (!cust) return new Response("Customer not found", { status: 404 });
 
   // 2. Get overdue debt
