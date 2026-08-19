@@ -192,9 +192,22 @@ export default function WhatsApp() {
   };
 
   const runDunning = async () => {
+    setSaving(true);
     const { data, error } = await supabase.functions.invoke("dunning-cron");
-    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-    else toast({ title: `Cobrança executada`, description: `${(data as any)?.sent ?? 0} mensagens enviadas` });
+    setSaving(false);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      const sent = (data as any)?.sent ?? 0;
+      const total = (data as any)?.total_processed ?? 0;
+      toast({ 
+        title: `Cobrança executada`, 
+        description: sent > 0 
+          ? `${sent} mensagens enviadas de ${total} débitos analisados.` 
+          : `Nenhum novo débito pendente de cobrança foi encontrado entre os ${total} analisados.` 
+      });
+      load();
+    }
   };
 
   const configureBubbleWhatsGroups = async () => {
