@@ -1066,24 +1066,89 @@ export default function POS() {
 
                 <TabsContent value="fiado" className="mt-4 space-y-3">
                   <div>
-                    <Label>Parcelas</Label>
-                    <Select
-                      value={String(installments)}
-                      onValueChange={(v) => setInstallments(Number(v))}
-                    >
-                      <SelectTrigger className="glass-input mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                          <SelectItem key={n} value={String(n)}>
-                            {n === 1
-                              ? `À vista — ${fmtBRL(total)}`
-                              : `${n}x de ${fmtBRL(total / n)} (mensal)`}
-                          </SelectItem>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <Label>Parcelas</Label>
+                        <Select
+                          value={String(installments)}
+                          onValueChange={(v) => { setInstallments(Number(v)); setManualInstallments([]); setIsAdjustingInstallments(false); }}
+                        >
+                          <SelectTrigger className="glass-input mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n === 1
+                                  ? `À vista — ${fmtBRL(total)}`
+                                  : `${n}x de ${fmtBRL(total / n)} (mensal)`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Periodicidade</Label>
+                        <Select
+                          value={paymentFrequency}
+                          onValueChange={(v) => setPaymentFrequency(v as "mensal" | "quinzenal")}
+                        >
+                          <SelectTrigger className="glass-input mt-1 w-[120px]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="mensal">Mensal</SelectItem>
+                            <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Adjust values button */}
+                    <div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs rounded-lg h-7"
+                        onClick={() => {
+                          if (!isAdjustingInstallments) {
+                            setManualInstallments(generatedInstallments.map(g => g.amount.toString()));
+                          }
+                          setIsAdjustingInstallments(!isAdjustingInstallments);
+                        }}
+                      >
+                        {isAdjustingInstallments ? "Cancelar ajuste manual" : "Ajustar valores (Arredondar)"}
+                      </Button>
+                    </div>
+
+                    {isAdjustingInstallments && (
+                      <div className="space-y-2 pt-2 border-t border-white/20">
+                        {manualInstallments.map((val, idx) => (
+                          <div key={idx} className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground w-16">{idx + 1}ª Parcela:</span>
+                            <div className="flex-1 relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="h-7 pl-7 text-xs glass-input"
+                                value={val}
+                                onChange={(e) => {
+                                  const next = [...manualInstallments];
+                                  next[idx] = e.target.value;
+                                  setManualInstallments(next);
+                                }}
+                              />
+                            </div>
+                          </div>
                         ))}
-                      </SelectContent>
-                    </Select>
+                        <div className="flex justify-between items-center text-xs font-medium pt-1">
+                          <span>Total Venda: {fmtBRL(total)}</span>
+                          <span className={Math.abs(manualDiff) > 0.01 ? "text-destructive" : "text-emerald-500"}>
+                            Dif: {fmtBRL(manualDiff)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label>Vencimento da 1ª parcela</Label>
@@ -1100,7 +1165,7 @@ export default function POS() {
                   <p className="text-xs text-muted-foreground">
                     {installments === 1
                       ? `Será criada 1 conta a receber vencendo em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")} na carteira do cliente.`
-                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
+                      : `Serão criadas ${installments} contas a receber ${paymentFrequency === "quinzenal" ? "quinzenais" : "mensais"} na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
                   </p>
                 </TabsContent>
               </Tabs>
