@@ -38,9 +38,13 @@ interface CartItem {
 const fmtBRL = (n: number) =>
   Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const addMonths = (date: Date, n: number) => {
+const addPeriod = (date: Date, n: number, freq: "mensal" | "quinzenal") => {
   const d = new Date(date);
-  d.setMonth(d.getMonth() + n);
+  if (freq === "quinzenal") {
+    d.setDate(d.getDate() + n * 15);
+  } else {
+    d.setMonth(d.getMonth() + n);
+  }
   return d;
 };
 
@@ -93,6 +97,10 @@ export default function POS() {
     d.setDate(d.getDate() + 30);
     return d.toISOString().slice(0, 10);
   });
+
+  const [paymentFrequency, setPaymentFrequency] = useState<"mensal" | "quinzenal">("mensal");
+  const [manualInstallments, setManualInstallments] = useState<string[]>([]);
+  const [isAdjustingInstallments, setIsAdjustingInstallments] = useState(false);
 
   // Pagamento misto (várias formas na mesma venda)
   const [splitMode, setSplitMode] = useState<boolean>(false);
@@ -316,6 +324,9 @@ export default function POS() {
     setSplitAmount("");
     setDiscountValue("");
     setDiscountType("valor");
+    setPaymentFrequency("mensal");
+    setManualInstallments([]);
+    setIsAdjustingInstallments(false);
     const d = new Date();
     d.setDate(d.getDate() + 30);
     setFirstDueDate(d.toISOString().slice(0, 10));
@@ -323,6 +334,45 @@ export default function POS() {
 
   const splitsTotal = useMemo(() => splits.reduce((s, x) => s + (Number(x.amount) || 0), 0), [splits]);
   const splitsRemaining = Math.round((total - splitsTotal) * 100) / 100;
+
+  // Gerador de parcelas automáticas/manuais
+  const generatedInstallments = useMemo(() => {
+    const isFiado = !splitMode && paymentMethod === "fiado";
+    const isCredit = !splitMode && paymentMethod === "credito";
+    const splitFiadoAmount = splitMode ? splits.filter(s => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0;
+    
+    let baseAmount = 0;
+    let numParts = 1;
+
+    if (isFiado || (isCredit && generateReceivables)) {
+      baseAmount = total;
+      numParts = Math.max(1, installments);
+    } else if (splitFiadoAmount > 0) {
+      baseAmount = splitFiadoAmount;
+      numParts = Math.max(1, splitFiadoInstallments);
+    } else {
+      return [];
+    }
+
+    if (manualInstallments.length === numParts && isAdjustingInstallments) {
+      return manualInstallments.map((v, i) => ({
+        index: i,
+        amount: Number(v.replace(",", ".")) || 0,
+      }));
+    }
+
+    const parcelaValor = Math.round((baseAmount / numParts) * 100) / 100;
+    return Array.from({ length: numParts }, (_, i) => ({
+      index: i,
+      amount: i === numParts - 1 
+        ? Math.round((baseAmount - parcelaValor * (numParts - 1)) * 100) / 100 
+        : parcelaValor,
+    }));
+  }, [total, installments, splitMode, splits, splitFiadoInstallments, paymentMethod, generateReceivables, manualInstallments, isAdjustingInstallments]);
+
+  const manualTotal = useMemo(() => generatedInstallments.reduce((s, x) => s + x.amount, 0), [generatedInstallments]);
+  const manualDiff = Math.round(((!splitMode && (paymentMethod === "fiado" || (paymentMethod === "credito" && generateReceivables)) ? total : splitMode ? splits.filter(s => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0) - manualTotal) * 100) / 100;
+
 
   const addSplit = () => {
     const amt = Number(String(splitAmount).replace(",", "."));
@@ -413,57 +463,29 @@ export default function POS() {
       let firstReceivableId: string | null = null;
 
       // 1) Contas a receber (uma por parcela)
-      if (willCreateReceivables) {
-        // Base = data da 1ª parcela escolhida (default 30 dias para fiado/crédito)
+      if (willCreateReceivables || splitFiadoAmount > 0) {
         const baseDate = new Date(firstDueDate + "T00:00:00");
-        const totalParts = numInstallments;
-        const parcelaValor = Math.round((total / totalParts) * 100) / 100;
-        const records: any[] = [];
-        for (let i = 0; i < totalParts; i++) {
-          // 1ª parcela na data escolhida; demais somam meses a partir dela
-          const due = i === 0 ? baseDate : addMonths(baseDate, i);
-          // Ajusta centavos da última parcela
-          const valor =
-            i === totalParts - 1
-              ? Math.round((total - parcelaValor * (totalParts - 1)) * 100) / 100
-              : parcelaValor;
-          records.push({
-            customer_id: customerId,
-            amount: valor,
-            due_date: due.toISOString().slice(0, 10),
-            description:
-              totalParts === 1
-                ? `${PAYMENT_LABELS[paymentMethod]} — ${cart.length} item(ns)`
-                : `${PAYMENT_LABELS[paymentMethod]} (${i + 1}/${totalParts}) — ${cart.length} item(ns)`,
-            status: "pendente",
-          });
+        const totalAmount = willCreateReceivables ? total : splitFiadoAmount;
+        
+        if (isAdjustingInstallments && Math.abs(manualDiff) > 0.01) {
+          toast.error(`A soma das parcelas ajustadas (${fmtBRL(manualTotal)}) não confere com o total da carteira (${fmtBRL(totalAmount)})`);
+          setSaving(false);
+          return;
         }
-        const { data: recs, error: recErr } = await supabase
-          .from("accounts_receivable")
-          .insert(records)
-          .select();
-        if (recErr) throw recErr;
-        firstReceivableId = recs?.[0]?.id ?? null;
-      } else if (splitFiadoAmount > 0) {
-        const baseDate = new Date(firstDueDate + "T00:00:00");
-        const totalParts = Math.max(1, splitFiadoInstallments);
-        const amountCents = Math.round(splitFiadoAmount * 100);
-        const parcelaValor = Math.round(amountCents / totalParts) / 100;
+
         const records: any[] = [];
-        for (let i = 0; i < totalParts; i++) {
-          const due = i === 0 ? baseDate : addMonths(baseDate, i);
-          const valor =
-            i === totalParts - 1
-              ? Math.round((amountCents - Math.round(parcelaValor * 100) * (totalParts - 1))) / 100
-              : parcelaValor;
+        for (let i = 0; i < generatedInstallments.length; i++) {
+          const inst = generatedInstallments[i];
+          const due = i === 0 ? baseDate : addPeriod(baseDate, i, paymentFrequency);
+          
           records.push({
             customer_id: customerId,
-            amount: valor,
+            amount: inst.amount,
             due_date: due.toISOString().slice(0, 10),
             description:
-              totalParts === 1
-                ? `Pagamento misto — parte na carteira — ${cart.length} item(ns)`
-                : `Pagamento misto — carteira (${i + 1}/${totalParts}) — ${cart.length} item(ns)`,
+              generatedInstallments.length === 1
+                ? `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} — ${cart.length} item(ns)`
+                : `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} (${i + 1}/${generatedInstallments.length}) — ${cart.length} item(ns)`,
             status: "pendente",
           });
         }
@@ -866,22 +888,85 @@ export default function POS() {
                     const parts = Math.max(1, splitFiadoInstallments);
                     return (
                       <div className="space-y-3 rounded-xl bg-white/40 dark:bg-white/5 p-3">
-                        <div>
-                          <Label>Parcelas da parte na carteira</Label>
-                          <Select
-                            value={String(splitFiadoInstallments)}
-                            onValueChange={(v) => setSplitFiadoInstallments(Number(v))}
-                          >
-                            <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                                <SelectItem key={n} value={String(n)}>
-                                  {n}x de {fmtBRL(fiadoAmount / n)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1">
+                            <Label>Parcelas da parte na carteira</Label>
+                            <Select
+                              value={String(splitFiadoInstallments)}
+                              onValueChange={(v) => { setSplitFiadoInstallments(Number(v)); setManualInstallments([]); setIsAdjustingInstallments(false); }}
+                            >
+                              <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                                  <SelectItem key={n} value={String(n)}>
+                                    {n}x de {fmtBRL(fiadoAmount / n)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label>Periodicidade</Label>
+                            <Select
+                              value={paymentFrequency}
+                              onValueChange={(v) => setPaymentFrequency(v as "mensal" | "quinzenal")}
+                            >
+                              <SelectTrigger className="glass-input mt-1 w-[120px]"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="mensal">Mensal</SelectItem>
+                                <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
+
+                        {/* Adjust values button */}
+                        <div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-xs rounded-lg h-7"
+                            onClick={() => {
+                              if (!isAdjustingInstallments) {
+                                setManualInstallments(generatedInstallments.map(g => g.amount.toString()));
+                              }
+                              setIsAdjustingInstallments(!isAdjustingInstallments);
+                            }}
+                          >
+                            {isAdjustingInstallments ? "Cancelar ajuste manual" : "Ajustar valores (Arredondar)"}
+                          </Button>
+                        </div>
+
+                        {isAdjustingInstallments && (
+                          <div className="space-y-2 pt-2 border-t border-white/20">
+                            {manualInstallments.map((val, idx) => (
+                              <div key={idx} className="flex items-center justify-between gap-2">
+                                <span className="text-xs text-muted-foreground w-16">{idx + 1}ª Parcela:</span>
+                                <div className="flex-1 relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    className="h-7 pl-7 text-xs glass-input"
+                                    value={val}
+                                    onChange={(e) => {
+                                      const next = [...manualInstallments];
+                                      next[idx] = e.target.value;
+                                      setManualInstallments(next);
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                            <div className="flex justify-between items-center text-xs font-medium pt-1">
+                              <span>Total Carteira: {fmtBRL(fiadoAmount)}</span>
+                              <span className={Math.abs(manualDiff) > 0.01 ? "text-destructive" : "text-emerald-500"}>
+                                Dif: {fmtBRL(manualDiff)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         <div>
                           <Label>Vencimento da 1ª parcela</Label>
                           <Input
@@ -981,24 +1066,89 @@ export default function POS() {
 
                 <TabsContent value="fiado" className="mt-4 space-y-3">
                   <div>
-                    <Label>Parcelas</Label>
-                    <Select
-                      value={String(installments)}
-                      onValueChange={(v) => setInstallments(Number(v))}
-                    >
-                      <SelectTrigger className="glass-input mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                          <SelectItem key={n} value={String(n)}>
-                            {n === 1
-                              ? `À vista — ${fmtBRL(total)}`
-                              : `${n}x de ${fmtBRL(total / n)} (mensal)`}
-                          </SelectItem>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <Label>Parcelas</Label>
+                        <Select
+                          value={String(installments)}
+                          onValueChange={(v) => { setInstallments(Number(v)); setManualInstallments([]); setIsAdjustingInstallments(false); }}
+                        >
+                          <SelectTrigger className="glass-input mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n === 1
+                                  ? `À vista — ${fmtBRL(total)}`
+                                  : `${n}x de ${fmtBRL(total / n)} (mensal)`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Periodicidade</Label>
+                        <Select
+                          value={paymentFrequency}
+                          onValueChange={(v) => setPaymentFrequency(v as "mensal" | "quinzenal")}
+                        >
+                          <SelectTrigger className="glass-input mt-1 w-[120px]"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="mensal">Mensal</SelectItem>
+                            <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Adjust values button */}
+                    <div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs rounded-lg h-7"
+                        onClick={() => {
+                          if (!isAdjustingInstallments) {
+                            setManualInstallments(generatedInstallments.map(g => g.amount.toString()));
+                          }
+                          setIsAdjustingInstallments(!isAdjustingInstallments);
+                        }}
+                      >
+                        {isAdjustingInstallments ? "Cancelar ajuste manual" : "Ajustar valores (Arredondar)"}
+                      </Button>
+                    </div>
+
+                    {isAdjustingInstallments && (
+                      <div className="space-y-2 pt-2 border-t border-white/20">
+                        {manualInstallments.map((val, idx) => (
+                          <div key={idx} className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground w-16">{idx + 1}ª Parcela:</span>
+                            <div className="flex-1 relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                className="h-7 pl-7 text-xs glass-input"
+                                value={val}
+                                onChange={(e) => {
+                                  const next = [...manualInstallments];
+                                  next[idx] = e.target.value;
+                                  setManualInstallments(next);
+                                }}
+                              />
+                            </div>
+                          </div>
                         ))}
-                      </SelectContent>
-                    </Select>
+                        <div className="flex justify-between items-center text-xs font-medium pt-1">
+                          <span>Total Venda: {fmtBRL(total)}</span>
+                          <span className={Math.abs(manualDiff) > 0.01 ? "text-destructive" : "text-emerald-500"}>
+                            Dif: {fmtBRL(manualDiff)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label>Vencimento da 1ª parcela</Label>
@@ -1015,7 +1165,7 @@ export default function POS() {
                   <p className="text-xs text-muted-foreground">
                     {installments === 1
                       ? `Será criada 1 conta a receber vencendo em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")} na carteira do cliente.`
-                      : `Serão criadas ${installments} contas a receber mensais na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
+                      : `Serão criadas ${installments} contas a receber ${paymentFrequency === "quinzenal" ? "quinzenais" : "mensais"} na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
                   </p>
                 </TabsContent>
               </Tabs>
