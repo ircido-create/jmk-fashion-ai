@@ -324,6 +324,9 @@ export default function POS() {
     setSplitAmount("");
     setDiscountValue("");
     setDiscountType("valor");
+    setPaymentFrequency("mensal");
+    setManualInstallments([]);
+    setIsAdjustingInstallments(false);
     const d = new Date();
     d.setDate(d.getDate() + 30);
     setFirstDueDate(d.toISOString().slice(0, 10));
