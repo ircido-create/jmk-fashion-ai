@@ -335,6 +335,45 @@ export default function POS() {
   const splitsTotal = useMemo(() => splits.reduce((s, x) => s + (Number(x.amount) || 0), 0), [splits]);
   const splitsRemaining = Math.round((total - splitsTotal) * 100) / 100;
 
+  // Gerador de parcelas automáticas/manuais
+  const generatedInstallments = useMemo(() => {
+    const isFiado = !splitMode && paymentMethod === "fiado";
+    const isCredit = !splitMode && paymentMethod === "credito";
+    const splitFiadoAmount = splitMode ? splits.filter(s => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0;
+    
+    let baseAmount = 0;
+    let numParts = 1;
+
+    if (isFiado || (isCredit && generateReceivables)) {
+      baseAmount = total;
+      numParts = Math.max(1, installments);
+    } else if (splitFiadoAmount > 0) {
+      baseAmount = splitFiadoAmount;
+      numParts = Math.max(1, splitFiadoInstallments);
+    } else {
+      return [];
+    }
+
+    if (manualInstallments.length === numParts && isAdjustingInstallments) {
+      return manualInstallments.map((v, i) => ({
+        index: i,
+        amount: Number(v.replace(",", ".")) || 0,
+      }));
+    }
+
+    const parcelaValor = Math.round((baseAmount / numParts) * 100) / 100;
+    return Array.from({ length: numParts }, (_, i) => ({
+      index: i,
+      amount: i === numParts - 1 
+        ? Math.round((baseAmount - parcelaValor * (numParts - 1)) * 100) / 100 
+        : parcelaValor,
+    }));
+  }, [total, installments, splitMode, splits, splitFiadoInstallments, paymentMethod, generateReceivables, manualInstallments, isAdjustingInstallments]);
+
+  const manualTotal = useMemo(() => generatedInstallments.reduce((s, x) => s + x.amount, 0), [generatedInstallments]);
+  const manualDiff = Math.round(((!splitMode && (paymentMethod === "fiado" || (paymentMethod === "credito" && generateReceivables)) ? total : splitMode ? splits.filter(s => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0) - manualTotal) * 100) / 100;
+
+
   const addSplit = () => {
     const amt = Number(String(splitAmount).replace(",", "."));
     if (!Number.isFinite(amt) || amt <= 0) { toast.error("Valor inválido"); return; }
