@@ -98,6 +98,10 @@ export default function POS() {
     return d.toISOString().slice(0, 10);
   });
 
+  const [paymentFrequency, setPaymentFrequency] = useState<"mensal" | "quinzenal">("mensal");
+  const [manualInstallments, setManualInstallments] = useState<string[]>([]);
+  const [isAdjustingInstallments, setIsAdjustingInstallments] = useState(false);
+
   // Pagamento misto (várias formas na mesma venda)
   const [splitMode, setSplitMode] = useState<boolean>(false);
   const [splits, setSplits] = useState<SplitEntry[]>([]);
