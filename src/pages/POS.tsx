@@ -38,9 +38,13 @@ interface CartItem {
 const fmtBRL = (n: number) =>
   Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const addMonths = (date: Date, n: number) => {
+const addPeriod = (date: Date, n: number, freq: "mensal" | "quinzenal") => {
   const d = new Date(date);
-  d.setMonth(d.getMonth() + n);
+  if (freq === "quinzenal") {
+    d.setDate(d.getDate() + n * 15);
+  } else {
+    d.setMonth(d.getMonth() + n);
+  }
   return d;
 };
 
