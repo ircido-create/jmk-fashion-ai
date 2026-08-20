@@ -463,57 +463,29 @@ export default function POS() {
       let firstReceivableId: string | null = null;
 
       // 1) Contas a receber (uma por parcela)
-      if (willCreateReceivables) {
-        // Base = data da 1ª parcela escolhida (default 30 dias para fiado/crédito)
+      if (willCreateReceivables || splitFiadoAmount > 0) {
         const baseDate = new Date(firstDueDate + "T00:00:00");
-        const totalParts = numInstallments;
-        const parcelaValor = Math.round((total / totalParts) * 100) / 100;
-        const records: any[] = [];
-        for (let i = 0; i < totalParts; i++) {
-          // 1ª parcela na data escolhida; demais somam meses a partir dela
-          const due = i === 0 ? baseDate : addMonths(baseDate, i);
-          // Ajusta centavos da última parcela
-          const valor =
-            i === totalParts - 1
-              ? Math.round((total - parcelaValor * (totalParts - 1)) * 100) / 100
-              : parcelaValor;
-          records.push({
-            customer_id: customerId,
-            amount: valor,
-            due_date: due.toISOString().slice(0, 10),
-            description:
-              totalParts === 1
-                ? `${PAYMENT_LABELS[paymentMethod]} — ${cart.length} item(ns)`
-                : `${PAYMENT_LABELS[paymentMethod]} (${i + 1}/${totalParts}) — ${cart.length} item(ns)`,
-            status: "pendente",
-          });
+        const totalAmount = willCreateReceivables ? total : splitFiadoAmount;
+        
+        if (isAdjustingInstallments && Math.abs(manualDiff) > 0.01) {
+          toast.error(`A soma das parcelas ajustadas (${fmtBRL(manualTotal)}) não confere com o total da carteira (${fmtBRL(totalAmount)})`);
+          setSaving(false);
+          return;
         }
-        const { data: recs, error: recErr } = await supabase
-          .from("accounts_receivable")
-          .insert(records)
-          .select();
-        if (recErr) throw recErr;
-        firstReceivableId = recs?.[0]?.id ?? null;
-      } else if (splitFiadoAmount > 0) {
-        const baseDate = new Date(firstDueDate + "T00:00:00");
-        const totalParts = Math.max(1, splitFiadoInstallments);
-        const amountCents = Math.round(splitFiadoAmount * 100);
-        const parcelaValor = Math.round(amountCents / totalParts) / 100;
+
         const records: any[] = [];
-        for (let i = 0; i < totalParts; i++) {
-          const due = i === 0 ? baseDate : addMonths(baseDate, i);
-          const valor =
-            i === totalParts - 1
-              ? Math.round((amountCents - Math.round(parcelaValor * 100) * (totalParts - 1))) / 100
-              : parcelaValor;
+        for (let i = 0; i < generatedInstallments.length; i++) {
+          const inst = generatedInstallments[i];
+          const due = i === 0 ? baseDate : addPeriod(baseDate, i, paymentFrequency);
+          
           records.push({
             customer_id: customerId,
-            amount: valor,
+            amount: inst.amount,
             due_date: due.toISOString().slice(0, 10),
             description:
-              totalParts === 1
-                ? `Pagamento misto — parte na carteira — ${cart.length} item(ns)`
-                : `Pagamento misto — carteira (${i + 1}/${totalParts}) — ${cart.length} item(ns)`,
+              generatedInstallments.length === 1
+                ? `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} — ${cart.length} item(ns)`
+                : `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} (${i + 1}/${generatedInstallments.length}) — ${cart.length} item(ns)`,
             status: "pendente",
           });
         }
