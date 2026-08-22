@@ -555,7 +555,7 @@ export default function WhatsApp() {
           <div className="space-y-3">
             <h3 className="text-sm font-medium">Cobrança automática</h3>
             <p className="text-xs text-muted-foreground">
-              Execute a cobrança manual se suspeitar que o envio automático falhou. As mensagens enviadas agora aparecerão na aba de Conversas.
+              As cobranças automáticas ocorrem rigorosamente às 10:00 da manhã (Brasília). Execute a cobrança manual se suspeitar que o envio automático falhou. As mensagens enviadas agora aparecerão na aba de Conversas.
             </p>
             {ultimaCobranca && (
               <div
