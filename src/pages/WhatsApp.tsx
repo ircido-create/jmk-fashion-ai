@@ -555,7 +555,7 @@ export default function WhatsApp() {
           <div className="space-y-3">
             <h3 className="text-sm font-medium">Cobrança automática</h3>
             <p className="text-xs text-muted-foreground">
-              Analise os anexos enviados.
+              Execute a cobrança manual se suspeitar que o envio automático falhou. As mensagens enviadas agora aparecerão na aba de Conversas.
             </p>
             {ultimaCobranca && (
               <div
