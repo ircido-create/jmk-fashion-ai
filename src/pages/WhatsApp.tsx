@@ -220,7 +220,9 @@ export default function WhatsApp() {
           ? `${sent} mensagens enviadas de ${total} débitos analisados${falhas ? `, ${falhas} falha(s)` : ""}.`
           : falhas
             ? `Nenhuma mensagem saiu: ${falhas} falha(s) de envio entre os ${total} débitos analisados.`
-            : `Nenhum novo débito pendente de cobrança foi encontrado entre os ${total} analisados.`,
+            : total === 0 
+              ? `Nenhum débito elegível foi encontrado. Verifique se as cobranças de hoje já foram enviadas.`
+              : `Nenhum novo débito pendente de cobrança foi encontrado entre os ${total} analisados.`,
         variant: falhas ? "destructive" : undefined,
       });
     }
