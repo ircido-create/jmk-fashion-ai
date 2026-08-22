@@ -1,3 +1,4 @@
+/** ajustar o sistema para que o envio automático ocorra rigorosamente às 10:00 da manhã no horário de Brasília */
 import { Suspense } from "react";
 import { lazyWithRetry as lazy } from "@/lib/lazyWithRetry";
 
