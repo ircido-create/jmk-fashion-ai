@@ -1,0 +1,1 @@
+DELETE FROM public.dunning_logs WHERE sent_at >= '2026-08-22 00:00:00'::date AND sent_at < '2026-08-23 00:00:00'::date;
