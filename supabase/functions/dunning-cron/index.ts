@@ -3,24 +3,87 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-dunning-secret",
 };
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+/**
+ * A função dispara mensagens reais para clientes e roda com verify_jwt = false,
+ * então precisa autorizar por conta própria. Aceita dois chamadores: o agendamento
+ * (segredo no cabeçalho) e o botão do painel (JWT de admin).
+ *
+ * Enquanto DUNNING_SECRET não estiver definido, segue aberta como antes — exigir o
+ * segredo já no deploy derrubaria a cobrança agendada antes de o cron ser
+ * atualizado para enviá-lo.
+ */
+async function autorizado(req: Request): Promise<boolean> {
+  const segredo = Deno.env.get("DUNNING_SECRET");
+  if (!segredo) {
+    console.warn("DUNNING_SECRET não definido — endpoint aberto. Defina o segredo e atualize o cron.");
+    return true;
+  }
+
+  if (req.headers.get("x-dunning-secret") === segredo) return true;
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (!authHeader.startsWith("Bearer ")) return false;
+  try {
+    const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData } = await authClient.auth.getUser();
+    if (!userData?.user) return false;
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data: isAdmin } = await admin.rpc("has_role", {
+      _user_id: userData.user.id,
+      _role: "admin",
+    });
+    return !!isAdmin;
+  } catch {
+    return false;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  if (!(await autorizado(req))) return json({ error: "Não autorizado" }, 401);
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const origem = req.headers.get("x-dunning-secret") ? "cron" : "manual";
+
+  // Abre o registro antes do trabalho: se a rodada morrer no meio, a linha fica
+  // como 'executando' e denuncia a interrupção.
+  const { data: run } = await supabase
+    .from("dunning_runs")
+    .insert({ origem })
+    .select("id")
+    .single();
+  const runId = run?.id as string | undefined;
+
+  const fecharRun = async (campos: Record<string, unknown>) => {
+    if (!runId) return;
+    await supabase
+      .from("dunning_runs")
+      .update({ finished_at: new Date().toISOString(), ...campos })
+      .eq("id", runId);
+  };
 
   try {
     const deviceId = Deno.env.get("BUBBLEWHATS_DEVICE_ID");
     const bwToken = Deno.env.get("BUBBLEWHATS_TOKEN");
     if (!deviceId || !bwToken) {
-      return new Response(JSON.stringify({ skipped: "BubbleWhats não configurado" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      await fecharRun({ status: "falha", erro: "BubbleWhats não configurado" });
+      return json({ skipped: "BubbleWhats não configurado" });
     }
 
     const today = new Date().toISOString().slice(0, 10);
@@ -32,15 +95,28 @@ Deno.serve(async (req) => {
 
     // 3. Busca débitos vencidos (status 'vencido') que possuem cliente com telefone
     // Filtramos para ignorar os que já foram cobrados hoje via dunning_logs
-    const { data: overdue } = await supabase
-      .rpc('get_overdue_receivables_to_dunning', { 
+    const { data: overdue, error: erroBusca } = await supabase
+      .rpc('get_overdue_receivables_to_dunning', {
         p_today: today,
-        p_limit: 50 
+        p_limit: 50
       });
 
+    // O erro desta chamada era descartado. Se a RPC não existir no banco, overdue
+    // vem nulo, o laço não roda e a rodada termina "com sucesso" tendo enviado
+    // zero — nenhuma cobrança sai e nada denuncia o motivo.
+    if (erroBusca) {
+      const detalhe = `Falha ao buscar vencidos (RPC get_overdue_receivables_to_dunning): ${erroBusca.message}`;
+      console.error(detalhe);
+      await fecharRun({ status: "falha", erro: detalhe });
+      return json({ error: detalhe }, 500);
+    }
+
+    const total = overdue?.length ?? 0;
     let sent = 0;
+    let failed = 0;
+    const erros: string[] = [];
     const url = `https://${deviceId}.bubblewhats.com/send-message`;
-    
+
     for (const r of overdue ?? []) {
       const cust: any = (r as any).customers;
       const phone = String(cust?.phone || "").replace(/\D/g, "");
@@ -56,7 +132,7 @@ Deno.serve(async (req) => {
         .select("*", { count: "exact", head: true })
         .eq("receivable_id", r.id)
         .gte("sent_at", new Date(today).toISOString());
-      
+
       if ((count ?? 0) > 0) continue;
 
       // 5. Verifica se o contato está na White List (Silêncio)
@@ -71,16 +147,19 @@ Deno.serve(async (req) => {
         const m = String(r.due_date).match(/^(\d{4})-(\d{2})-(\d{2})/);
         return m ? `${m[3]}/${m[2]}/${m[1]}` : String(r.due_date);
       })();
-      
+
       const msg = `Olá, ${cust.name} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${dueBR}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸\n\n👉🏻 Caso tenha efetuado o pagamento, desconsidere este lembrete!`;
 
       const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
-      
+
       try {
         const res = await fetch(url, {
           method: "POST",
           headers: { Authorization: bwToken, "Content-Type": "application/json" },
           body: JSON.stringify({ jid, message: msg }),
+          // Sem timeout, um envio pendurado trava a rodada inteira até o limite da
+          // edge function, e os clientes seguintes da fila não são cobrados.
+          signal: AbortSignal.timeout(20000),
         });
 
         if (res.ok) {
@@ -92,29 +171,39 @@ Deno.serve(async (req) => {
           });
           sent++;
         } else {
-          const errText = await res.text();
+          failed++;
+          const errText = (await res.text()).slice(0, 200);
           console.error(`Falha envio BubbleWhats (${phone}):`, res.status, errText);
-          // Registra erro na config para o painel de diagnóstico
-          await supabase.from("whatsapp_config").update({
-            last_error_at: new Date().toISOString(),
-            last_error_message: `Falha no envio para ${phone}: ${errText.slice(0, 100)}`
-          }).not("id", "is", null);
+          if (erros.length < 5) erros.push(`${phone}: HTTP ${res.status} ${errText}`);
         }
       } catch (fetchErr) {
-        console.error(`Erro de rede ao enviar para ${phone}:`, fetchErr);
+        failed++;
+        const detalhe = fetchErr instanceof Error ? fetchErr.message : "erro de rede";
+        console.error(`Erro de rede ao enviar para ${phone}:`, detalhe);
+        if (erros.length < 5) erros.push(`${phone}: ${detalhe}`);
       }
-      
+
       // Pequeno delay para não sobrecarregar a API/WhatsApp
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    return new Response(JSON.stringify({ sent, total_processed: overdue?.length ?? 0 }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Falha de envio ia para whatsapp_config.last_error_message, campo que descreve
+    // o estado da sessão do WhatsApp e das respostas da IA. Misturar cobrança ali
+    // fazia o painel acusar problema de conexão quando o que falhou foi um envio.
+    // O lugar do resultado da cobrança é dunning_runs, que o painel exibe.
+    await fecharRun({
+      status: "sucesso",
+      total,
+      enviadas: sent,
+      falhadas: failed,
+      erro: erros.length ? erros.join(" | ") : null,
     });
+
+    return json({ sent, failed, total_processed: total });
   } catch (e) {
-    console.error(e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erro" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const detalhe = e instanceof Error ? e.message : "Erro";
+    console.error(detalhe);
+    await fecharRun({ status: "falha", erro: detalhe });
+    return json({ error: detalhe }, 500);
   }
 });

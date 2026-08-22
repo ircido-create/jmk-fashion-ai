@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
 import { MessageSquare, Save, Send, Sparkles, Copy, Check, AlertTriangle, Settings, Activity, RefreshCw, Wifi, WifiOff } from "lucide-react";
 
 // A integracao com a Meta foi removida por completo — codigo e colunas. O envio e
@@ -51,25 +52,36 @@ export default function WhatsApp() {
   const [checking, setChecking] = useState(false);
   const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
   const [avgDelayMin, setAvgDelayMin] = useState<number | null>(null);
+  const [ultimaCobranca, setUltimaCobranca] = useState<any>(null);
+
+  // 'executando' sem fim significa rodada interrompida no meio; falha individual de
+  // envio tambem merece destaque, senao a cobranca some em silencio como antes.
+  const cobrancaComProblema =
+    !!ultimaCobranca &&
+    (ultimaCobranca.status !== "sucesso" || (ultimaCobranca.falhadas ?? 0) > 0);
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const webhookUrl = `https://${projectId}.supabase.co/functions/v1/bubblewhats-webhook`;
 
   const load = async () => {
     setLoading(true);
-    const [{ data: c }, { data: a }, { data: bl }, { data: lm }, { data: delays }] = await Promise.all([
-      supabase.from("whatsapp_config").select("*").maybeSingle(),
-      supabase.from("ai_settings").select("*").maybeSingle(),
-      supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
-      supabase.from("whatsapp_messages").select("created_at").eq("direction", "inbound")
-        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("whatsapp_messages").select("created_at, sent_at").eq("direction", "inbound")
-        .not("sent_at", "is", null).order("created_at", { ascending: false }).limit(20),
-    ]);
+    const [{ data: c }, { data: a }, { data: bl }, { data: lm }, { data: delays }, { data: run }] =
+      await Promise.all([
+        supabase.from("whatsapp_config").select("*").maybeSingle(),
+        supabase.from("ai_settings").select("*").maybeSingle(),
+        supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
+        supabase.from("whatsapp_messages").select("created_at").eq("direction", "inbound")
+          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("whatsapp_messages").select("created_at, sent_at").eq("direction", "inbound")
+          .not("sent_at", "is", null).order("created_at", { ascending: false }).limit(20),
+        supabase.from("dunning_runs").select("*")
+          .order("started_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
     setBlocked((bl ?? []) as BlockedContact[]);
     setLastInboundAt((lm as any)?.created_at ?? null);
+    setUltimaCobranca(run ?? null);
     const rows = (delays ?? []) as { created_at: string; sent_at: string }[];
     setAvgDelayMin(
       rows.length
@@ -195,19 +207,25 @@ export default function WhatsApp() {
     setSaving(true);
     const { data, error } = await supabase.functions.invoke("dunning-cron");
     setSaving(false);
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    const d = data as any;
+    if (error || d?.error) {
+      toast({ title: "Erro", description: error?.message ?? d?.error, variant: "destructive" });
     } else {
-      const sent = (data as any)?.sent ?? 0;
-      const total = (data as any)?.total_processed ?? 0;
-      toast({ 
-        title: `Cobrança executada`, 
-        description: sent > 0 
-          ? `${sent} mensagens enviadas de ${total} débitos analisados.` 
-          : `Nenhum novo débito pendente de cobrança foi encontrado entre os ${total} analisados.` 
+      const sent = d?.sent ?? 0;
+      const total = d?.total_processed ?? 0;
+      const falhas = d?.failed ?? 0;
+      toast({
+        title: `Cobrança executada`,
+        description: sent > 0
+          ? `${sent} mensagens enviadas de ${total} débitos analisados${falhas ? `, ${falhas} falha(s)` : ""}.`
+          : falhas
+            ? `Nenhuma mensagem saiu: ${falhas} falha(s) de envio entre os ${total} débitos analisados.`
+            : `Nenhum novo débito pendente de cobrança foi encontrado entre os ${total} analisados.`,
+        variant: falhas ? "destructive" : undefined,
       });
-      load();
     }
+    // Traz o registro da execução para o painel, inclusive quando falhou.
+    load();
   };
 
   const configureBubbleWhatsGroups = async () => {
@@ -538,6 +556,40 @@ export default function WhatsApp() {
               Roda diariamente às 10h. Envia mensagem cordial a clientes com contas vencidas.
               Use o botão abaixo para executar manualmente.
             </p>
+            {ultimaCobranca && (
+              <div
+                className={cn(
+                  "rounded-xl border p-3 text-xs",
+                  cobrancaComProblema
+                    ? "border-destructive/40 bg-destructive/10"
+                    : "border-border bg-background/40",
+                )}
+              >
+                <div className="flex items-center gap-2 font-medium">
+                  {cobrancaComProblema ? (
+                    <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5 text-primary" />
+                  )}
+                  <span>
+                    Última execução: {new Date(ultimaCobranca.started_at).toLocaleString("pt-BR")}
+                    {ultimaCobranca.origem === "manual" ? " (manual)" : ""}
+                  </span>
+                </div>
+                <p className="text-muted-foreground mt-1">
+                  {ultimaCobranca.status === "executando"
+                    ? "A rodada começou e não terminou — foi interrompida no meio."
+                    : ultimaCobranca.status === "falha"
+                      ? "A rodada falhou antes de terminar."
+                      : `${ultimaCobranca.enviadas} enviada(s), ${ultimaCobranca.falhadas} falha(s), de ${ultimaCobranca.total} conta(s) analisada(s).`}
+                </p>
+                {ultimaCobranca.erro && (
+                  <pre className="mt-1 p-2 bg-background/60 rounded overflow-x-auto whitespace-pre-wrap">
+                    {ultimaCobranca.erro}
+                  </pre>
+                )}
+              </div>
+            )}
             <Button onClick={runDunning} variant="outline" className="w-full">
               ⏰ Executar cobrança agora
             </Button>
