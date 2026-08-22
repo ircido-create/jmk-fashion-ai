@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
       return json({ skipped: "BubbleWhats não configurado" });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"})).toISOString().slice(0, 10);
     await supabase
       .from("accounts_receivable")
       .update({ status: "vencido" })
