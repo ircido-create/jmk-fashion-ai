@@ -98,9 +98,8 @@ Deno.serve(async (req) => {
     const { data: overdue, error: erroBusca } = await supabase
       .rpc('get_overdue_receivables_to_dunning', {
         p_today: today,
-        // 50 títulos com pausa entre envios estouravam o limite de 150s da edge
-        // function: a rodada morria sem gravar o resultado. 20 cabem com folga.
-        p_limit: 20
+        p_limit: 20,
+        p_max_dias_vencido: 60
       });
 
     // O erro desta chamada era descartado. Se a RPC não existir no banco, overdue
