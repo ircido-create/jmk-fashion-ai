@@ -179,12 +179,31 @@ Deno.serve(async (req) => {
         });
 
         if (res.ok) {
+          // Salva no log de cobrança para controle interno
           await supabase.from("dunning_logs").insert({
             customer_id: r.customer_id,
             receivable_id: r.id,
             message: msg,
             sent_at: new Date().toISOString()
           });
+          
+          // CRITICAL: Salva também em whatsapp_messages para aparecer na aba de conversas
+          // e para que possamos auditar se a mensagem realmente "saiu" do sistema.
+          const { data: conv } = await supabase
+            .from("whatsapp_conversations")
+            .select("id")
+            .eq("customer_phone", phone)
+            .maybeSingle();
+            
+          if (conv) {
+            await supabase.from("whatsapp_messages").insert({
+              conversation_id: conv.id,
+              direction: "outbound",
+              content: msg,
+              sent_at: new Date().toISOString()
+            });
+          }
+
           sent++;
         } else {
           failed++;
