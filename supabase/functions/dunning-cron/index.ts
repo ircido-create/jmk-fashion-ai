@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       .rpc('get_overdue_receivables_to_dunning', {
         p_today: today,
         p_limit: 20,
-        p_max_dias_vencido: 60
+        p_max_dias_vencido: 180
       });
 
     // O erro desta chamada era descartado. Se a RPC não existir no banco, overdue
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
       // 4. Regra Anti-Spam: Não envia se já houve cobrança para ESTE título HOJE
       // E também não envia se o título venceu há muito tempo (evita spam de dívidas legadas)
       const daysOverdue = Math.floor((new Date(today).getTime() - new Date(r.due_date).getTime()) / 86400000);
-      if (daysOverdue > 60) {
+      if (daysOverdue > 180) {
         skippedOld++;
         continue;
       }
