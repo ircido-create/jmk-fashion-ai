@@ -116,6 +116,9 @@ Deno.serve(async (req) => {
     const total = overdue?.length ?? 0;
     let sent = 0;
     let failed = 0;
+    let skippedAlreadySent = 0;
+    let skippedBlocked = 0;
+    let skippedOld = 0;
     const erros: string[] = [];
     const url = `https://${deviceId}.bubblewhats.com/send-message`;
 
@@ -126,8 +129,13 @@ Deno.serve(async (req) => {
 
       // 4. Regra Anti-Spam: Não envia se já houve cobrança para ESTE título HOJE
       // E também não envia se o título venceu há muito tempo (evita spam de dívidas legadas)
+      // 4. Regra Anti-Spam: Não envia se já houve cobrança para ESTE título HOJE
+      // E também não envia se o título venceu há muito tempo (evita spam de dívidas legadas)
       const daysOverdue = Math.floor((new Date(today).getTime() - new Date(r.due_date).getTime()) / 86400000);
-      if (daysOverdue > 60) continue;
+      if (daysOverdue > 60) {
+        skippedOld++;
+        continue;
+      }
 
       const { count } = await supabase
         .from("dunning_logs")
@@ -135,7 +143,10 @@ Deno.serve(async (req) => {
         .eq("receivable_id", r.id)
         .gte("sent_at", new Date(today).toISOString());
 
-      if ((count ?? 0) > 0) continue;
+      if ((count ?? 0) > 0) {
+        skippedAlreadySent++;
+        continue;
+      }
 
       // 5. Verifica se o contato está na White List (Silêncio)
       const { data: isBlocked } = await supabase
@@ -143,7 +154,10 @@ Deno.serve(async (req) => {
         .select("id")
         .eq("phone", phone)
         .maybeSingle();
-      if (isBlocked) continue;
+      if (isBlocked) {
+        skippedBlocked++;
+        continue;
+      }
 
       const dueBR = (() => {
         const m = String(r.due_date).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -199,9 +213,13 @@ Deno.serve(async (req) => {
       enviadas: sent,
       falhadas: failed,
       erro: erros.length ? erros.join(" | ") : null,
+      // Armazenamos detalhes do skip no log da edge function para auditoria
     });
 
-    return json({ sent, failed, total_processed: total });
+    console.log(`Resumo: ${sent} enviadas, ${failed} falhas, ${total} analisados.`);
+    console.log(`Skips: ${skippedAlreadySent} já enviados hoje, ${skippedBlocked} bloqueados, ${skippedOld} dívidas antigas.`);
+
+    return json({ sent, failed, total_processed: total, skipped: { already_sent: skippedAlreadySent, blocked: skippedBlocked, old: skippedOld } });
   } catch (e) {
     const detalhe = e instanceof Error ? e.message : "Erro";
     console.error(detalhe);

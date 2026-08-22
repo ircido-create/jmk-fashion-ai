@@ -1,3 +1,4 @@
+import ReactMarkdown from 'react-markdown';
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
@@ -276,6 +277,74 @@ export default function Dashboard() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </GlassCard>
+      <GlassCard className="mt-6 overflow-auto max-h-[600px] prose dark:prose-invert max-w-none">
+        <ReactMarkdown>{`## Relatório de Execução: Cobranças Não Enviadas
+
+### Descrição do Problema
+
+Foi identificada uma execução manual do processo de cobrança que, apesar de reportar sucesso, não resultou no envio de nenhuma mensagem aos clientes. A auditoria dos logs indica que nenhuma conta foi analisada, levando à ausência de ações de cobrança.
+
+### Detalhes da Execução
+
+*   **Última Execução:** 22/08/2026, 10:00:07 (Manual)
+*   **Status Registrado:**
+    \`\`\`
+    0 enviada(s), 0 falha(s), de 0 conta(s) analisada(s).
+    \`\`\`
+
+### Comportamento Observado
+
+O sistema informa que o processo foi executado e concluído sem erros, mas **nenhuma mensagem de cobrança foi efetivamente enviada**. O número de contas analisadas é zero, o que sugere que o critério de seleção ou a base de dados de clientes elegíveis não foi acessada ou estava vazia no momento da execução.
+
+### Comportamento Esperado
+
+Após a execução manual do processo de cobrança, esperava-se que:
+1.  Contas de clientes elegíveis fossem identificadas.
+2.  Mensagens de cobrança fossem geradas e enviadas para essas contas.
+3.  O status de execução refletisse o número real de mensagens enviadas e/ou falhas.
+
+### Impacto
+
+A não emissão das cobranças pode resultar em:
+*   Perda de receita para a empresa.
+*   Desalinhamento nos processos financeiros.
+*   Impacto na experiência do cliente (cobranças tardias ou inesperadas).
+
+### Pontos de Análise e Melhorias (UI/UX e Web Design)
+
+Para investigar a causa raiz e evitar futuras ocorrências, solicitamos a análise dos seguintes pontos, com foco em usabilidade e feedback do usuário:
+
+1.  **Validação de Entradas/Critérios de Seleção (UI):**
+    *   **Contexto:** Por que \`0 conta(s) analisada(s)\`? Isso pode indicar que os critérios de filtro aplicados pelo usuário (se houver) resultaram em um conjunto vazio de clientes, ou que a fonte de dados estava indisponível.
+    *   **Ação:**
+        *   Verificar se a interface de usuário para configurar e iniciar o processo de cobrança (filtros de data, status, grupos de clientes, etc.) é clara e intuitiva.
+        *   Implementar validações na UI para alertar o usuário **antes** da execução se os critérios selecionados resultarem em zero contas elegíveis (ex: "Atenção: Com os filtros atuais, nenhuma conta será processada. Deseja continuar?").
+        *   Garantir que a interface exiba claramente os critérios que foram utilizados na execução manual.
+
+2.  **Feedback Visual e Logging Detalhado (UI/Backend):**
+    *   **Contexto:** A mensagem "0 enviada(s), 0 falha(s), de 0 conta(s) analisada(s)" é ambígua. Não informa *por que* zero contas foram analisadas.
+    *   **Ação:**
+        *   Melhorar o log de execução para incluir detalhes sobre o **motivo** de zero contas terem sido analisadas (ex: "Nenhuma conta encontrada com dívidas pendentes", "Filtro de grupo de clientes 'X' resultou em zero clientes").
+        *   No relatório de execução visível ao usuário na UI, exibir uma mensagem mais informativa nesses casos, como "Processo concluído, mas nenhuma cobrança gerada. Motivo: [Detalhe do log aqui]".
+        *   Considerar a exibição de um "relatório detalhado" acessível via UI que mostre quais contas foram consideradas, quais foram filtradas e por quê.
+
+3.  **Disponibilidade e Integridade dos Dados (Backend/UI):**
+    *   **Contexto:** Verificar se a base de dados de clientes e suas respectivas pendências de cobrança estavam acessíveis e íntegras no momento da execução.
+    *   **Ação:**
+        *   Implementar verificações de integridade de dados e conectividade na rotina de cobrança.
+        *   Em caso de falha de acesso a dados críticos, o sistema deve registrar um erro explícito e informar o usuário através da UI (ex: "Falha ao acessar dados de clientes. Por favor, tente novamente ou contate o suporte.").
+
+4.  **Permissões de Usuário e Escopo (UI/Backend):**
+    *   **Contexto:** Confirmar se o usuário que realizou a execução manual possui todas as permissões necessárias para acessar as contas e disparar as cobranças.
+    *   **Ação:**
+        *   Garantir que as ações de UI para disparar cobranças estejam desabilitadas ou apresentem uma mensagem clara se o usuário não tiver as permissões adequadas.
+
+### Próximos Passos
+
+1.  **Análise de Logs:** Aprofundar a análise dos logs do sistema para identificar a causa exata de "0 conta(s) analisada(s)".
+2.  **Revisão do Código:** Inspecionar a lógica de seleção de clientes e geração de cobranças para garantir que ela esteja funcionando conforme o esperado.
+3.  **Melhorias de Feedback:** Planejar e implementar as melhorias de UI/UX para proporcionar maior clareza e feedback útil ao usuário durante e após as execuções do processo de cobrança.`}</ReactMarkdown>
       </GlassCard>
     </div>
   );
