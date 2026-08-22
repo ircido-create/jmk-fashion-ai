@@ -1134,33 +1134,21 @@ export type Database = {
         Args: { qty: number; variant_id: string }
         Returns: number
       }
-      get_overdue_receivables_to_dunning:
-        | {
-            Args: {
-              p_limit?: number
-              p_max_dias_vencido?: number
-              p_today?: string
-            }
-            Returns: {
-              amount: number
-              customer_id: string
-              customers: Json
-              description: string
-              due_date: string
-              id: string
-            }[]
-          }
-        | {
-            Args: { p_limit?: number; p_today: string }
-            Returns: {
-              amount: number
-              customer_id: string
-              customers: Json
-              description: string
-              due_date: string
-              id: string
-            }[]
-          }
+      get_overdue_receivables_to_dunning: {
+        Args: {
+          p_limit?: number
+          p_max_dias_vencido?: number
+          p_today?: string
+        }
+        Returns: {
+          amount: number
+          customer_id: string
+          customers: Json
+          description: string
+          due_date: string
+          id: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
