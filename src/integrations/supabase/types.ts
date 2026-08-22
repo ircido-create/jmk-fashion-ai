@@ -250,42 +250,6 @@ export type Database = {
           },
         ]
       }
-      dunning_runs: {
-        Row: {
-          enviadas: number
-          erro: string | null
-          falhadas: number
-          finished_at: string | null
-          id: string
-          origem: string
-          started_at: string
-          status: string
-          total: number
-        }
-        Insert: {
-          enviadas?: number
-          erro?: string | null
-          falhadas?: number
-          finished_at?: string | null
-          id?: string
-          origem?: string
-          started_at?: string
-          status?: string
-          total?: number
-        }
-        Update: {
-          enviadas?: number
-          erro?: string | null
-          falhadas?: number
-          finished_at?: string | null
-          id?: string
-          origem?: string
-          started_at?: string
-          status?: string
-          total?: number
-        }
-        Relationships: []
-      }
       favorite_stickers: {
         Row: {
           created_at: string
