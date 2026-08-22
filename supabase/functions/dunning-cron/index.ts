@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
       }
 
       // Pequeno delay para não sobrecarregar a API/WhatsApp
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     // Falha de envio ia para whatsapp_config.last_error_message, campo que descreve
