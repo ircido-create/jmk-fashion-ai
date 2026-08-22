@@ -250,6 +250,42 @@ export type Database = {
           },
         ]
       }
+      dunning_runs: {
+        Row: {
+          enviadas: number | null
+          erro: string | null
+          falhadas: number | null
+          finished_at: string | null
+          id: string
+          origem: string
+          started_at: string
+          status: string
+          total: number | null
+        }
+        Insert: {
+          enviadas?: number | null
+          erro?: string | null
+          falhadas?: number | null
+          finished_at?: string | null
+          id?: string
+          origem?: string
+          started_at?: string
+          status?: string
+          total?: number | null
+        }
+        Update: {
+          enviadas?: number | null
+          erro?: string | null
+          falhadas?: number | null
+          finished_at?: string | null
+          id?: string
+          origem?: string
+          started_at?: string
+          status?: string
+          total?: number | null
+        }
+        Relationships: []
+      }
       favorite_stickers: {
         Row: {
           created_at: string
@@ -1097,6 +1133,17 @@ export type Database = {
       decrement_variant_stock: {
         Args: { qty: number; variant_id: string }
         Returns: number
+      }
+      get_overdue_receivables_to_dunning: {
+        Args: { p_limit?: number; p_today: string }
+        Returns: {
+          amount: number
+          customer_id: string
+          customers: Json
+          description: string
+          due_date: string
+          id: string
+        }[]
       }
       has_role: {
         Args: {

@@ -98,7 +98,9 @@ Deno.serve(async (req) => {
     const { data: overdue, error: erroBusca } = await supabase
       .rpc('get_overdue_receivables_to_dunning', {
         p_today: today,
-        p_limit: 50
+        // 50 títulos com pausa entre envios estouravam o limite de 150s da edge
+        // function: a rodada morria sem gravar o resultado. 20 cabem com folga.
+        p_limit: 20
       });
 
     // O erro desta chamada era descartado. Se a RPC não existir no banco, overdue
@@ -184,7 +186,7 @@ Deno.serve(async (req) => {
       }
 
       // Pequeno delay para não sobrecarregar a API/WhatsApp
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     // Falha de envio ia para whatsapp_config.last_error_message, campo que descreve
