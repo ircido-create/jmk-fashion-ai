@@ -553,8 +553,7 @@ export default function WhatsApp() {
           <div className="space-y-3">
             <h3 className="text-sm font-medium">Cobrança automática</h3>
             <p className="text-xs text-muted-foreground">
-              Roda diariamente às 10h. Envia mensagem cordial a clientes com contas vencidas.
-              Use o botão abaixo para executar manualmente.
+              Analise os anexos enviados.
             </p>
             {ultimaCobranca && (
               <div
