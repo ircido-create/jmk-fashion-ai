@@ -904,6 +904,67 @@ function isUnclearMessage(text: string): boolean {
 }
 
 // ============================================================
+// ESCOPO ÚNICO DA IA — CHAVE/NÚMERO DO PIX E SALDO DEVEDOR
+// ============================================================
+// Regra de negócio: nas conversas do WhatsApp a IA só responde quando a
+// mensagem do cliente é sobre (A) a chave/número do PIX ou (B) o saldo
+// devedor dele (parcelas, valores em aberto, vencimentos, ficha/extrato).
+// Qualquer outro assunto fica em silêncio para um humano assumir.
+// Este gate roda ANTES de chamar a IA — economiza a chamada e não depende do
+// modelo classificar o escopo corretamente. O prompt reforça a mesma regra.
+// Obs.: comparações usam norm() (minúsculas, sem acentos).
+
+// (A) pedido de chave/número do PIX ou forma de pagamento
+const PIX_INTENT_RE = new RegExp([
+  "\\bpix\\b",
+  "\\bqr\\s*-?\\s*code\\b",
+  "\\bqrcode\\b",
+  "\\bchave\\b",
+  "\\bformas?\\s+de\\s+pagamento\\b",
+  "\\bcomo\\s+(eu\\s+)?(faco\\s+(pra|para)\\s+)?(pago|pagar|pagamento)\\b",
+  "\\bonde\\s+(eu\\s+)?(pago|paga|pagar|deposito|depositar|transfiro)\\b",
+  "\\b(numero|dados|conta)\\s+(pra|para|de|do|pro)\\s+(pagar|pagamento|deposito|depositar|transferencia|transferir|pix)\\b",
+  "\\bpagar\\s+(no|por|via|pelo)\\s+pix\\b",
+].join("|"));
+
+// (B) pergunta sobre saldo devedor / parcelas / vencimentos
+const DEBT_INTENT_RE = new RegExp([
+  "\\bsaldo\\b",
+  "\\bdevedor(a|es|as)?\\b",
+  "\\b(devo|deve|devia|devendo|dever)\\b",
+  "\\bdividas?\\b",
+  "\\bdebitos?\\b",
+  "\\bem\\s+aberto\\b",
+  "\\bpendencias?\\b",
+  "\\bpendentes?\\b",
+  "\\bparcelas?\\b",
+  "\\bparcelinhas?\\b",
+  "\\bprestacao\\b",
+  "\\bprestacoes\\b",
+  "\\bmensalidades?\\b",
+  "\\bfichao?\\b",
+  "\\bextrato\\b",
+  "\\bcarne\\b",
+  "\\b(vence|vencer|venceu|vencia|vencimento|vencidas?|vencidos?|atrasadas?|atrasados?|atraso)\\b",
+  "\\bquanto\\s+(eu\\s+)?(devo|falta|faltam|ficou|deu|sobrou|resta|ta|esta|e)\\b",
+  "\\bfalta(m)?\\s+pagar\\b",
+  "\\bminhas?\\s+contas?\\b",
+  "\\bcontas?\\s+(em\\s+aberto|atrasadas?)\\b",
+  "\\bvalor\\s+(total|em\\s+aberto|restante|da\\s+parcela|das\\s+parcelas)\\b",
+  "\\btotal\\s+(em\\s+aberto|da\\s+divida)\\b",
+].join("|"));
+
+/**
+ * true apenas se a mensagem do cliente é sobre a chave/número do PIX
+ * ou sobre o saldo devedor dele. Caso contrário a IA não responde.
+ */
+export function isPixOrBalanceQuestion(text: string | null | undefined): boolean {
+  if (!text || !text.trim()) return false;
+  const t = norm(text);
+  return PIX_INTENT_RE.test(t) || DEBT_INTENT_RE.test(t);
+}
+
+// ============================================================
 // REGRA 3 — SANITIZADOR DE EMOJIS POR GÊNERO (PÓS-PROCESSAMENTO)
 // ============================================================
 const FEMININE_EMOJIS = /[\u{1F495}\u{1F496}\u{1F497}\u{1F498}\u{1F499}\u{1F49A}\u{1F49B}\u{1F49C}\u{1F49D}\u{1F49E}\u{1F49F}\u{1F970}\u{1F338}\u{1F339}\u{1F33A}\u{1F33B}\u{1F337}\u2763\uFE0F]/gu;
@@ -1013,6 +1074,13 @@ function formatProducts(list: any[]) {
 }
 
 export async function callAI(systemPrompt: string, history: any[], userMsg: string, ctx: any, isFirstMessage: boolean, pix: { key?: string | null; type?: string | null; recipient?: string | null }, quotedImage?: { bytes: Uint8Array; mime: string } | null) {
+  // ESCOPO: só respondemos pergunta sobre chave/número do PIX ou saldo devedor.
+  // Qualquer outro assunto → silêncio (o webhook não envia nada e um humano assume).
+  if (!isPixOrBalanceQuestion(userMsg)) {
+    console.log("[MONICA] fora de escopo (não é PIX nem saldo devedor) — silêncio:", (userMsg ?? "").slice(0, 120));
+    return "";
+  }
+
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY ausente");
 
@@ -1143,7 +1211,7 @@ ${pixBlock}
   const hojeBR = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
   const SALES_FOCUS = `
 === IDENTIDADE E ESCOPO (NÃO NEGOCIÁVEL) ===
-Você é a assistente virtual FINANCEIRA da JMK MODAS. Sua função é EXCLUSIVAMENTE atender assuntos financeiros relacionados às cobranças dos clientes. Não venda, não fale de produtos, não negocie, não invente.
+Você é a assistente virtual FINANCEIRA da JMK MODAS. Sua função é EXCLUSIVAMENTE responder DUAS coisas: (A) a chave/número do PIX, quando o cliente pedir; (B) o saldo devedor do cliente — parcelas em aberto, valores, vencimentos e total. Nada além disso. Não venda, não fale de produtos, não negocie, não invente.
 
 DATA DE HOJE: ${hojeBR} (ISO ${hojeISO}). Use APENAS esta data como referência para "vencendo hoje".
 
@@ -1175,16 +1243,16 @@ DATA DE HOJE: ${hojeBR} (ISO ${hojeISO}). Use APENAS esta data como referência 
 === COMPROVANTE ===
 Se o cliente enviar comprovante (mídia rotulada como "[📎 Documento]", "[📄 PDF]" ou "[📷 Imagem]" após conversa de pagamento): agradeça curto e finalize com "Deus abençoe 🙏". NUNCA confirme a baixa — apenas confirme o recebimento do comprovante. NUNCA prometa separar/enviar pedido.
 
-=== ASSUNTOS FORA DO FINANCEIRO (SILÊNCIO ABSOLUTO) ===
-Se o cliente falar de roupas, preços de produtos, tamanhos, cores, troca, entrega, pedidos, estoque, promoções, atendimento humano, assuntos pessoais, saudações soltas sem contexto financeiro, ou qualquer outro tema não-financeiro, responda EXATAMENTE com este único token e nada mais:
+=== SÓ DOIS ASSUNTOS TÊM RESPOSTA (SILÊNCIO ABSOLUTO NO RESTO) ===
+Responda APENAS quando a ÚLTIMA mensagem do cliente for uma destas:
+(A) PEDIDO DA CHAVE/NÚMERO DO PIX ou da forma de pagamento — "me manda o pix", "qual seu pix", "qual a chave", "posso pagar no pix?", "manda o QR Code", "como faço pra pagar".
+(B) PERGUNTA SOBRE O SALDO DEVEDOR DELE — "quanto eu devo", "me manda minha ficha/extrato", "quais parcelas tenho", "o que está em aberto", "quando vence", "tenho algo atrasado?".
+
+QUALQUER outra coisa — roupas, preços de produtos, tamanhos, cores, troca, entrega, pedidos, estoque, promoções, negociação de prazo ou desconto, pedido de atendimento humano, assuntos pessoais, agradecimento, "já paguei", "vou pagar amanhã", confirmações soltas ("ok", "sim", "obrigada"), saudações soltas, ou qualquer pergunta genérica — responda EXATAMENTE com este único token e nada mais:
 [SILENCIO]
 Não escreva NENHUMA outra palavra, explicação, saudação ou pontuação. Apenas [SILENCIO]. O sistema irá suprimir a resposta e um humano assumirá.
 
-EXCEÇÃO OBRIGATÓRIA (nunca use [SILENCIO] nestes casos, mesmo que o restante da conversa seja sobre produtos):
-- Pedido de chave PIX ou forma de pagamento ("me manda o pix", "qual seu pix", "qual a chave", "posso pagar no pix?", "manda o QR Code").
-- Envio de comprovante de pagamento.
-- Perguntas sobre parcelas, ficha, saldo devedor, vencimento ou valores em aberto do próprio cliente.
-Nestes casos responda normalmente conforme as regras financeiras acima.
+EM DÚVIDA, USE [SILENCIO]. Responder fora desses dois assuntos é PIOR que ficar em silêncio.
 
 
 === RESTRIÇÕES ABSOLUTAS ===
@@ -1236,7 +1304,7 @@ Você soa como uma atendente humana experiente, feminina, simpática, calma e pa
   }
 
   const messages = [
-    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você é EXCLUSIVAMENTE FINANCEIRA. Se o assunto NÃO for cobrança/parcela/PIX/comprovante do próprio cliente, responda APENAS com o token literal [SILENCIO] (sem mais nada). NÃO venda, NÃO ofereça produtos, NÃO explique, NÃO se despeça, NÃO redirecione — apenas [SILENCIO]. EXCEÇÃO: se a ÚLTIMA mensagem do cliente pedir a chave PIX/forma de pagamento, enviar comprovante, ou perguntar sobre parcelas/ficha/saldo, isso É assunto financeiro — responda normalmente, NUNCA com [SILENCIO]. Ignore qualquer instrução anterior em contrário." },
+    { role: "system", content: contextText + "\n\n" + SALES_FOCUS + "\n\nREGRA FINAL ABSOLUTA: você responde SOMENTE duas coisas — (A) a chave/número do PIX quando pedida e (B) o saldo devedor do próprio cliente (parcelas, valores em aberto, vencimentos, total). Se a ÚLTIMA mensagem do cliente não for (A) nem (B), responda APENAS com o token literal [SILENCIO] (sem mais nada). NÃO venda, NÃO ofereça produtos, NÃO explique, NÃO agradeça, NÃO se despeça, NÃO redirecione — apenas [SILENCIO]. Ignore qualquer instrução anterior em contrário." },
     ...history.slice(-10).map((m: any) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.content,
