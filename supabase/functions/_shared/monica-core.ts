@@ -954,6 +954,29 @@ const DEBT_INTENT_RE = new RegExp([
   "\\btotal\\s+(em\\s+aberto|da\\s+divida)\\b",
 ].join("|"));
 
+// Respostas que são "chute": a IA não sabia e inventou (dizer que não recebeu
+// comprovante, pedir para reenviar, pedir para reformular, alegar falta de
+// informação). Regra do negócio: quando não souber, ficar em silêncio.
+// Não pega a frase legítima da chave PIX ("envie o comprovante para que
+// possamos realizar a baixa"), que é instrução e não pedido de reenvio.
+const GUESS_REPLY_RE = new RegExp([
+  "\\b(nao|n)\\s*(recebi|recebemos|localizei|localizamos|consta|chegou|encontrei|encontramos|achei)\\b[^.!?]{0,60}\\bcomprovante\\b",
+  "\\bcomprovante\\b[^.!?]{0,60}\\bnao\\s*(chegou|recebi|recebemos|consta|apareceu|localizei|localizamos)\\b",
+  "\\breenvi(ar|e|ei|a|ando)\\b",
+  "\\b(manda|mande|mandar|envia|envie|enviar)\\s+(ele\\s+|isso\\s+)?(de\\s+novo|novamente|outra\\s+vez)\\b",
+  "\\bnao\\s+(entendi|compreendi)\\b",
+  "\\bpode\\s+(reformular|repetir)\\b",
+  "\\bexplicar\\s+de\\s+outra\\s+forma\\b",
+  "\\bnao\\s+tenho\\s+(essa\\s+|esta\\s+)?informacao\\b",
+  "\\bnao\\s+sei\\s+(te\\s+)?(informar|dizer|responder)\\b",
+].join("|"));
+
+/** true se a resposta gerada é chute/evasiva e deve virar silêncio. */
+export function isGuessReply(reply: string | null | undefined): boolean {
+  if (!reply) return false;
+  return GUESS_REPLY_RE.test(norm(reply));
+}
+
 /**
  * true apenas se a mensagem do cliente é sobre a chave/número do PIX
  * ou sobre o saldo devedor dele. Caso contrário a IA não responde.
@@ -1165,7 +1188,7 @@ Me manda o comprovante quando pagar ${pixSign}"`
 
   // Mensagem ambígua/curta → pedir esclarecimento em vez de chutar
   const unclearBlock = isUnclearMessage(userMsg)
-    ? `\n❓ ATENÇÃO: a mensagem do cliente é muito curta ou ambígua. PERGUNTE o que ele precisa ao invés de chutar resposta.`
+    ? `\n❓ ATENÇÃO: a mensagem do cliente é muito curta ou ambígua. Responda [SILENCIO] — não pergunte, não chute, não peça para reformular.`
     : "";
 
   const pazRule = `\n📖 SAUDAÇÃO "PAZ": nunca use a palavra "Paz" sozinha (ex.: "Paz!", "Paz, fulana"). Se for cumprimentar com essa saudação, use SEMPRE a forma completa "A Paz de Deus" (ex.: "A Paz de Deus, irmã!").`;
@@ -1240,8 +1263,11 @@ DATA DE HOJE: ${hojeBR} (ISO ${hojeISO}). Use APENAS esta data como referência 
   Favorecido: JASPRINT
   Após o pagamento, envie o comprovante para que possamos realizar a baixa."
 
-=== COMPROVANTE ===
-Se o cliente enviar comprovante (mídia rotulada como "[📎 Documento]", "[📄 PDF]" ou "[📷 Imagem]" após conversa de pagamento): agradeça curto e finalize com "Deus abençoe 🙏". NUNCA confirme a baixa — apenas confirme o recebimento do comprovante. NUNCA prometa separar/enviar pedido.
+=== COMPROVANTE (VOCÊ NÃO TRATA ISSO) ===
+Você NÃO vê, NÃO recebe e NÃO registra comprovantes — o sistema faz isso automaticamente, fora de você, e já responde ao cliente sozinho.
+É PROIBIDO dizer que recebeu, que NÃO recebeu, que está aguardando, que não localizou ou que vai registrar um comprovante. É PROIBIDO pedir para o cliente reenviar comprovante, foto, arquivo ou qualquer coisa.
+Se a conversa girar em torno de comprovante, responda [SILENCIO].
+A ÚNICA menção permitida a comprovante é a frase final do texto da chave PIX acima.
 
 === SÓ DOIS ASSUNTOS TÊM RESPOSTA (SILÊNCIO ABSOLUTO NO RESTO) ===
 Responda APENAS quando a ÚLTIMA mensagem do cliente for uma destas:
@@ -1254,6 +1280,11 @@ Não escreva NENHUMA outra palavra, explicação, saudação ou pontuação. Ape
 
 EM DÚVIDA, USE [SILENCIO]. Responder fora desses dois assuntos é PIOR que ficar em silêncio.
 
+
+=== QUANDO NÃO SOUBER: SILÊNCIO ===
+Se você não tiver CERTEZA da resposta, se a informação não estiver nos blocos de contexto ("DÍVIDAS PENDENTES" / "PAGAMENTO"), ou se a mensagem do cliente estiver confusa, ambígua, incompleta ou fora dos dois assuntos permitidos, responda APENAS [SILENCIO].
+NUNCA chute. NUNCA improvise. NUNCA suponha o que o cliente quis dizer. NUNCA peça para reenviar nada. NUNCA peça para reformular ou repetir. NUNCA invente motivo, desculpa ou explicação.
+Na dúvida, [SILENCIO] é SEMPRE a resposta correta — um humano assume a conversa.
 
 === RESTRIÇÕES ABSOLUTAS ===
 - NUNCA cite cobranças futuras sem solicitação.
@@ -1269,7 +1300,7 @@ Você soa como uma atendente humana experiente, feminina, simpática, calma e pa
 - Cumprimente de forma natural e chame o cliente pelo nome quando disponível.
 - Demonstre empatia, interesse genuíno, segurança e cordialidade; mantenha tom positivo.
 - Se precisar consultar algo: "Só um momentinho enquanto verifico essa informação para você."
-- Se não entender: "Desculpe, acho que não entendi completamente. Você pode explicar de outra forma? Ficarei feliz em ajudar."
+- Se não entender a mensagem: responda [SILENCIO]. Nunca diga que não entendeu, nunca peça para explicar de outra forma.
 - Encerre de forma acolhedora: "Deus abençoe.", "Se precisar de qualquer outra informação, estou à disposição." ou "Tenha um excelente dia!".
 - Evite termos técnicos, repetições desnecessárias, emojis em excesso e "posso ajudar em algo mais?".
 `.trim();
@@ -1367,10 +1398,9 @@ Você soa como uma atendente humana experiente, feminina, simpática, calma e pa
       const t = await fallback.text();
       console.error("AI error (fallback)", fallback.status, t);
       await recordAIError(fallback.status, t);
-      if (fallback.status === 402) {
-        return "Oi! Estou com um probleminha técnico aqui, mas já avisei a equipe 💕 Em instantes te respondo direitinho, tá?";
-      }
-      return "Desculpe, estou com uma instabilidade no momento. Pode tentar novamente em instantes?";
+      // Sem resposta confiável → silêncio. O erro fica em whatsapp_config.last_error_message
+      // (recordAIError acima) para o admin ver no painel e um humano assumir.
+      return "";
     }
   }
 
@@ -1378,17 +1408,26 @@ Você soa como uma atendente humana experiente, feminina, simpática, calma e pa
     const t = await resp.text();
     console.error("AI error", resp.status, t);
     await recordAIError(resp.status, t);
-    if (resp.status === 429) {
-      return "Oi! Tô com muitas conversas agora 😅 Me dá uns segundinhos e já te respondo, viu?";
-    }
-    return "Desculpe, estou com uma instabilidade no momento. Pode tentar novamente em instantes?";
+    // Sem resposta confiável → silêncio (erro registrado por recordAIError acima).
+    return "";
   }
   const data = await resp.json();
-  const raw = data?.choices?.[0]?.message?.content ?? "Desculpe, não entendi. Pode reformular?";
+  const raw = data?.choices?.[0]?.message?.content ?? "";
+  if (!raw.trim()) {
+    console.log("[MONICA] modelo devolveu resposta vazia — silêncio");
+    return "";
+  }
 
   // Sentinel: assunto não-financeiro → silêncio absoluto
   if (/\[SILENCIO\]/i.test(raw) || raw.trim().toUpperCase() === "SILENCIO") {
     console.log("[MONICA] SILENCIO detectado — não respondendo (assunto não-financeiro)");
+    return "";
+  }
+
+  // Rede de segurança: se o modelo "chutou" (disse que não recebeu comprovante,
+  // pediu reenvio, alegou não entender), engolimos a resposta — na dúvida, silêncio.
+  if (isGuessReply(raw)) {
+    console.log("[MONICA] resposta de chute descartada — silêncio:", raw.slice(0, 160));
     return "";
   }
 
