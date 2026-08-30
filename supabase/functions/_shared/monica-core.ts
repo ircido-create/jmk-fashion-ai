@@ -1456,6 +1456,11 @@ Você soa como uma atendente humana experiente, feminina, simpática, calma e pa
     console.log("[MONICA]   before:", raw.slice(0, 200));
     console.log("[MONICA]   after :", sanitized.slice(0, 200));
   }
+  // Última barreira: os pós-processadores podem reintroduzir texto proibido.
+  if (isGuessReply(sanitized)) {
+    console.log("[MONICA] resposta de chute pós-sanitização descartada — silêncio:", sanitized.slice(0, 160));
+    return "";
+  }
   return sanitized;
 }
 
