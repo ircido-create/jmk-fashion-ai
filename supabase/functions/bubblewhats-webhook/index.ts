@@ -753,6 +753,34 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ---- ANTI-DUPLICIDADE ----
+    // O provedor às vezes reentrega a mesma mensagem (ou o cliente manda duas
+    // seguidas) e dois workers respondem quase ao mesmo tempo. Se já saiu uma
+    // resposta nesta conversa nos últimos 20s, não enviamos outra.
+    try {
+      const { data: lastOut } = await withTimeout(
+        supabase
+          .from("whatsapp_messages")
+          .select("created_at")
+          .eq("conversation_id", conv.id)
+          .eq("direction", "outbound")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        3000, "dedupe:lastOutbound",
+      );
+      if (lastOut?.created_at && Date.now() - new Date(lastOut.created_at).getTime() < 20000) {
+        console.log("[dedupe] resposta recente encontrada — não enviando duplicata");
+        return new Response(JSON.stringify({ ok: true, skippedAI: "duplicate-reply" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } catch (e) {
+      console.error("[dedupe] lookup err:", e);
+    }
+
+
+
     // ---- ÁUDIO (quando cliente mandou áudio ou pediu) ----
     // REGRA: se a entrada da cliente veio em áudio, a resposta SEMPRE sai em áudio.
     const clientSentAudio = mediaKind === "audio" || audioInbound;
