@@ -960,10 +960,10 @@ const DEBT_INTENT_RE = new RegExp([
 // Não pega a frase legítima da chave PIX ("envie o comprovante para que
 // possamos realizar a baixa"), que é instrução e não pedido de reenvio.
 const GUESS_REPLY_RE = new RegExp([
-  "\\b(nao|n)\\s*(recebi|recebemos|localizei|localizamos|consta|chegou|encontrei|encontramos|achei)\\b[^.!?]{0,60}\\bcomprovante\\b",
-  "\\bcomprovante\\b[^.!?]{0,60}\\bnao\\s*(chegou|recebi|recebemos|consta|apareceu|localizei|localizamos)\\b",
-  "\\breenvi(ar|e|ei|a|ando)\\b",
-  "\\b(manda|mande|mandar|envia|envie|enviar)\\s+(ele\\s+|isso\\s+)?(de\\s+novo|novamente|outra\\s+vez)\\b",
+  "\\b(nao|n)\\s*(recebi|recebemos|localizei|localizamos|consta|chegou|encontrei|encontramos|achei)\\b",
+  "\\breenvi(ar|e|ei|a|ando|o)\\b",
+  "\\b(manda|mande|mandar|manda|envia|envie|enviar|mandar)\\s+(ele\\s+|isso\\s+|o\\s+arquivo\\s+|a\\s+foto\\s+)?(de\\s+novo|novamente|outra\\s+vez|mais\\s+uma\\s+vez)\\b",
+  "\\bnao\\s+(apareceu|aparece|caiu|entrou|veio|chegou)\\b",
   "\\bnao\\s+(entendi|compreendi)\\b",
   "\\bpode\\s+(reformular|repetir)\\b",
   "\\bexplicar\\s+de\\s+outra\\s+forma\\b",
@@ -971,11 +971,24 @@ const GUESS_REPLY_RE = new RegExp([
   "\\bnao\\s+sei\\s+(te\\s+)?(informar|dizer|responder)\\b",
 ].join("|"));
 
+// Qualquer menção a comprovante/recibo/print é proibida na resposta da IA —
+// o registro de comprovantes é automático e responde sozinho ao cliente.
+const PROOF_MENTION_RE = /\b(comprovante|comprovantes|recibo|recibos|print|prints|captura de tela)\b/;
+
+// Únicas menções autorizadas: a instrução que acompanha a chave PIX.
+const ALLOWED_PROOF_PHRASES = [
+  /apos o pagamento,?\s*envie o comprovante[^.!?]*/g,
+  /me manda o comprovante quando pagar[^.!?]*/g,
+];
+
 /** true se a resposta gerada é chute/evasiva e deve virar silêncio. */
 export function isGuessReply(reply: string | null | undefined): boolean {
   if (!reply) return false;
-  return GUESS_REPLY_RE.test(norm(reply));
+  let t = norm(reply);
+  for (const re of ALLOWED_PROOF_PHRASES) t = t.replace(re, " ");
+  return GUESS_REPLY_RE.test(t) || PROOF_MENTION_RE.test(t);
 }
+
 
 /**
  * true apenas se a mensagem do cliente é sobre a chave/número do PIX
