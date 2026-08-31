@@ -93,6 +93,15 @@ Deno.serve(async (req) => {
       .lt("due_date", today)
       .eq("status", "pendente");
 
+    // Lembretes: títulos que vencem HOJE (ainda pendentes) recebem um aviso amigável
+    // antes de virarem cobrança de atraso.
+    const { data: dueToday, error: erroHoje } = await supabase
+      .rpc("get_due_today_receivables_to_dunning", { p_today: today, p_limit: 50 });
+
+    if (erroHoje) {
+      console.error("Falha ao buscar vencimentos de hoje:", erroHoje.message);
+    }
+
     // 3. Busca débitos vencidos (status 'vencido') que possuem cliente com telefone
     // Filtramos para ignorar os que já foram cobrados hoje via dunning_logs
     const { data: overdue, error: erroBusca } = await supabase
@@ -112,8 +121,9 @@ Deno.serve(async (req) => {
       return json({ error: detalhe }, 500);
     }
 
-    const total = overdue?.length ?? 0;
+    const total = (overdue?.length ?? 0) + (dueToday?.length ?? 0);
     let sent = 0;
+    let reminders = 0;
     let failed = 0;
     let skippedAlreadySent = 0;
     let skippedBlocked = 0;
@@ -121,105 +131,120 @@ Deno.serve(async (req) => {
     const erros: string[] = [];
     const url = `https://${deviceId}.bubblewhats.com/send-message`;
 
-    for (const r of overdue ?? []) {
-      const cust: any = (r as any).customers;
-      const phone = String(cust?.phone || "").replace(/\D/g, "");
-      if (!phone) continue;
+    const dataBR = (d: unknown) => {
+      const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : String(d);
+    };
 
-      // 4. Regra Anti-Spam: Não envia se já houve cobrança para ESTE título HOJE
-      // E também não envia se o título venceu há muito tempo (evita spam de dívidas legadas)
-      // 4. Regra Anti-Spam: Não envia se já houve cobrança para ESTE título HOJE
-      // E também não envia se o título venceu há muito tempo (evita spam de dívidas legadas)
-      const daysOverdue = Math.floor((new Date(today).getTime() - new Date(r.due_date).getTime()) / 86400000);
-      if (daysOverdue > 180) {
-        skippedOld++;
-        continue;
-      }
+    const mensagemLembrete = (nome: string, r: any) =>
+      `Bom dia, ${nome} 💕 Aqui é da JMK! Passando só para lembrar com carinho que sua parcela de R$ ${r.amount} (${r.description ?? "sua comprinha"}) vence hoje (${dataBR(r.due_date)}). Se precisar do Pix ou de qualquer ajuda, é só me chamar. Que Deus te abençoe! 🌸\n\n👉🏻 Se já pagou, desconsidere este lembrete!`;
 
-      const { count } = await supabase
-        .from("dunning_logs")
-        .select("*", { count: "exact", head: true })
-        .eq("receivable_id", r.id)
-        .gte("sent_at", new Date(today).toISOString());
+    const mensagemCobranca = (nome: string, r: any) =>
+      `Olá, ${nome} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${dataBR(r.due_date)}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸\n\n👉🏻 Caso tenha efetuado o pagamento, desconsidere este lembrete!`;
 
-      if ((count ?? 0) > 0) {
-        skippedAlreadySent++;
-        continue;
-      }
+    const processar = async (
+      lista: any[],
+      tipo: "lembrete" | "cobranca",
+    ) => {
+      for (const r of lista) {
+        const cust: any = (r as any).customers;
+        const phone = String(cust?.phone || "").replace(/\D/g, "");
+        if (!phone) continue;
 
-      // 5. Verifica se o contato está na White List (Silêncio)
-      const { data: isBlocked } = await supabase
-        .from("ai_blocked_contacts")
-        .select("id")
-        .eq("phone", phone)
-        .maybeSingle();
-      if (isBlocked) {
-        skippedBlocked++;
-        continue;
-      }
+        // Regra Anti-Spam: não envia se o título venceu há muito tempo
+        // (evita spam de dívidas legadas). Só se aplica à cobrança.
+        if (tipo === "cobranca") {
+          const daysOverdue = Math.floor((new Date(today).getTime() - new Date(r.due_date).getTime()) / 86400000);
+          if (daysOverdue > 180) {
+            skippedOld++;
+            continue;
+          }
+        }
 
-      const dueBR = (() => {
-        const m = String(r.due_date).match(/^(\d{4})-(\d{2})-(\d{2})/);
-        return m ? `${m[3]}/${m[2]}/${m[1]}` : String(r.due_date);
-      })();
+        // Não envia se já houve mensagem para ESTE título HOJE
+        const { count } = await supabase
+          .from("dunning_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("receivable_id", r.id)
+          .gte("sent_at", new Date(today).toISOString());
 
-      const msg = `Olá, ${cust.name} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${dueBR}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸\n\n👉🏻 Caso tenha efetuado o pagamento, desconsidere este lembrete!`;
+        if ((count ?? 0) > 0) {
+          skippedAlreadySent++;
+          continue;
+        }
 
-      const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+        // Verifica se o contato está na White List (Silêncio)
+        const { data: isBlocked } = await supabase
+          .from("ai_blocked_contacts")
+          .select("id")
+          .eq("phone", phone)
+          .maybeSingle();
+        if (isBlocked) {
+          skippedBlocked++;
+          continue;
+        }
 
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { Authorization: bwToken, "Content-Type": "application/json" },
-          body: JSON.stringify({ jid, message: msg }),
-          // Sem timeout, um envio pendurado trava a rodada inteira até o limite da
-          // edge function, e os clientes seguintes da fila não são cobrados.
-          signal: AbortSignal.timeout(20000),
-        });
+        const msg = tipo === "lembrete"
+          ? mensagemLembrete(cust.name, r)
+          : mensagemCobranca(cust.name, r);
 
-        if (res.ok) {
-          // Salva no log de cobrança para controle interno
-          await supabase.from("dunning_logs").insert({
-            customer_id: r.customer_id,
-            receivable_id: r.id,
-            message: msg,
-            sent_at: new Date().toISOString()
+        const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { Authorization: bwToken, "Content-Type": "application/json" },
+            body: JSON.stringify({ jid, message: msg }),
+            // Sem timeout, um envio pendurado trava a rodada inteira até o limite da
+            // edge function, e os clientes seguintes da fila não são cobrados.
+            signal: AbortSignal.timeout(20000),
           });
-          
-          // CRITICAL: Salva também em whatsapp_messages para aparecer na aba de conversas
-          // e para que possamos auditar se a mensagem realmente "saiu" do sistema.
-          const { data: conv } = await supabase
-            .from("whatsapp_conversations")
-            .select("id")
-            .eq("customer_phone", phone)
-            .maybeSingle();
-            
-          if (conv) {
-            await supabase.from("whatsapp_messages").insert({
-              conversation_id: conv.id,
-              direction: "outbound",
-              content: msg,
+
+          if (res.ok) {
+            await supabase.from("dunning_logs").insert({
+              customer_id: r.customer_id,
+              receivable_id: r.id,
+              message: msg,
               sent_at: new Date().toISOString()
             });
+
+            // CRITICAL: Salva também em whatsapp_messages para aparecer na aba de conversas
+            const { data: conv } = await supabase
+              .from("whatsapp_conversations")
+              .select("id")
+              .eq("customer_phone", phone)
+              .maybeSingle();
+
+            if (conv) {
+              await supabase.from("whatsapp_messages").insert({
+                conversation_id: conv.id,
+                direction: "outbound",
+                content: msg,
+                sent_at: new Date().toISOString()
+              });
+            }
+
+            if (tipo === "lembrete") reminders++; else sent++;
+          } else {
+            failed++;
+            const errText = (await res.text()).slice(0, 200);
+            console.error(`Falha envio BubbleWhats (${phone}):`, res.status, errText);
+            if (erros.length < 5) erros.push(`${phone}: HTTP ${res.status} ${errText}`);
           }
-
-          sent++;
-        } else {
+        } catch (fetchErr) {
           failed++;
-          const errText = (await res.text()).slice(0, 200);
-          console.error(`Falha envio BubbleWhats (${phone}):`, res.status, errText);
-          if (erros.length < 5) erros.push(`${phone}: HTTP ${res.status} ${errText}`);
+          const detalhe = fetchErr instanceof Error ? fetchErr.message : "erro de rede";
+          console.error(`Erro de rede ao enviar para ${phone}:`, detalhe);
+          if (erros.length < 5) erros.push(`${phone}: ${detalhe}`);
         }
-      } catch (fetchErr) {
-        failed++;
-        const detalhe = fetchErr instanceof Error ? fetchErr.message : "erro de rede";
-        console.error(`Erro de rede ao enviar para ${phone}:`, detalhe);
-        if (erros.length < 5) erros.push(`${phone}: ${detalhe}`);
-      }
 
-      // Pequeno delay para não sobrecarregar a API/WhatsApp
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
+        // Pequeno delay para não sobrecarregar a API/WhatsApp
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    };
+
+    await processar(dueToday ?? [], "lembrete");
+    await processar(overdue ?? [], "cobranca");
 
     // Falha de envio ia para whatsapp_config.last_error_message, campo que descreve
     // o estado da sessão do WhatsApp e das respostas da IA. Misturar cobrança ali
@@ -228,16 +253,16 @@ Deno.serve(async (req) => {
     await fecharRun({
       status: "sucesso",
       total,
-      enviadas: sent,
+      enviadas: sent + reminders,
       falhadas: failed,
       erro: erros.length ? erros.join(" | ") : null,
-      // Armazenamos detalhes do skip no log da edge function para auditoria
     });
 
-    console.log(`Resumo: ${sent} enviadas, ${failed} falhas, ${total} analisados.`);
+    console.log(`Resumo: ${reminders} lembretes (vencem hoje), ${sent} cobranças (vencidas), ${failed} falhas, ${total} analisados.`);
     console.log(`Skips: ${skippedAlreadySent} já enviados hoje, ${skippedBlocked} bloqueados, ${skippedOld} dívidas antigas.`);
 
-    return json({ sent, failed, total_processed: total, skipped: { already_sent: skippedAlreadySent, blocked: skippedBlocked, old: skippedOld } });
+    return json({ reminders, sent, failed, total_processed: total, skipped: { already_sent: skippedAlreadySent, blocked: skippedBlocked, old: skippedOld } });
+
   } catch (e) {
     const detalhe = e instanceof Error ? e.message : "Erro";
     console.error(detalhe);
