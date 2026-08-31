@@ -1134,6 +1134,17 @@ export type Database = {
         Args: { qty: number; variant_id: string }
         Returns: number
       }
+      get_due_today_receivables_to_dunning: {
+        Args: { p_limit?: number; p_today?: string }
+        Returns: {
+          amount: number
+          customer_id: string
+          customers: Json
+          description: string
+          due_date: string
+          id: string
+        }[]
+      }
       get_overdue_receivables_to_dunning: {
         Args: {
           p_limit?: number

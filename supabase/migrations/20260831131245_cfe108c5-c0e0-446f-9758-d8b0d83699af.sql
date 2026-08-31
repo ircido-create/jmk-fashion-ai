@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.get_due_today_receivables_to_dunning(date, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_due_today_receivables_to_dunning(date, integer) TO service_role;
