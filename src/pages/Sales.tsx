@@ -116,12 +116,12 @@ export default function Sales() {
 
   const fetchSaleReceivables = async (s: SaleRow) => {
     const short = s.id.slice(0, 8).toUpperCase();
-    const orFilter = [`description.ilike.%venda ${short}%`]
+    const orFilter = [`sale_id.eq.${s.id}`, `description.ilike.%venda ${short}%`]
       .concat(s.receivable_id ? [`id.eq.${s.receivable_id}`] : [])
       .join(",");
     const { data, error } = await supabase
       .from("accounts_receivable")
-      .select("id, amount, status")
+      .select("id, amount, status, description, due_date")
       .or(orFilter);
     if (error) throw error;
     const rows = data ?? [];
