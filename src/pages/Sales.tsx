@@ -703,6 +703,15 @@ export default function Sales() {
                   <Button size="sm" variant="outline" onClick={() => openPayEdit(s)}>
                     <CreditCard className="h-3.5 w-3.5 mr-1" /> Forma de pagamento
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                    onClick={() => openDeleteSale(s)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir venda
+                  </Button>
+
                   {s.payment_method && (
                     <span className="text-[11px] text-muted-foreground">
                       {s.payment_method}
