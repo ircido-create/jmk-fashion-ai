@@ -461,6 +461,7 @@ export default function POS() {
       }
 
       let firstReceivableId: string | null = null;
+      let createdReceivableIds: string[] = [];
 
       // 1) Contas a receber (uma por parcela)
       if (willCreateReceivables || splitFiadoAmount > 0) {
