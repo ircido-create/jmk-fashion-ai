@@ -62,6 +62,7 @@ export type Database = {
           due_date: string
           id: string
           paid_at: string | null
+          sale_id: string | null
           status: Database["public"]["Enums"]["payment_status"]
           updated_at: string
         }
@@ -73,6 +74,7 @@ export type Database = {
           due_date: string
           id?: string
           paid_at?: string | null
+          sale_id?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           updated_at?: string
         }
@@ -84,6 +86,7 @@ export type Database = {
           due_date?: string
           id?: string
           paid_at?: string | null
+          sale_id?: string | null
           status?: Database["public"]["Enums"]["payment_status"]
           updated_at?: string
         }
@@ -93,6 +96,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_receivable_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
             referencedColumns: ["id"]
           },
         ]

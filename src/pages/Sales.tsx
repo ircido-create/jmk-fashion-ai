@@ -110,18 +110,19 @@ export default function Sales() {
   const [savingPay, setSavingPay] = useState(false);
 
   // Contas a receber já existentes desta venda
-  const [payExistingOpen, setPayExistingOpen] = useState<{ id: string; amount: number }[]>([]);
-  const [payExistingPaid, setPayExistingPaid] = useState<{ id: string; amount: number }[]>([]);
+  type RecRow = { id: string; amount: number; description?: string | null; due_date?: string | null };
+  const [payExistingOpen, setPayExistingOpen] = useState<RecRow[]>([]);
+  const [payExistingPaid, setPayExistingPaid] = useState<RecRow[]>([]);
   const [payLoadingExisting, setPayLoadingExisting] = useState(false);
 
   const fetchSaleReceivables = async (s: SaleRow) => {
     const short = s.id.slice(0, 8).toUpperCase();
-    const orFilter = [`description.ilike.%venda ${short}%`]
+    const orFilter = [`sale_id.eq.${s.id}`, `description.ilike.%venda ${short}%`]
       .concat(s.receivable_id ? [`id.eq.${s.receivable_id}`] : [])
       .join(",");
     const { data, error } = await supabase
       .from("accounts_receivable")
-      .select("id, amount, status")
+      .select("id, amount, status, description, due_date")
       .or(orFilter);
     if (error) throw error;
     const rows = data ?? [];
@@ -134,11 +135,16 @@ export default function Sales() {
         .in("receivable_id", ids);
       paidIds = new Set((pays ?? []).map((p) => p.receivable_id as string));
     }
-    const open: { id: string; amount: number }[] = [];
-    const paid: { id: string; amount: number }[] = [];
+    const open: RecRow[] = [];
+    const paid: RecRow[] = [];
     for (const r of rows) {
       const isPaid = r.status === "pago" || paidIds.has(r.id);
-      (isPaid ? paid : open).push({ id: r.id, amount: Number(r.amount) });
+      (isPaid ? paid : open).push({
+        id: r.id,
+        amount: Number(r.amount),
+        description: (r as any).description ?? null,
+        due_date: (r as any).due_date ?? null,
+      });
     }
     return { open, paid };
   };
@@ -160,8 +166,8 @@ export default function Sales() {
 
   // Excluir venda (estorna estoque)
   const [delSale, setDelSale] = useState<SaleRow | null>(null);
-  const [delOpenRecs, setDelOpenRecs] = useState<{ id: string; amount: number }[]>([]);
-  const [delPaidRecs, setDelPaidRecs] = useState<{ id: string; amount: number }[]>([]);
+  const [delOpenRecs, setDelOpenRecs] = useState<RecRow[]>([]);
+  const [delPaidRecs, setDelPaidRecs] = useState<RecRow[]>([]);
   const [delLoading, setDelLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -312,6 +318,7 @@ export default function Sales() {
             : parcela;
           return {
             customer_id: payEdit.customer_id!,
+            sale_id: payEdit.id,
             amount: valor,
             due_date: due.toISOString().slice(0, 10),
             description: paySplitMode
@@ -917,6 +924,16 @@ export default function Sales() {
                     )}
                     <li>Apagar a venda e seus itens (não pode ser desfeito)</li>
                   </ul>
+                  {delOpenRecs.length > 0 && (
+                    <div className="mt-2 p-2 rounded-lg bg-white/40 dark:bg-white/5 space-y-0.5 max-h-40 overflow-auto">
+                      {delOpenRecs.map((r) => (
+                        <div key={r.id} className="flex justify-between text-xs">
+                          <span className="truncate mr-2">{r.description ?? "Parcela"}{r.due_date ? ` · venc. ${fmtDate(r.due_date + "T00:00:00")}` : ""}</span>
+                          <span className="font-medium">{fmtBRL(r.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
