@@ -525,6 +525,16 @@ export default function POS() {
         .single();
       if (saleErr) throw saleErr;
 
+      // 2b) Vincula todas as parcelas à venda criada
+      if (createdReceivableIds.length) {
+        await supabase
+          .from("accounts_receivable")
+          .update({ sale_id: sale.id })
+          .in("id", createdReceivableIds);
+      }
+
+
+
       // 3) Itens — revalida variant_id contra o banco (pode ter mudado após consolidações)
       const variantIds = Array.from(new Set(cart.map((it) => it.variantId).filter(Boolean))) as string[];
       const validIds = new Set<string>();
