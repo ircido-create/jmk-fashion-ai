@@ -403,7 +403,7 @@ Deno.serve(async (req) => {
           const { data: recs } = await withTimeout(
             supabase
               .from("accounts_receivable")
-              .select("description, amount, due_date, status, receivable_payments(amount_paid)")
+              .select("description, amount, due_date, status")
               .in("customer_id", custIds)
               .in("status", ["pendente", "vencido"])
               .order("due_date", { ascending: true }),
