@@ -495,6 +495,7 @@ export default function POS() {
           .select();
         if (recErr) throw recErr;
         firstReceivableId = recs?.[0]?.id ?? null;
+        createdReceivableIds = (recs ?? []).map((r: any) => r.id as string);
       }
 
 
