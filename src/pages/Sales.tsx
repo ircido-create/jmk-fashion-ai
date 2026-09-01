@@ -924,6 +924,16 @@ export default function Sales() {
                     )}
                     <li>Apagar a venda e seus itens (não pode ser desfeito)</li>
                   </ul>
+                  {delOpenRecs.length > 0 && (
+                    <div className="mt-2 p-2 rounded-lg bg-white/40 dark:bg-white/5 space-y-0.5 max-h-40 overflow-auto">
+                      {delOpenRecs.map((r) => (
+                        <div key={r.id} className="flex justify-between text-xs">
+                          <span className="truncate mr-2">{r.description ?? "Parcela"}{r.due_date ? ` · venc. ${fmtDate(r.due_date)}` : ""}</span>
+                          <span className="font-medium">{fmtBRL(r.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
