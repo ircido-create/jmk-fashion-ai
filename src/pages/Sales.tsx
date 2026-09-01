@@ -166,8 +166,8 @@ export default function Sales() {
 
   // Excluir venda (estorna estoque)
   const [delSale, setDelSale] = useState<SaleRow | null>(null);
-  const [delOpenRecs, setDelOpenRecs] = useState<{ id: string; amount: number }[]>([]);
-  const [delPaidRecs, setDelPaidRecs] = useState<{ id: string; amount: number }[]>([]);
+  const [delOpenRecs, setDelOpenRecs] = useState<RecRow[]>([]);
+  const [delPaidRecs, setDelPaidRecs] = useState<RecRow[]>([]);
   const [delLoading, setDelLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
