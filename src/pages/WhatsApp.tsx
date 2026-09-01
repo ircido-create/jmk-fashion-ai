@@ -438,7 +438,7 @@ export default function WhatsApp() {
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white/40 backdrop-blur">
+        <div className="p-4 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
           <Label className="text-xs">URL do Webhook BubbleWhats (receiveMessagesWebhook)</Label>
           <div className="flex gap-2 mt-1">
             <Input readOnly value={webhookUrl} className="font-mono text-xs" />

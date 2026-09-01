@@ -143,7 +143,7 @@ export default function Payable() {
                   <Plus className="h-4 w-4 mr-1" /> Nova
                 </Button>
               </DialogTrigger>
-              <DialogContent className="glass-card border-white/40">
+              <DialogContent className="glass-card border-border">
                 <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} conta a pagar</DialogTitle></DialogHeader>
                 <form onSubmit={save} className="space-y-3">
                   <div><Label>Fornecedor</Label><Input name="supplier" defaultValue={editing?.supplier} required className="glass-input" /></div>
@@ -198,7 +198,7 @@ export default function Payable() {
 
         <div className="space-y-2">
           {paged.map((r) => (
-            <div key={r.id} className="p-3 rounded-xl bg-white/40 backdrop-blur flex items-center justify-between gap-3">
+            <div key={r.id} className="p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium">{r.supplier}</span>
@@ -225,7 +225,7 @@ export default function Payable() {
           ))}
           {filtered.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nada por aqui</div>}
         </div>
-        <Controls />
+        {Controls}
       </GlassCard>
     </div>
   );

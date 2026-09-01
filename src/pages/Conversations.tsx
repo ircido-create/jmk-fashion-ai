@@ -478,6 +478,21 @@ export default function Conversations() {
       toast({ title: "Microfone bloqueado", description: err?.message ?? "Permissão negada", variant: "destructive" });
     }
   };
+  // Sair da tela no meio de uma gravação deixava o cronômetro disparando setState
+  // em componente desmontado e, pior, o microfone aberto — com o indicador de
+  // gravação aceso no navegador até a aba ser fechada.
+  useEffect(() => {
+    return () => {
+      if (recTimerRef.current) clearInterval(recTimerRef.current);
+      const mr = mediaRecorderRef.current;
+      if (mr) {
+        mr.onstop = null; // não dispara envio de áudio ao sair da tela
+        if (mr.state !== "inactive") mr.stop();
+        mr.stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
     setRecording(false);
@@ -707,7 +722,7 @@ export default function Conversations() {
           "h-full",
           active && "hidden md:flex",
         )}>
-          <div className="p-3 border-b border-white/30">
+          <div className="p-3 border-b border-border">
             <div className="relative">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -732,7 +747,7 @@ export default function Conversations() {
                 key={c.id}
                 onClick={() => openConversation(c)}
                 className={cn(
-                  "w-full text-left p-3 border-b border-white/20 hover:bg-white/40 transition relative",
+                  "w-full text-left p-3 border-b border-border hover:bg-white/40 transition relative",
                   active?.id === c.id && "bg-gradient-primary/20",
                   isUnread && "bg-emerald-500/5"
                 )}
@@ -808,7 +823,7 @@ export default function Conversations() {
           ) : (
             <>
               {/* Header da conversa estilo WhatsApp */}
-              <div className="px-3 py-2.5 border-b border-white/30 flex items-center gap-2 bg-gradient-to-r from-primary/10 to-transparent">
+              <div className="px-3 py-2.5 border-b border-border flex items-center gap-2 bg-gradient-to-r from-primary/10 to-transparent">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1111,7 +1126,7 @@ export default function Conversations() {
               </div>
 
               {/* Composer estilo WhatsApp */}
-              <div className="p-2 border-t border-white/30 bg-background/40">
+              <div className="p-2 border-t border-border bg-background/40">
                 {recording ? (
                   <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" onClick={cancelRecording} className="text-destructive" aria-label="Cancelar gravação">

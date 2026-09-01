@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
+import { fmtBRL } from "@/lib/utils";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -394,8 +395,6 @@ export default function Inventory() {
     },
     { units: 0, cost: 0, potential: 0 }
   );
-  const fmtBRL = (n: number) =>
-    n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const margin = stockTotals.potential - stockTotals.cost;
 
   return (
@@ -436,19 +435,19 @@ export default function Inventory() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+          <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
             <div className="text-[11px] text-muted-foreground">Peças em estoque</div>
             <div className="text-lg font-semibold mt-0.5">{stockTotals.units}</div>
           </div>
-          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+          <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
             <div className="text-[11px] text-muted-foreground">Investido (custo)</div>
             <div className="text-lg font-semibold mt-0.5">{fmtBRL(stockTotals.cost)}</div>
           </div>
-          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+          <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
             <div className="text-[11px] text-muted-foreground">Potencial de venda</div>
             <div className="text-lg font-semibold mt-0.5 text-primary">{fmtBRL(stockTotals.potential)}</div>
           </div>
-          <div className="p-3 rounded-2xl bg-white/40 backdrop-blur">
+          <div className="p-3 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
             <div className="text-[11px] text-muted-foreground">Lucro potencial</div>
             <div className="text-lg font-semibold mt-0.5 text-success">{fmtBRL(margin)}</div>
           </div>
@@ -456,10 +455,10 @@ export default function Inventory() {
 
         <div className="grid gap-3">
           {paged.map((p) => (
-            <div key={p.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur hover:bg-white/60 transition-all">
+            <div key={p.id} className="p-4 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur hover:bg-white/60 transition-all">
               <div className="flex items-start gap-3">
                 {p.image_url ? (
-                  <img src={p.image_url} alt={p.name} className="h-16 w-16 rounded-xl object-cover border border-white/40 shrink-0" />
+                  <img src={p.image_url} alt={p.name} className="h-16 w-16 rounded-xl object-cover border border-border shrink-0" />
                 ) : (
                   <div className="h-16 w-16 rounded-xl border border-dashed border-muted-foreground/40 bg-white/20 flex items-center justify-center shrink-0">
                     <ImageIcon className="h-5 w-5 text-muted-foreground" />
@@ -503,11 +502,11 @@ export default function Inventory() {
           ))}
           {filtered.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nenhum produto</div>}
         </div>
-        <Controls />
+        {Controls}
       </GlassCard>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="glass-card border-white/40 max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="glass-card border-border max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} produto</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -528,7 +527,7 @@ export default function Inventory() {
             </div>
             <div><Label>Descrição</Label><Textarea name="description" defaultValue={editing?.description ?? ""} className="glass-input" rows={2} /></div>
 
-            <div className="border-t border-white/30 pt-3">
+            <div className="border-t border-border pt-3">
               <div className="flex items-center justify-between mb-2">
                 <Label>Variações (tamanho/cor/qtd)</Label>
                 <Button type="button" size="sm" variant="ghost" onClick={addVariant}><Plus className="h-3 w-3 mr-1" /> Adicionar</Button>
@@ -544,7 +543,7 @@ export default function Inventory() {
                     </div>
                     <div className="flex items-center gap-2">
                       {v.image_url ? (
-                        <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-white/40">
+                        <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-border">
                           <img src={v.image_url} alt={`${v.color || "variação"}`} className="h-full w-full object-cover" />
                           <button
                             type="button"
@@ -595,7 +594,7 @@ export default function Inventory() {
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={(o) => { if (!importing) { setImportOpen(o); if (!o) { setImportFiles([]); setImportProgress([]); } } }}>
-        <DialogContent className="glass-card border-white/40 max-w-lg">
+        <DialogContent className="glass-card border-border max-w-lg">
           <DialogHeader><DialogTitle>Importar romaneios (PDF)</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">

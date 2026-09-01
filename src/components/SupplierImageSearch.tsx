@@ -101,7 +101,7 @@ export default function SupplierImageSearch({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-card border-white/40 max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="glass-card border-border max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Buscar imagem do fornecedor</DialogTitle>
         </DialogHeader>
@@ -144,7 +144,7 @@ export default function SupplierImageSearch({
               {images.map((img) => (
                 <div
                   key={img.url}
-                  className="relative group rounded-xl overflow-hidden border border-white/40 bg-white/30 backdrop-blur"
+                  className="relative group rounded-xl overflow-hidden border border-border bg-white/30 backdrop-blur"
                 >
                   <div className="aspect-square bg-muted/30">
                     <img

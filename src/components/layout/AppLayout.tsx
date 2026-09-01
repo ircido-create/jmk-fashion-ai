@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { AIAssistant } from "@/components/AIAssistant";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export function AppLayout() {
   const { user, signOut, isAdmin } = useAuth();
@@ -15,10 +16,15 @@ export function AppLayout() {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-orbs">
+        {/* A sidebar tem muitos itens antes do conteúdo; sem isso, quem navega
+            por teclado percorre o menu inteiro em cada troca de página. */}
+        <a href="#conteudo" className="skip-link">
+          Pular para o conteúdo
+        </a>
         <AppSidebar />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-16 sticky top-0 z-30 flex items-center justify-between px-4 md:px-6 glass border-b border-white/30">
+          <header className="h-16 sticky top-0 z-30 flex items-center justify-between px-4 md:px-6 glass border-b border-border">
             <div className="flex items-center gap-3">
               <SidebarTrigger />
               <div>
@@ -39,8 +45,12 @@ export function AppLayout() {
             </div>
           </header>
 
-          <main className="flex-1 p-4 md:p-6 overflow-auto">
-            <Outlet />
+          <main id="conteudo" tabIndex={-1} className="flex-1 p-4 md:p-6 overflow-auto">
+            {/* Um erro numa página não deve derrubar a aplicação inteira:
+                a barreira por rota mantém sidebar e cabeçalho de pé. */}
+            <ErrorBoundary key={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </main>
         </div>
 

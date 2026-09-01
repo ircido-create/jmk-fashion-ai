@@ -232,7 +232,7 @@ export default function Customers() {
                 <Plus className="h-4 w-4 mr-1" /> Novo
               </Button>
             </DialogTrigger>
-            <DialogContent className="glass-card border-white/40">
+            <DialogContent className="glass-card border-border">
               <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
               <form onSubmit={save} className="space-y-3">
                 <div><Label>Nome completo</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
@@ -304,7 +304,7 @@ export default function Customers() {
                 <div className="text-center py-12 text-muted-foreground text-sm">Nenhum cliente</div>
               )}
             </div>
-            <Controls />
+            {Controls}
           </GlassCard>
         </TabsContent>
 
@@ -316,7 +316,7 @@ export default function Customers() {
       </Tabs>
 
       <Dialog open={!!dupExisting} onOpenChange={(o) => { if (!o) { setDupExisting(null); setDupPayload(null); } }}>
-        <DialogContent className="glass-card border-white/40">
+        <DialogContent className="glass-card border-border">
           <DialogHeader><DialogTitle>CPF/CNPJ já cadastrado</DialogTitle></DialogHeader>
           {dupExisting && (
             <div className="space-y-3 text-sm">

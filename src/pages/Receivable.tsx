@@ -250,19 +250,23 @@ export default function Receivable() {
         if (error) throw error;
       }
 
-      try {
-        const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
-        if (proofId) {
-          const links = result.actions.map((a) => ({
-            receivable_id: a.receivable_id,
-            proof_id: proofId,
-            amount_paid: a.amount_paid,
-          }));
-          const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
-          if (linkErr) throw linkErr;
+      // O histórico do recebimento não é opcional: sem ele a parcela fica quitada
+      // sem rastro de quem pagou, quanto e com qual comprovante. Se falhar aqui, o
+      // operador precisa saber — antes isso era engolido com um console.warn e a
+      // tela ainda dizia "Recebimento aplicado".
+      const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
+      if (proofId) {
+        const links = result.actions.map((a) => ({
+          receivable_id: a.receivable_id,
+          proof_id: proofId,
+          amount_paid: a.amount_paid,
+        }));
+        const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
+        if (linkErr) {
+          throw new Error(
+            `As parcelas foram baixadas, mas o histórico do recebimento não foi gravado: ${linkErr.message}. Confira em Comprovantes antes de repetir a baixa.`,
+          );
         }
-      } catch (proofErr: any) {
-        console.warn("Comprovante/histórico não registrado:", proofErr?.message);
       }
 
       const leftoverMsg = result.leftovers.length > 0 ? ` • sobra R$ ${result.leftovers[0].amount.toFixed(2)}` : "";
@@ -874,7 +878,7 @@ export default function Receivable() {
                   <Plus className="h-4 w-4 mr-1" /> Nova
                 </Button>
               </DialogTrigger>
-              <DialogContent className="glass-card border-white/40">
+              <DialogContent className="glass-card border-border">
                 <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} conta a receber</DialogTitle></DialogHeader>
                 <form onSubmit={save} className="space-y-3">
                   <div>
@@ -947,7 +951,7 @@ export default function Receivable() {
 
         <div className="space-y-2">
           {paged.map((r) => (
-            <div key={r.id} className="p-3 rounded-xl bg-white/40 backdrop-blur flex items-center justify-between gap-3">
+            <div key={r.id} className="p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`font-medium ${!r.customer_id ? "text-destructive" : ""}`}>
@@ -985,12 +989,12 @@ export default function Receivable() {
           ))}
           {filtered.length === 0 && <div className="text-center py-12 text-muted-foreground text-sm">Nada por aqui</div>}
         </div>
-        <Controls />
+        {Controls}
       </GlassCard>
 
       {/* Modal: baixa individual */}
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent className="glass-card border-white/40">
+        <DialogContent className="glass-card border-border">
           <DialogHeader>
             <DialogTitle>Baixa de recebimento</DialogTitle>
           </DialogHeader>
@@ -1038,7 +1042,7 @@ export default function Receivable() {
 
       {/* Modal: baixa em massa por conciliação de extrato */}
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-        <DialogContent className="glass-card border-white/40 max-w-3xl">
+        <DialogContent className="glass-card border-border max-w-3xl">
           <DialogHeader>
             <DialogTitle>Baixa em massa — conciliação por extrato</DialogTitle>
           </DialogHeader>
@@ -1083,7 +1087,7 @@ export default function Receivable() {
             {bulkResult && (
               <div className="space-y-2">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  <div className="rounded-lg bg-white/40 p-2">
+                  <div className="rounded-lg bg-white/40 dark:bg-white/5 p-2">
                     <div className="text-muted-foreground">Pagamentos lidos</div>
                     <div className="font-semibold">{bulkResult.totals.payments}</div>
                     <div className="text-[11px] text-muted-foreground">R$ {bulkResult.totals.paymentsSum.toFixed(2)}</div>
@@ -1105,20 +1109,20 @@ export default function Receivable() {
                 </div>
 
                 {bulkResult.actions.length > 0 && (
-                  <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                  <div className="max-h-64 overflow-auto rounded-lg border border-border">
                     <table className="w-full text-xs">
                       <thead className="bg-muted/40 sticky top-0">
                         <tr>
-                          <th className="text-left p-2">Cliente</th>
-                          <th className="text-left p-2">Vencimento</th>
-                          <th className="text-right p-2">Original</th>
-                          <th className="text-right p-2">Recebido</th>
-                          <th className="text-left p-2">Resultado</th>
+                          <th scope="col" className="text-left p-2">Cliente</th>
+                          <th scope="col" className="text-left p-2">Vencimento</th>
+                          <th scope="col" className="text-right p-2">Original</th>
+                          <th scope="col" className="text-right p-2">Recebido</th>
+                          <th scope="col" className="text-left p-2">Resultado</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bulkResult.actions.slice(0, 200).map((a, i) => (
-                          <tr key={i} className="border-t border-white/20">
+                          <tr key={i} className="border-t border-border">
                             <td className="p-2">{a.customer_name || "—"}</td>
                             <td className="p-2">{format(parseISO(a.due_date), "dd/MM/yyyy")}</td>
                             <td className="p-2 text-right">R$ {a.original_amount.toFixed(2)}</td>
@@ -1179,7 +1183,7 @@ export default function Receivable() {
 
       {/* Modal: Relatório com filtro de período */}
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="glass-card border-white/40">
+        <DialogContent className="glass-card border-border">
           <DialogHeader><DialogTitle>Gerar relatório</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="text-xs text-muted-foreground">
@@ -1221,7 +1225,7 @@ export default function Receivable() {
 
       {/* Modal: Importar contas a receber */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="glass-card border-white/40 max-w-2xl">
+        <DialogContent className="glass-card border-border max-w-2xl">
           <DialogHeader><DialogTitle>Importar contas a receber</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="text-xs text-muted-foreground">
@@ -1274,17 +1278,17 @@ export default function Receivable() {
                       </button>
                     )}
                   </div>
-                  <div className="max-h-64 overflow-auto rounded-lg border border-white/30">
+                  <div className="max-h-64 overflow-auto rounded-lg border border-border">
                     <table className="w-full text-xs">
                       <thead className="bg-muted/40 sticky top-0">
                         <tr>
-                          <th className="text-center p-2 w-8">✓</th>
-                          <th className="text-left p-2">Cliente</th>
-                          <th className="text-left p-2">CPF/CNPJ</th>
-                          <th className="text-left p-2">Status</th>
-                          <th className="text-left p-2">Descrição</th>
-                          <th className="text-left p-2">Vencimento</th>
-                          <th className="text-right p-2">Valor</th>
+                          <th scope="col" className="text-center p-2 w-8">✓</th>
+                          <th scope="col" className="text-left p-2">Cliente</th>
+                          <th scope="col" className="text-left p-2">CPF/CNPJ</th>
+                          <th scope="col" className="text-left p-2">Status</th>
+                          <th scope="col" className="text-left p-2">Descrição</th>
+                          <th scope="col" className="text-left p-2">Vencimento</th>
+                          <th scope="col" className="text-right p-2">Valor</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1296,7 +1300,7 @@ export default function Receivable() {
                             : null;
                           const matched = byTax || byName;
                           return (
-                            <tr key={i} className={`border-t border-white/20 ${r.skip ? "opacity-50" : ""}`}>
+                            <tr key={i} className={`border-t border-border ${r.skip ? "opacity-50" : ""}`}>
                               <td className="p-2 text-center">
                                 <input
                                   type="checkbox"

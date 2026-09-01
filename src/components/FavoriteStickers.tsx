@@ -138,7 +138,7 @@ export function FavoriteStickers({ disabled, onSend }: Props) {
           align="start"
           className="w-[320px] p-0 glass-card overflow-hidden"
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-white/30">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="text-sm font-medium">Figurinhas favoritas</span>
             <Button
               size="sm"
