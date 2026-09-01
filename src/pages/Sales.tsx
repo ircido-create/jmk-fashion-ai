@@ -110,8 +110,9 @@ export default function Sales() {
   const [savingPay, setSavingPay] = useState(false);
 
   // Contas a receber já existentes desta venda
-  const [payExistingOpen, setPayExistingOpen] = useState<{ id: string; amount: number }[]>([]);
-  const [payExistingPaid, setPayExistingPaid] = useState<{ id: string; amount: number }[]>([]);
+  type RecRow = { id: string; amount: number; description?: string | null; due_date?: string | null };
+  const [payExistingOpen, setPayExistingOpen] = useState<RecRow[]>([]);
+  const [payExistingPaid, setPayExistingPaid] = useState<RecRow[]>([]);
   const [payLoadingExisting, setPayLoadingExisting] = useState(false);
 
   const fetchSaleReceivables = async (s: SaleRow) => {
