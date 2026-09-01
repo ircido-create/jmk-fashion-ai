@@ -1167,6 +1167,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_variant_stock: {
+        Args: { qty: number; variant_id: string }
+        Returns: number
+      }
     }
     Enums: {
       app_role: "admin" | "vendedor"
