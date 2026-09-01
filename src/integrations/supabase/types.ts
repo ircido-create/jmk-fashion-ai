@@ -1145,7 +1145,7 @@ export type Database = {
           p_customer_id: string
           p_installments: number
           p_items: Json
-          p_notes: string | null
+          p_notes: string
           p_payment_method: string
           p_receivables?: Json
           p_total: number
