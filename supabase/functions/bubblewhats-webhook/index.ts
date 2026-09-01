@@ -419,8 +419,7 @@ Deno.serve(async (req) => {
             };
             let total = 0;
             const lines = recs.map((r: any) => {
-              const paid = (r.receivable_payments ?? []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
-              const open = Math.max(0, Number(r.amount || 0) - paid);
+              const open = Number(r.amount || 0);
               total += open;
               const flag = r.status === "vencido" ? " ⚠️ vencida" : "";
               const desc = r.description ? ` — ${r.description}` : "";
