@@ -1235,6 +1235,9 @@ NUNCA peça nome, endereço, e-mail ou CPF.
 ${ctx.debts.length === 0 ? "Nenhuma" : ctx.debts.map((d: any) =>
   `• ${d.description ?? "Compra"} — R$ ${d.amount} — vence ${d.due_date} — status ${d.status}`
 ).join("\n")}
+${ctx.debts.length === 0 ? "" : `TOTAL EM ABERTO (JÁ CALCULADO — use EXATAMENTE este valor, nunca recalcule): ${Number(
+  ctx.debts.reduce((s: number, d: any) => s + Number(d.amount || 0), 0)
+).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`}
 
 === PAGAMENTO ===
 ${pixBlock}
