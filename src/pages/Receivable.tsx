@@ -25,7 +25,7 @@ interface Receivable {
   id: string; customer_id: string | null; description: string | null;
   amount: number; due_date: string; status: string; paid_at: string | null;
   customers?: { name: string; nickname: string | null; tax_id: string | null; phone: string | null } | null;
-  proofs?: { proof_id: string; original_filename: string | null; storage_path: string }[];
+  proofs?: { proof_id: string; original_filename: string | null; storage_path: string; payment_date: string | null }[];
 }
 
 const schema = z.object({
@@ -98,7 +98,7 @@ export default function Receivable() {
       if (ids.length > 0) {
         const { data: rp } = await supabase
           .from("receivable_payments")
-          .select("receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path)")
+          .select("receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path, payment_date)")
           .in("receivable_id", ids);
         const map = new Map<string, Receivable["proofs"]>();
         const paidByReceivable = new Map<string, number>();
@@ -108,6 +108,7 @@ export default function Receivable() {
             proof_id: row.proof_id,
             original_filename: row.payment_proofs?.original_filename ?? null,
             storage_path: row.payment_proofs?.storage_path ?? "",
+            payment_date: row.payment_proofs?.payment_date ?? null,
           });
           map.set(row.receivable_id, arr);
           paidByReceivable.set(
@@ -970,7 +971,19 @@ export default function Receivable() {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {r.description || "—"} • Venc: {format(parseISO(r.due_date), "dd/MM/yyyy", { locale: ptBR })}
+                  {r.status === "pago" ? (
+                    <>
+                      {r.description || "—"} • Venc: {format(parseISO(r.due_date), "dd/MM/yyyy", { locale: ptBR })}
+                      {" • "}
+                      <span className="text-success">Pago em: {r.paid_at
+                        ? format(parseISO(r.paid_at), "dd/MM/yyyy", { locale: ptBR })
+                        : r.proofs?.[0]?.payment_date
+                        ? format(parseISO(r.proofs[0].payment_date), "dd/MM/yyyy", { locale: ptBR })
+                        : "—"}</span>
+                    </>
+                  ) : (
+                    <>{r.description || "—"} • Venc: {format(parseISO(r.due_date), "dd/MM/yyyy", { locale: ptBR })}</>
+                  )}
                 </div>
               </div>
               <div className="text-right shrink-0">
