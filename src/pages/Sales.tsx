@@ -30,7 +30,7 @@ interface SaleRow {
   payment_method: string | null;
   installments: number | null;
   customers: { name: string; phone: string | null } | null;
-  sale_items: { id: string; product_name: string; variant_label: string | null; quantity: number; unit_price: number }[];
+  sale_items: { id: string; product_name: string; variant_label: string | null; variant_id: string | null; quantity: number; unit_price: number }[];
 }
 
 interface CartItem {
