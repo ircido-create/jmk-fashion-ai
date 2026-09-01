@@ -312,6 +312,7 @@ export default function Sales() {
             : parcela;
           return {
             customer_id: payEdit.customer_id!,
+            sale_id: payEdit.id,
             amount: valor,
             due_date: due.toISOString().slice(0, 10),
             description: paySplitMode
