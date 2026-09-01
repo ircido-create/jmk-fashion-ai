@@ -16,47 +16,96 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+/** Compara sem vazar pelo tempo de resposta onde as strings divergem. */
+function secretsMatch(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a);
+  const eb = new TextEncoder().encode(b);
+  if (ea.length !== eb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
+  return diff === 0;
+}
+
 /**
  * A função dispara mensagens reais para clientes e roda com verify_jwt = false,
  * então precisa autorizar por conta própria. Aceita dois chamadores: o agendamento
  * (segredo no cabeçalho) e o botão do painel (JWT de admin).
  *
- * Enquanto DUNNING_SECRET não estiver definido, segue aberta como antes — exigir o
- * segredo já no deploy derrubaria a cobrança agendada antes de o cron ser
- * atualizado para enviá-lo.
+ * Nega por padrão. Antes, sem DUNNING_SECRET definido ela retornava true e o
+ * endpoint ficava aberto para qualquer um disparar a cobrança da loja inteira.
+ *
+ * Devolve null quando autorizado, ou o motivo da recusa.
  */
-async function autorizado(req: Request): Promise<boolean> {
+async function motivoRecusa(req: Request): Promise<string | null> {
   const segredo = Deno.env.get("DUNNING_SECRET");
   if (!segredo) {
-    console.warn("DUNNING_SECRET não definido — endpoint aberto. Defina o segredo e atualize o cron.");
-    return true;
+    return "DUNNING_SECRET não configurado nas variáveis da edge function — a cobrança automática está parada até o segredo ser definido.";
   }
 
-  if (req.headers.get("x-dunning-secret") === segredo) return true;
+  const enviado = req.headers.get("x-dunning-secret");
+  if (enviado && secretsMatch(enviado, segredo)) return null;
 
   const authHeader = req.headers.get("Authorization") ?? "";
-  if (!authHeader.startsWith("Bearer ")) return false;
+  if (!authHeader.startsWith("Bearer ")) {
+    return enviado
+      ? "Segredo inválido na chamada da cobrança automática."
+      : "Chamada sem credencial — verifique se o agendamento envia o cabeçalho x-dunning-secret.";
+  }
   try {
     const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: userData } = await authClient.auth.getUser();
-    if (!userData?.user) return false;
+    if (!userData?.user) return "Sessão inválida.";
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: isAdmin } = await admin.rpc("has_role", {
       _user_id: userData.user.id,
       _role: "admin",
     });
-    return !!isAdmin;
+    return isAdmin ? null : "Apenas administradores podem disparar a cobrança.";
   } catch {
-    return false;
+    return "Falha ao validar a credencial.";
+  }
+}
+
+/**
+ * Registra a recusa como rodada falha para o painel mostrar a interrupção — um
+ * 401 silencioso pararia a cobrança sem ninguém perceber, que é exatamente o
+ * problema que dunning_runs existe para evitar. Deduplicado por hora, para que
+ * varredura na URL não encha a tabela.
+ */
+async function registrarRecusa(motivo: string) {
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const umaHoraAtras = new Date(Date.now() - 3_600_000).toISOString();
+    const { count } = await supabase
+      .from("dunning_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "falha")
+      .eq("erro", motivo)
+      .gte("started_at", umaHoraAtras);
+    if ((count ?? 0) > 0) return;
+
+    await supabase.from("dunning_runs").insert({
+      origem: "cron",
+      status: "falha",
+      erro: motivo,
+      finished_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("falha ao registrar recusa da cobrança:", e);
   }
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  if (!(await autorizado(req))) return json({ error: "Não autorizado" }, 401);
+  const recusa = await motivoRecusa(req);
+  if (recusa) {
+    console.warn("cobrança recusada:", recusa);
+    await registrarRecusa(recusa);
+    return json({ error: "Não autorizado" }, 401);
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const origem = req.headers.get("x-dunning-secret") ? "cron" : "manual";

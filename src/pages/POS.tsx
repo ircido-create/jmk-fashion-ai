@@ -460,10 +460,8 @@ export default function POS() {
         return;
       }
 
-      let firstReceivableId: string | null = null;
-      let createdReceivableIds: string[] = [];
-
-      // 1) Contas a receber (uma por parcela)
+      // 1) Monta as parcelas — a gravação acontece junto com a venda, na RPC.
+      let records: any[] = [];
       if (willCreateReceivables || splitFiadoAmount > 0) {
         const baseDate = new Date(firstDueDate + "T00:00:00");
         const totalAmount = willCreateReceivables ? total : splitFiadoAmount;
@@ -474,7 +472,6 @@ export default function POS() {
           return;
         }
 
-        const records: any[] = [];
         for (let i = 0; i < generatedInstallments.length; i++) {
           const inst = generatedInstallments[i];
           const due = i === 0 ? baseDate : addPeriod(baseDate, i, paymentFrequency);
@@ -490,13 +487,6 @@ export default function POS() {
             status: "pendente",
           });
         }
-        const { data: recs, error: recErr } = await supabase
-          .from("accounts_receivable")
-          .insert(records)
-          .select();
-        if (recErr) throw recErr;
-        firstReceivableId = recs?.[0]?.id ?? null;
-        createdReceivableIds = (recs ?? []).map((r: any) => r.id as string);
       }
 
 
@@ -509,33 +499,7 @@ export default function POS() {
           : "";
       const finalNotes = [notes, discountNote, splitNote].filter(Boolean).join(" | ") || null;
 
-      // 2) Cria venda
-      const { data: sale, error: saleErr } = await supabase
-        .from("sales")
-        .insert({
-          customer_id: customerId,
-          receivable_id: firstReceivableId,
-          total,
-          notes: finalNotes,
-          sale_date: new Date().toISOString(),
-          payment_method: effectiveMethod,
-          installments: numInstallments,
-        })
-        .select()
-        .single();
-      if (saleErr) throw saleErr;
-
-      // 2b) Vincula todas as parcelas à venda criada
-      if (createdReceivableIds.length) {
-        await supabase
-          .from("accounts_receivable")
-          .update({ sale_id: sale.id })
-          .in("id", createdReceivableIds);
-      }
-
-
-
-      // 3) Itens — revalida variant_id contra o banco (pode ter mudado após consolidações)
+      // 2) Itens — revalida variant_id contra o banco (pode ter mudado após consolidações)
       const variantIds = Array.from(new Set(cart.map((it) => it.variantId).filter(Boolean))) as string[];
       const validIds = new Set<string>();
       if (variantIds.length) {
@@ -563,27 +527,29 @@ export default function POS() {
         }),
       );
 
-      const items = resolvedCart.map((it) => ({
-        sale_id: sale.id,
-        product_id: it.isAvulso ? null : it.productId,
-        variant_id: it.variantId,
-        product_name: it.productName,
-        variant_label: it.variantLabel || null,
-        quantity: it.quantity,
-        unit_price: it.unitPrice,
-        unit_cost: it.unitCost,
-      }));
-      const { error: itErr } = await supabase.from("sale_items").insert(items);
-      if (itErr) throw itErr;
+      // 3) Grava tudo numa transação só: parcelas, venda, vínculo, itens e baixa
+      // de estoque. Ou grava inteiro, ou não grava nada — sem estado intermediário.
+      const { data: saleId, error: saleErr } = await supabase.rpc("create_sale", {
+        p_customer_id: customerId,
+        p_total: total,
+        p_payment_method: effectiveMethod,
+        p_installments: numInstallments,
+        p_notes: finalNotes,
+        p_items: resolvedCart.map((it) => ({
+          product_id: it.isAvulso ? null : it.productId,
+          variant_id: it.variantId,
+          product_name: it.productName,
+          variant_label: it.variantLabel || null,
+          quantity: it.quantity,
+          unit_price: it.unitPrice,
+          unit_cost: it.unitCost,
+        })),
+        p_receivables: records,
+      });
+      if (saleErr) throw saleErr;
+      const sale = { id: saleId as string };
 
-      // 4) Baixa estoque (atômico via RPC, a partir do valor atual do banco)
-      for (const it of resolvedCart) {
-        if (it.variantId) {
-          await supabase.rpc("decrement_variant_stock", { variant_id: it.variantId, qty: it.quantity });
-        }
-      }
-
-      // 5) Cupom
+      // 4) Cupom
       const cust = customers.find((c) => c.id === customerId) ?? null;
       const cashNum = Number((cashReceived || "0").toString().replace(",", ".")) || 0;
       const change = paymentMethod === "dinheiro" ? Math.max(0, cashNum - total) : 0;

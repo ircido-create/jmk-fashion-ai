@@ -21,9 +21,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadRoles = async (uid: string) => {
-    const { data } = await supabase.from("user_roles").select("role").eq("user_id", uid);
-    setRoles((data?.map((r) => r.role as AppRole)) ?? []);
+  /**
+   * Carrega os papéis do usuário.
+   *
+   * O erro não pode ser descartado: uma falha momentânea aqui zerava `roles`, o
+   * que torna `isAdmin` falso e expulsa o administrador de /usuarios e
+   * /configuracoes sem nenhuma explicação. Em caso de erro, tenta de novo e
+   * preserva os papéis já carregados em vez de rebaixar o usuário.
+   */
+  const loadRoles = async (uid: string, tentativa = 1): Promise<void> => {
+    const { data, error } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", uid);
+
+    if (error) {
+      if (tentativa < 3) {
+        await new Promise((r) => setTimeout(r, tentativa * 500));
+        return loadRoles(uid, tentativa + 1);
+      }
+      console.error("[AuthContext] não foi possível carregar os papéis:", error.message);
+      return; // mantém o que já havia — não rebaixa por falha de rede
+    }
+
+    setRoles(data.map((r) => r.role as AppRole));
   };
 
   useEffect(() => {
@@ -37,12 +58,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session: sess } }) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) loadRoles(sess.user.id);
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: sess } }) => {
+        setSession(sess);
+        setUser(sess?.user ?? null);
+        if (sess?.user) loadRoles(sess.user.id);
+      })
+      .catch((e) => {
+        // Sem este catch, uma rejeição aqui deixava `loading` em true para
+        // sempre e o app ficava preso no spinner do ProtectedRoute.
+        console.error("[AuthContext] falha ao recuperar a sessão:", e);
+      })
+      .finally(() => setLoading(false));
 
     return () => subscription.unsubscribe();
   }, []);

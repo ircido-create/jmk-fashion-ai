@@ -23,6 +23,34 @@ const BW_TOKEN = Deno.env.get("BUBBLEWHATS_TOKEN")!;
 const BW_BASE = `https://${DEVICE_ID}.bubblewhats.com`;
 let groupWebhookConfigEnsured = false;
 
+// A função roda com verify_jwt = false (o BubbleWhats não manda JWT do Supabase),
+// então ela precisa autorizar por conta própria. Sem isso, qualquer um que
+// descubra a URL forja uma mensagem e faz a Mônica responder ficha e PIX de
+// cliente real para o número que quiser.
+const WEBHOOK_SECRET = Deno.env.get("BUBBLEWHATS_WEBHOOK_SECRET");
+
+/** Compara sem vazar pelo tempo de resposta onde as strings divergem. */
+function secretsMatch(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a);
+  const eb = new TextEncoder().encode(b);
+  if (ea.length !== eb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
+  return diff === 0;
+}
+
+/**
+ * Aceita o segredo no cabeçalho ou na query (?k=): o BubbleWhats nem sempre
+ * permite cabeçalho personalizado na URL de webhook. Nega por padrão — se o
+ * segredo não estiver configurado, ninguém entra.
+ */
+function webhookAutorizado(req: Request): boolean {
+  if (!WEBHOOK_SECRET) return false;
+  const viaHeader = req.headers.get("x-webhook-secret") ?? "";
+  const viaQuery = new URL(req.url).searchParams.get("k") ?? "";
+  return secretsMatch(viaHeader, WEBHOOK_SECRET) || secretsMatch(viaQuery, WEBHOOK_SECRET);
+}
+
 // Timeout defensivo — nunca deixa o worker travado esperando uma promise pendurada.
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -62,7 +90,11 @@ async function bwPost(path: string, body: unknown): Promise<{ ok: boolean; statu
 
 async function ensureGroupWebhookConfig() {
   if (groupWebhookConfigEnsured) return;
-  const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/bubblewhats-webhook`;
+  // A URL registrada precisa carregar o segredo, senão o próprio BubbleWhats
+  // passa a bater aqui sem credencial e leva 404.
+  const webhookUrl =
+    `${Deno.env.get("SUPABASE_URL")}/functions/v1/bubblewhats-webhook` +
+    (WEBHOOK_SECRET ? `?k=${encodeURIComponent(WEBHOOK_SECRET)}` : "");
   const res = await bwPost("/config", {
     receiveMessagesWebhook: webhookUrl,
     receiveMessagesFromGroups: true,
@@ -287,6 +319,12 @@ async function analyzeAndSavePaymentProof(opts: {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return new Response("ok", { headers: corsHeaders });
+
+  // 404 em vez de 401: não confirma a existência do endpoint para quem varre.
+  if (!webhookAutorizado(req)) {
+    console.warn("webhook rejeitado: segredo ausente ou inválido");
+    return new Response("not found", { status: 404, headers: corsHeaders });
+  }
 
   try {
     const payload = await req.json();

@@ -250,19 +250,23 @@ export default function Receivable() {
         if (error) throw error;
       }
 
-      try {
-        const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
-        if (proofId) {
-          const links = result.actions.map((a) => ({
-            receivable_id: a.receivable_id,
-            proof_id: proofId,
-            amount_paid: a.amount_paid,
-          }));
-          const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
-          if (linkErr) throw linkErr;
+      // O histórico do recebimento não é opcional: sem ele a parcela fica quitada
+      // sem rastro de quem pagou, quanto e com qual comprovante. Se falhar aqui, o
+      // operador precisa saber — antes isso era engolido com um console.warn e a
+      // tela ainda dizia "Recebimento aplicado".
+      const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
+      if (proofId) {
+        const links = result.actions.map((a) => ({
+          receivable_id: a.receivable_id,
+          proof_id: proofId,
+          amount_paid: a.amount_paid,
+        }));
+        const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
+        if (linkErr) {
+          throw new Error(
+            `As parcelas foram baixadas, mas o histórico do recebimento não foi gravado: ${linkErr.message}. Confira em Comprovantes antes de repetir a baixa.`,
+          );
         }
-      } catch (proofErr: any) {
-        console.warn("Comprovante/histórico não registrado:", proofErr?.message);
       }
 
       const leftoverMsg = result.leftovers.length > 0 ? ` • sobra R$ ${result.leftovers[0].amount.toFixed(2)}` : "";
