@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
+import { fmtBRL } from "@/lib/utils";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,6 @@ interface CartItem {
   maxQty: number;
 }
 
-const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -518,7 +518,7 @@ export default function Sales() {
               </Button>
             </DialogTrigger>
 
-            <DialogContent className="glass-card border-white/40 max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="glass-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Nova venda</DialogTitle></DialogHeader>
 
               <div className="space-y-4">
@@ -559,7 +559,7 @@ export default function Sales() {
 
 
 
-                <div className="border-t border-white/30 pt-4">
+                <div className="border-t border-border pt-4">
                   <Label className="text-sm font-semibold">Adicionar produtos</Label>
                   <div className="grid sm:grid-cols-[1fr_1fr_90px_auto] gap-2 mt-2">
                     <Select value={pickProduct} onValueChange={(v) => { setPickProduct(v); setPickVariant(""); }}>
@@ -605,7 +605,7 @@ export default function Sales() {
                   </div>
 
                   {cart.length > 0 && (
-                    <div className="mt-3 flex items-center justify-between pt-3 border-t border-white/30">
+                    <div className="mt-3 flex items-center justify-between pt-3 border-t border-border">
                       <span className="text-sm text-muted-foreground">Total</span>
                       <span className="text-xl font-bold gradient-text">{fmtBRL(total)}</span>
                     </div>
@@ -738,7 +738,7 @@ export default function Sales() {
       </GlassCard>
 
       <Dialog open={!!payEdit} onOpenChange={(o) => !o && setPayEdit(null)}>
-        <DialogContent className="glass-card border-white/40 max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="glass-card border-border max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Alterar forma de pagamento</DialogTitle>
           </DialogHeader>
@@ -883,7 +883,7 @@ export default function Sales() {
       </Dialog>
 
       <Dialog open={!!delSale} onOpenChange={(o) => !o && !deleting && setDelSale(null)}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+        <DialogContent className="glass-card border-border max-w-md">
           <DialogHeader>
             <DialogTitle>Excluir venda</DialogTitle>
           </DialogHeader>

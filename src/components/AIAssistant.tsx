@@ -81,7 +81,7 @@ export function AIAssistant() {
             transition={{ duration: 0.2 }}
             className="fixed bottom-24 right-4 md:right-6 z-50 w-[calc(100vw-2rem)] sm:w-96 h-[520px] glass-card flex flex-col overflow-hidden"
           >
-            <div className="p-4 border-b border-white/30 flex items-center justify-between bg-gradient-primary text-primary-foreground">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-gradient-primary text-primary-foreground">
               <div className="flex items-center gap-2">
                 <MessageCircleQuestion className="h-5 w-5" />
                 <div>
@@ -115,7 +115,7 @@ export function AIAssistant() {
               )}
             </div>
 
-            <div className="p-3 border-t border-white/30 flex gap-2">
+            <div className="p-3 border-t border-border flex gap-2">
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

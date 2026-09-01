@@ -112,7 +112,7 @@ export default function Users() {
               const isMe = u.id === me?.id;
               const isAdmin = u.roles.includes("admin");
               return (
-                <div key={u.id} className="p-4 rounded-2xl bg-white/40 backdrop-blur">
+                <div key={u.id} className="p-4 rounded-2xl bg-white/40 dark:bg-white/5 backdrop-blur">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">

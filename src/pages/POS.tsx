@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAll } from "@/lib/fetchAll";
+import { fmtBRL } from "@/lib/utils";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,8 +36,6 @@ interface CartItem {
   isAvulso?: boolean;
 }
 
-const fmtBRL = (n: number) =>
-  Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const addPeriod = (date: Date, n: number, freq: "mensal" | "quinzenal") => {
   const d = new Date(date);
@@ -80,6 +79,10 @@ export default function POS() {
   // Step 2
   const [customerId, setCustomerId] = useState<string>("");
   const [customerSearch, setCustomerSearch] = useState("");
+  const debouncedCustomerSearch = useDebouncedValue(customerSearch, 300);
+  // Guardado à parte: a lista `customers` muda a cada busca no servidor, e o
+  // escolhido não pode sumir do cupom só porque saiu do resultado atual.
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { debt: customerDebt, loading: debtLoading } = useCustomerDebt(customerId || null);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState("");
@@ -132,22 +135,49 @@ export default function POS() {
   } | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Só o catálogo é carregado de uma vez. Clientes vêm por busca no servidor —
+  // trazer a base inteira só para preencher um campo que mostra 50 resultados
+  // custava uma requisição por milhar de cadastros antes da primeira venda.
   const load = async () => {
-    const [p, c] = await Promise.all([
-      supabase
-        .from("products")
-        .select("id, name, sku, price, cost, image_url, product_variants(id, size, color, quantity, sku)")
-        .eq("active", true)
-        .order("name"),
-      fetchAll<Customer>((sb) => sb.from("customers").select("id, name, nickname, phone").order("name")),
-    ]);
-    setProducts((p.data ?? []) as Product[]);
-    setCustomers(c as Customer[]);
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, sku, price, cost, image_url, product_variants(id, size, color, quantity, sku)")
+      .eq("active", true)
+      .order("name");
+    if (error) throw error;
+    setProducts((data ?? []) as Product[]);
   };
 
   useEffect(() => {
-    load();
+    // Sem o catch, uma falha de rede virava unhandled rejection: o operador via
+    // um PDV vazio, sem produtos e sem nenhuma mensagem explicando o motivo.
+    load().catch((e: any) => {
+      toast.error("Não foi possível carregar o catálogo: " + (e?.message ?? "erro desconhecido"));
+    });
   }, []);
+
+  // Busca de clientes no servidor, já com o termo debounced.
+  useEffect(() => {
+    let cancelled = false;
+    const termo = debouncedCustomerSearch.trim();
+
+    (async () => {
+      let q = supabase.from("customers").select("id, name, nickname, phone").order("name").limit(50);
+      if (termo) {
+        const escapado = termo.replace(/[%_,]/g, " ");
+        q = q.or(`name.ilike.%${escapado}%,nickname.ilike.%${escapado}%,phone.ilike.%${escapado}%`);
+      }
+      const { data, error } = await q;
+      if (cancelled) return;
+      if (error) {
+        toast.error("Falha ao buscar clientes: " + error.message);
+        return;
+      }
+      setCustomers((data ?? []) as Customer[]);
+    })();
+
+    return () => { cancelled = true; };
+  }, [debouncedCustomerSearch]);
 
   // ---------- Cart logic ----------
   const subtotal = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
@@ -172,13 +202,8 @@ export default function POS() {
       .slice(0, 60);
   }, [products, search]);
 
-  const filteredCustomers = useMemo(() => {
-    const q = customerSearch.trim().toLowerCase();
-    if (!q) return customers.slice(0, 50);
-    return customers
-      .filter((c) => c.name.toLowerCase().includes(q) || (c.nickname ?? "").toLowerCase().includes(q) || (c.phone ?? "").toLowerCase().includes(q))
-      .slice(0, 50);
-  }, [customers, customerSearch]);
+  // A filtragem agora acontece no servidor; `customers` já vem pronto.
+  const filteredCustomers = customers;
 
   const addProductToCart = (product: Product) => {
     const variants = product.product_variants ?? [];
@@ -311,7 +336,7 @@ export default function POS() {
   const resetAll = () => {
     setCart([]);
     setStep(1);
-    setCustomerId("");
+    setCustomerId(""); setSelectedCustomer(null);
     setCustomerSearch("");
     setPaymentMethod("dinheiro");
     setInstallments(1);
@@ -455,7 +480,7 @@ export default function POS() {
       if (!custCheck) {
         toast.error("Cliente não existe mais no cadastro. Selecione outro.");
         setCustomers((prev) => prev.filter((c) => c.id !== customerId));
-        setCustomerId("");
+        setCustomerId(""); setSelectedCustomer(null);
         setSaving(false);
         return;
       }
@@ -550,7 +575,7 @@ export default function POS() {
       const sale = { id: saleId as string };
 
       // 4) Cupom
-      const cust = customers.find((c) => c.id === customerId) ?? null;
+      const cust = selectedCustomer;
       const cashNum = Number((cashReceived || "0").toString().replace(",", ".")) || 0;
       const change = paymentMethod === "dinheiro" ? Math.max(0, cashNum - total) : 0;
       setReceipt({
@@ -681,7 +706,7 @@ export default function POS() {
                       key={p.id}
                       onClick={() => addProductToCart(p)}
                       disabled={stock === 0 && p.product_variants.length > 0}
-                      className="group text-left rounded-xl border border-white/30 bg-white/40 dark:bg-white/5 backdrop-blur p-2 hover:shadow-glow hover:border-primary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="group text-left rounded-xl border border-border bg-white/40 dark:bg-white/5 backdrop-blur p-2 hover:shadow-glow hover:border-primary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <div className="aspect-square rounded-lg overflow-hidden bg-muted mb-2 flex items-center justify-center">
                         {p.image_url ? (
@@ -739,11 +764,11 @@ export default function POS() {
                 {filteredCustomers.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => setCustomerId(c.id)}
+                    onClick={() => { setCustomerId(c.id); setSelectedCustomer(c); }}
                     className={`w-full text-left rounded-lg px-3 py-2 transition-all border ${
                       customerId === c.id
                         ? "bg-gradient-primary text-primary-foreground border-transparent shadow-glow"
-                        : "border-white/30 bg-white/40 dark:bg-white/5 hover:border-primary"
+                        : "border-border bg-white/40 dark:bg-white/5 hover:border-primary"
                     }`}
                   >
                     <div className="font-medium text-sm">{c.name}{c.nickname ? <span className={`ml-1 text-xs font-normal ${customerId === c.id ? "opacity-90" : "text-muted-foreground"}`}>({c.nickname})</span> : null}</div>
@@ -850,7 +875,7 @@ export default function POS() {
                     )}
                   </div>
 
-                  <div className="flex justify-between text-sm border-t border-white/30 pt-2">
+                  <div className="flex justify-between text-sm border-t border-border pt-2">
                     <span className="text-muted-foreground">Recebido / Restante:</span>
                     <span>
                       <span className="font-semibold">{fmtBRL(splitsTotal)}</span>
@@ -917,7 +942,7 @@ export default function POS() {
                         </div>
 
                         {isAdjustingInstallments && (
-                          <div className="space-y-2 pt-2 border-t border-white/20">
+                          <div className="space-y-2 pt-2 border-t border-border">
                             {manualInstallments.map((val, idx) => (
                               <div key={idx} className="flex items-center justify-between gap-2">
                                 <span className="text-xs text-muted-foreground w-16">{idx + 1}ª Parcela:</span>
@@ -1099,7 +1124,7 @@ export default function POS() {
                     </div>
 
                     {isAdjustingInstallments && (
-                      <div className="space-y-2 pt-2 border-t border-white/20">
+                      <div className="space-y-2 pt-2 border-t border-border">
                         {manualInstallments.map((val, idx) => (
                           <div key={idx} className="flex items-center justify-between gap-2">
                             <span className="text-xs text-muted-foreground w-16">{idx + 1}ª Parcela:</span>
@@ -1209,7 +1234,7 @@ export default function POS() {
                 </p>
               )}
               {cart.map((it, i) => (
-                <div key={i} className="rounded-lg border border-white/30 bg-white/40 dark:bg-white/5 p-2">
+                <div key={i} className="rounded-lg border border-border bg-white/40 dark:bg-white/5 p-2">
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium truncate">{it.productName}</div>
@@ -1280,7 +1305,14 @@ export default function POS() {
               ))}
             </div>
 
-            <div className="border-t border-white/30 mt-3 pt-3 space-y-1">
+            {/* Os totais mudam a cada item somado ao carrinho sem que nada receba
+                foco; sem aria-live o leitor de tela não anuncia a alteração. */}
+            <div
+              className="border-t border-border mt-3 pt-3 space-y-1"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Itens:</span>
                 <span>{cart.reduce((s, i) => s + i.quantity, 0)}</span>
@@ -1335,7 +1367,7 @@ export default function POS() {
               {customerId && (
                 <div className="text-xs text-muted-foreground pt-1 space-y-1">
                   <div>
-                    Cliente: <span className="font-medium text-foreground">{customers.find((c) => c.id === customerId)?.name}</span>
+                    Cliente: <span className="font-medium text-foreground">{selectedCustomer?.name}</span>
                   </div>
                   <div className="flex items-center justify-between" aria-live="polite">
                     <span>Dívida Total:</span>
@@ -1356,7 +1388,7 @@ export default function POS() {
 
       {/* VARIANT PICKER DIALOG */}
       <Dialog open={!!variantPickFor} onOpenChange={(o) => !o && setVariantPickFor(null)}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+        <DialogContent className="glass-card border-border max-w-md">
           <DialogHeader>
             <DialogTitle>{variantPickFor?.name}</DialogTitle>
           </DialogHeader>
@@ -1400,7 +1432,7 @@ export default function POS() {
 
       {/* PRODUTO AVULSO DIALOG */}
       <Dialog open={avulsoOpen} onOpenChange={setAvulsoOpen}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+        <DialogContent className="glass-card border-border max-w-md">
           <DialogHeader>
             <DialogTitle>Produto avulso</DialogTitle>
           </DialogHeader>
@@ -1587,7 +1619,7 @@ export default function POS() {
       </Dialog>
 
       <Dialog open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
-        <DialogContent className="glass-card border-white/40 max-w-md">
+        <DialogContent className="glass-card border-border max-w-md">
           <DialogHeader>
             <DialogTitle>Novo cliente</DialogTitle>
           </DialogHeader>
@@ -1624,12 +1656,12 @@ export default function POS() {
                 const { data, error } = await supabase
                   .from("customers")
                   .insert({ name, phone: newCustomerPhone.trim() || null })
-                  .select("id, name, phone")
+                  .select("id, name, nickname, phone")
                   .single();
                 setCreatingCustomer(false);
                 if (error || !data) { toast.error(error?.message || "Falha ao cadastrar"); return; }
-                setCustomers((prev) => [...prev, data as Customer].sort((a, b) => a.name.localeCompare(b.name)));
                 setCustomerId(data.id);
+                setSelectedCustomer(data as Customer);
                 setCustomerSearch("");
                 setNewCustomerOpen(false);
                 toast.success("Cliente cadastrado");

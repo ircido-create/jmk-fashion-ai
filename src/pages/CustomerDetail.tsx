@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fmtBRL } from "@/lib/utils";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard, Wallet, CheckCircle2 } from "lucide-react";
@@ -32,7 +33,6 @@ interface Receivable {
   receivable_payments?: { amount_paid: number }[];
 }
 
-const fmtBRL = (n: number) => Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 
 export default function CustomerDetail() {
@@ -239,7 +239,7 @@ export default function CustomerDetail() {
         </div>
 
         {trust.reasoning.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-white/30">
+          <div className="mt-4 pt-4 border-t border-border">
             <div className="text-xs font-medium text-muted-foreground mb-2">Como esse score foi calculado</div>
             <ul className="text-sm space-y-1">
               {trust.reasoning.map((r, i) => <li key={i} className="text-foreground/80">• {r}</li>)}
