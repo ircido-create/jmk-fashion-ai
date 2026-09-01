@@ -134,11 +134,16 @@ export default function Sales() {
         .in("receivable_id", ids);
       paidIds = new Set((pays ?? []).map((p) => p.receivable_id as string));
     }
-    const open: { id: string; amount: number }[] = [];
-    const paid: { id: string; amount: number }[] = [];
+    const open: RecRow[] = [];
+    const paid: RecRow[] = [];
     for (const r of rows) {
       const isPaid = r.status === "pago" || paidIds.has(r.id);
-      (isPaid ? paid : open).push({ id: r.id, amount: Number(r.amount) });
+      (isPaid ? paid : open).push({
+        id: r.id,
+        amount: Number(r.amount),
+        description: (r as any).description ?? null,
+        due_date: (r as any).due_date ?? null,
+      });
     }
     return { open, paid };
   };
