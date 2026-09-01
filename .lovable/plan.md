@@ -1,28 +1,40 @@
-# PATRICIA AVELAR — verificação da exclusão e limpeza da dívida
+# Varredura das parcelas sem venda vinculada (órfãs)
 
-## O que os dados mostram
+São 31 parcelas em 9 grupos. A varredura mostra que a maioria **não é dívida fantasma** — é apenas falta de vínculo. Classificação:
 
-Cliente: PATRICIA AVELAR (+55 11 92252-7762). Hoje ela tem 9 parcelas em aberto, R$ 923,00 no total, vindas de dois grupos:
+## A) Vínculo perdido, dívida é real — apenas religar à venda (não excluir)
 
-1. **Venda de hoje (01/09, R$ 340,00)** — existe normalmente no sistema, com 4 parcelas de R$ 85,00 (set a dez), corretamente vinculadas à venda. Nada errado aqui.
+| Cliente | Parcelas | Valor | Venda existente |
+|---|---|---|---|
+| RAQUEL SOUSA GOMES DA SILVA | 1 | R$ 356,00 | A80BB400 (19/08) |
+| TALITA ROSA ARAKAKI ALVES | 6 | R$ 240,00 | 8F5293C9 (13/08) |
+| ELIZABETE CORREA DA SILVA FERREIRA | 3 | R$ 710,00 | 7D2348DF (citada na descrição) |
+| Leila Assis | 7 | R$ 1.720,00 | 372FB4B9 (citada na descrição) |
+| LIS ANGELA ROSA DE ARAUJO ESPERANDIO | 1 | R$ 240,00 (já paga) | 7DA6B402 (citada na descrição) |
 
-2. **Grupo de 12/08 — R$ 583,00 em 5 parcelas** ("Carteira 2/6 a 6/6", vencendo de out/2026 a fev/2027): **não existe nenhuma venda no sistema para essas parcelas**. A parcela 1/6 também já não existe. Não há nenhum pagamento nem comprovante registrado para elas.
+## B) Dívida real por transferência — manter como está
 
-Conclusão: a venda de 12/08 foi excluída, mas as parcelas dela **não foram estornadas** — a cliente segue com R$ 583,00 de dívida fantasma. É exatamente a falha antiga (parcelas 2 em diante não eram encontradas na exclusão), já corrigida para vendas novas pelo vínculo `sale_id`.
+| Cliente | Parcelas | Valor | Observação |
+|---|---|---|---|
+| WILLIANE BARROS MONTEIRO DE SOUZA | 4 | R$ 826,66 | Dívida transferida de CAMILA M. PERESTRELO; sem venda própria por natureza |
 
-## O que proponho fazer
+## C) Precisa da sua decisão
 
-1. **Estornar a dívida fantasma**: excluir as 5 parcelas órfãs de 12/08 (R$ 583,00) da conta da PATRICIA AVELAR. Depois disso a dívida dela fica em R$ 340,00 (só a venda de hoje).
-   - Observação: o estoque dessa venda de 12/08 não pode ser estornado agora — a venda e seus itens já foram apagados, não há registro do que sair. Se você souber as peças, dá para ajustar o estoque manualmente.
+| Cliente | Parcelas | Valor | Situação |
+|---|---|---|---|
+| PATRICIA AVELAR | 5 | R$ 583,00 | Venda de 12/08 não existe mais e nada foi pago — dívida fantasma de venda excluída |
+| CONSTANCIA FAGUNDES CARDOSO | 2 | R$ 200,00 | Grupo "2/3 e 3/3" de 01/08 sem venda no sistema e sem pagamento — provável resíduo de exclusão |
+| ANDREA CARMO DOS SANTOS | 2 | R$ 250,00 | Grupo "3/4 e 4/4" de 04/07; há 3 vendas dela criadas no mesmo minuto (R$ 500 cada) — não dá para dizer qual é a certa sem sua confirmação |
 
-2. **Registro de exclusões (auditoria)** para não acontecer de novo às cegas:
-   - Nova tabela guardando cada exclusão de venda: cliente, valor, data, itens, parcelas removidas (valor e vencimento), peças estornadas ao estoque, quem excluiu e quando.
-   - Tela "Vendas excluídas" na página de Vendas, com busca por cliente e período, para conferir a qualquer momento se o valor saiu da conta da cliente.
+## Plano
 
-3. **Varredura das demais órfãs**: existem outros 26 lançamentos antigos sem venda vinculada (TALITA, ELIZABETE, Leila Assis, CONSTANCIA, ANDREA, RAQUEL, WILLIANE). Depois da limpeza da Patricia, listo caso a caso para você aprovar quais são dívida real e quais são resíduo de exclusão.
+1. **Religar os grupos do item A** às vendas correspondentes (preenchendo o vínculo `sale_id`). Nenhum valor muda; passa a aparecer certo na tela da venda e a exclusão futura funciona.
+2. **Excluir as 5 parcelas da PATRICIA AVELAR (R$ 583,00)** — dívida fantasma confirmada. Ela fica com R$ 340,00 (venda de hoje).
+3. **CONSTANCIA e ANDREA**: aguardo seu OK caso a caso — me diga se a dívida é real (mantenho e religo) ou se veio de venda excluída (removo).
+4. **Registro de exclusões (auditoria)**: nova tabela guardando cada exclusão de venda (cliente, valor, itens, parcelas removidas, peças estornadas, quem e quando) e uma tela "Vendas excluídas" na página de Vendas, para conferir a qualquer momento se o valor saiu da conta da cliente.
 
 ## Detalhes técnicos
 
-- Remoção das 5 parcelas por `id` (ccdf5747, 3fb30309, 41e52436, d9cf306f, c62bfc9d) — nenhuma tem pagamento ou comprovante vinculado.
+- Religação e limpeza via SQL de dados (update de `accounts_receivable.sale_id`; delete dos 5 ids da Patricia — nenhum tem pagamento ou comprovante).
 - Migração: tabela `deleted_sales_log` (`sale_id`, `customer_id`, `customer_name`, `sale_total`, `sale_date`, `items` jsonb, `removed_receivables` jsonb, `restored_stock` jsonb, `deleted_by`, `created_at`), com GRANTs e RLS para autenticados.
-- `src/pages/Sales.tsx`: gravar o snapshot em `deleted_sales_log` dentro de `confirmDeleteSale` antes dos deletes; toast final resumindo peças estornadas e parcelas removidas; nova aba/rota listando o histórico de exclusões.
+- `src/pages/Sales.tsx`: gravar o snapshot em `deleted_sales_log` dentro de `confirmDeleteSale` antes dos deletes; toast final com resumo do estorno; nova aba listando o histórico de exclusões.
