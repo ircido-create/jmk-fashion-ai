@@ -875,6 +875,67 @@ export default function Sales() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!delSale} onOpenChange={(o) => !o && !deleting && setDelSale(null)}>
+        <DialogContent className="glass-card border-white/40 max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir venda</DialogTitle>
+          </DialogHeader>
+          {delSale && (
+            <div className="space-y-3 text-sm">
+              <div className="p-3 rounded-xl bg-white/40 dark:bg-white/5">
+                <div className="font-medium">{delSale.customers?.name ?? "Sem cliente"}</div>
+                <div className="text-xs text-muted-foreground">
+                  {fmtDate(delSale.sale_date)} · <span className="font-semibold text-primary">{fmtBRL(Number(delSale.total))}</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {delSale.sale_items.map((it) => `${it.quantity}× ${it.product_name}`).join(" • ")}
+                </div>
+              </div>
+
+              {delLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Verificando pagamentos...
+                </div>
+              ) : delPaidRecs.length > 0 ? (
+                <p className="text-destructive font-medium">
+                  Não é possível excluir: existem pagamentos registrados para esta venda ({delPaidRecs.length} parcela(s) — {fmtBRL(delPaidRecs.reduce((a, b) => a + b.amount, 0))}). Estorne os pagamentos antes.
+                </p>
+              ) : (
+                <div className="space-y-1 text-muted-foreground">
+                  <p>Esta ação irá:</p>
+                  <ul className="list-disc pl-5 space-y-0.5">
+                    <li>
+                      Estornar {delSale.sale_items.filter((it) => it.variant_id).reduce((a, b) => a + b.quantity, 0)} peça(s) ao estoque
+                    </li>
+                    {delSale.sale_items.some((it) => !it.variant_id) && (
+                      <li>Itens avulsos (sem variação) não geram estorno de estoque</li>
+                    )}
+                    {delOpenRecs.length > 0 && (
+                      <li>
+                        Remover {delOpenRecs.length} parcela(s) em aberto ({fmtBRL(delOpenRecs.reduce((a, b) => a + b.amount, 0))})
+                      </li>
+                    )}
+                    <li>Apagar a venda e seus itens (não pode ser desfeito)</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDelSale(null)} disabled={deleting}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteSale}
+              disabled={deleting || delLoading || delPaidRecs.length > 0}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Excluir venda"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
+
     </div>
   );
 }
