@@ -114,36 +114,41 @@ export default function Sales() {
   const [payExistingPaid, setPayExistingPaid] = useState<{ id: string; amount: number }[]>([]);
   const [payLoadingExisting, setPayLoadingExisting] = useState(false);
 
+  const fetchSaleReceivables = async (s: SaleRow) => {
+    const short = s.id.slice(0, 8).toUpperCase();
+    const orFilter = [`description.ilike.%venda ${short}%`]
+      .concat(s.receivable_id ? [`id.eq.${s.receivable_id}`] : [])
+      .join(",");
+    const { data, error } = await supabase
+      .from("accounts_receivable")
+      .select("id, amount, status")
+      .or(orFilter);
+    if (error) throw error;
+    const rows = data ?? [];
+    const ids = rows.map((r) => r.id);
+    let paidIds = new Set<string>();
+    if (ids.length) {
+      const { data: pays } = await supabase
+        .from("receivable_payments")
+        .select("receivable_id")
+        .in("receivable_id", ids);
+      paidIds = new Set((pays ?? []).map((p) => p.receivable_id as string));
+    }
+    const open: { id: string; amount: number }[] = [];
+    const paid: { id: string; amount: number }[] = [];
+    for (const r of rows) {
+      const isPaid = r.status === "pago" || paidIds.has(r.id);
+      (isPaid ? paid : open).push({ id: r.id, amount: Number(r.amount) });
+    }
+    return { open, paid };
+  };
+
   const loadSaleReceivables = async (s: SaleRow) => {
     setPayLoadingExisting(true);
     setPayExistingOpen([]);
     setPayExistingPaid([]);
     try {
-      const short = s.id.slice(0, 8).toUpperCase();
-      const orFilter = [`description.ilike.%venda ${short}%`]
-        .concat(s.receivable_id ? [`id.eq.${s.receivable_id}`] : [])
-        .join(",");
-      const { data, error } = await supabase
-        .from("accounts_receivable")
-        .select("id, amount, status")
-        .or(orFilter);
-      if (error) throw error;
-      const rows = data ?? [];
-      const ids = rows.map((r) => r.id);
-      let paidIds = new Set<string>();
-      if (ids.length) {
-        const { data: pays } = await supabase
-          .from("receivable_payments")
-          .select("receivable_id")
-          .in("receivable_id", ids);
-        paidIds = new Set((pays ?? []).map((p) => p.receivable_id as string));
-      }
-      const open: { id: string; amount: number }[] = [];
-      const paid: { id: string; amount: number }[] = [];
-      for (const r of rows) {
-        const isPaid = r.status === "pago" || paidIds.has(r.id);
-        (isPaid ? paid : open).push({ id: r.id, amount: Number(r.amount) });
-      }
+      const { open, paid } = await fetchSaleReceivables(s);
       setPayExistingOpen(open);
       setPayExistingPaid(paid);
     } catch (e: any) {
@@ -152,6 +157,70 @@ export default function Sales() {
       setPayLoadingExisting(false);
     }
   };
+
+  // Excluir venda (estorna estoque)
+  const [delSale, setDelSale] = useState<SaleRow | null>(null);
+  const [delOpenRecs, setDelOpenRecs] = useState<{ id: string; amount: number }[]>([]);
+  const [delPaidRecs, setDelPaidRecs] = useState<{ id: string; amount: number }[]>([]);
+  const [delLoading, setDelLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const openDeleteSale = async (s: SaleRow) => {
+    setDelSale(s);
+    setDelOpenRecs([]);
+    setDelPaidRecs([]);
+    setDelLoading(true);
+    try {
+      const { open, paid } = await fetchSaleReceivables(s);
+      setDelOpenRecs(open);
+      setDelPaidRecs(paid);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao verificar pagamentos da venda");
+    } finally {
+      setDelLoading(false);
+    }
+  };
+
+  const confirmDeleteSale = async () => {
+    if (!delSale || delPaidRecs.length > 0) return;
+    setDeleting(true);
+    try {
+      let restored = 0;
+      for (const it of delSale.sale_items) {
+        if (!it.variant_id) continue;
+        const { error } = await supabase.rpc("increment_variant_stock", {
+          variant_id: it.variant_id,
+          qty: it.quantity,
+        });
+        if (error) throw error;
+        restored += it.quantity;
+      }
+
+      if (delOpenRecs.length) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .delete()
+          .in("id", delOpenRecs.map((r) => r.id));
+        if (error) throw error;
+      }
+
+      const { error: itErr } = await supabase.from("sale_items").delete().eq("sale_id", delSale.id);
+      if (itErr) throw itErr;
+      const { error: sErr } = await supabase.from("sales").delete().eq("id", delSale.id);
+      if (sErr) throw sErr;
+
+      toast.success(
+        `Venda excluída · ${restored} peça(s) estornada(s) ao estoque${delOpenRecs.length ? ` · ${delOpenRecs.length} parcela(s) removida(s)` : ""}`
+      );
+      setDelSale(null);
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erro ao excluir venda");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
 
   const openPayEdit = (s: SaleRow) => {
     setPayEdit(s);
