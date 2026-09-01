@@ -928,7 +928,7 @@ export default function Sales() {
                     <div className="mt-2 p-2 rounded-lg bg-white/40 dark:bg-white/5 space-y-0.5 max-h-40 overflow-auto">
                       {delOpenRecs.map((r) => (
                         <div key={r.id} className="flex justify-between text-xs">
-                          <span className="truncate mr-2">{r.description ?? "Parcela"}{r.due_date ? ` · venc. ${fmtDate(r.due_date)}` : ""}</span>
+                          <span className="truncate mr-2">{r.description ?? "Parcela"}{r.due_date ? ` · venc. ${fmtDate(r.due_date + "T00:00:00")}` : ""}</span>
                           <span className="font-medium">{fmtBRL(r.amount)}</span>
                         </div>
                       ))}
