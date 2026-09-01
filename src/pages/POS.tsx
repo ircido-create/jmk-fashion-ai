@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -9,72 +9,39 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, Printer, ChevronRight, ChevronLeft, Receipt, UserPlus } from "lucide-react";
+import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, ChevronRight, ChevronLeft, Receipt, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { useCustomerDebt } from "@/hooks/useCustomerDebt";
+import {
+  PAYMENT_LABELS, addPeriod,
+  type CartItem, type Customer, type PaymentMethod, type Product,
+  type ReceiptData, type ReceivableDraft, type Step,
+} from "./pos/types";
+import { useCart } from "./pos/useCart";
+import { usePaymentSplit } from "./pos/usePaymentSplit";
+import { ReceiptDialog } from "./pos/ReceiptDialog";
+import { VariantPickerDialog } from "./pos/VariantPickerDialog";
+import { AvulsoDialog } from "./pos/AvulsoDialog";
 
-type PaymentMethod = "dinheiro" | "debito" | "credito" | "pix" | "fiado";
-interface SplitEntry { method: PaymentMethod; amount: number; }
 
-interface Variant { id: string; size: string | null; color: string | null; quantity: number; sku: string | null; }
-interface Product {
-  id: string; name: string; sku: string | null; price: number; cost: number; image_url: string | null;
-  product_variants: Variant[];
-}
-interface Customer { id: string; name: string; nickname: string | null; phone: string | null; }
-
-interface CartItem {
-  productId: string;
-  variantId: string | null;
-  productName: string;
-  variantLabel: string;
-  sku: string | null;
-  quantity: number;
-  unitPrice: number;
-  unitCost: number;
-  maxQty: number;
-  isAvulso?: boolean;
-}
-
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const addPeriod = (date: Date, n: number, freq: "mensal" | "quinzenal") => {
-  const d = new Date(date);
-  if (freq === "quinzenal") {
-    d.setDate(d.getDate() + n * 15);
-  } else {
-    d.setMonth(d.getMonth() + n);
-  }
-  return d;
-};
-
-const PAYMENT_LABELS: Record<string, string> = {
-  dinheiro: "Dinheiro",
-  debito: "Cartão de Débito",
-  credito: "Cartão de Crédito",
-  pix: "PIX",
-  fiado: "Carteira",
-  misto: "Pagamento Misto",
-};
-
-type Step = 1 | 2 | 3;
 
 export default function POS() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const cartApi = useCart();
+  const {
+    cart, subtotal, total, totalUnits,
+    discountValue, setDiscountValue, discountType, setDiscountType, discountAmount,
+    pushItem, updateQty, setQtyExact, setUnitPrice, removeItem,
+  } = cartApi;
   const [step, setStep] = useState<Step>(1);
 
   // Step 1 — variant picker
   const [variantPickFor, setVariantPickFor] = useState<Product | null>(null);
-  const [pickVariantId, setPickVariantId] = useState<string>("");
-  const [pickQty, setPickQty] = useState<number>(1);
 
   // Step 1 — produto avulso (não cadastrado)
   const [avulsoOpen, setAvulsoOpen] = useState(false);
-  const [avulsoName, setAvulsoName] = useState("");
-  const [avulsoPrice, setAvulsoPrice] = useState<string>("");
-  const [avulsoQty, setAvulsoQty] = useState<number>(1);
 
   // Step 2
   const [customerId, setCustomerId] = useState<string>("");
@@ -105,35 +72,18 @@ export default function POS() {
   const [manualInstallments, setManualInstallments] = useState<string[]>([]);
   const [isAdjustingInstallments, setIsAdjustingInstallments] = useState(false);
 
-  // Pagamento misto (várias formas na mesma venda)
-  const [splitMode, setSplitMode] = useState<boolean>(false);
-  const [splits, setSplits] = useState<SplitEntry[]>([]);
-  const [splitMethod, setSplitMethod] = useState<PaymentMethod>("pix");
-  const [splitAmount, setSplitAmount] = useState<string>("");
-  const [splitFiadoInstallments, setSplitFiadoInstallments] = useState<number>(1);
-
-  // Desconto
-  const [discountValue, setDiscountValue] = useState<string>("");
-  const [discountType, setDiscountType] = useState<"valor" | "percent">("valor");
+  const splitApi = usePaymentSplit(total);
+  const {
+    splitMode, setSplitMode, splits, setSplits, splitMethod, setSplitMethod,
+    splitAmount, setSplitAmount, splitFiadoInstallments, setSplitFiadoInstallments,
+    splitsTotal, splitsRemaining, fiadoAmount,
+    addSplit, fillRemainingSplit, removeSplit,
+  } = splitApi;
 
   // Saving + receipt
   const [saving, setSaving] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
-  const [receipt, setReceipt] = useState<{
-    number: string;
-    date: Date;
-    customer: Customer | null;
-    items: CartItem[];
-    subtotal: number;
-    grossSubtotal?: number;
-    discount?: number;
-    payment: PaymentMethod | "misto";
-    installments: number;
-    cashReceived: number;
-    change: number;
-    splits?: SplitEntry[];
-  } | null>(null);
-  const printRef = useRef<HTMLDivElement>(null);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
 
   // Só o catálogo é carregado de uma vez. Clientes vêm por busca no servidor —
   // trazer a base inteira só para preencher um campo que mostra 50 resultados
@@ -178,16 +128,6 @@ export default function POS() {
 
     return () => { cancelled = true; };
   }, [debouncedCustomerSearch]);
-
-  // ---------- Cart logic ----------
-  const subtotal = useMemo(() => cart.reduce((s, it) => s + it.unitPrice * it.quantity, 0), [cart]);
-  const discountAmount = useMemo(() => {
-    const raw = Number(String(discountValue).replace(",", ".")) || 0;
-    if (!Number.isFinite(raw) || raw <= 0) return 0;
-    const val = discountType === "percent" ? (subtotal * raw) / 100 : raw;
-    return Math.round(Math.min(Math.max(val, 0), subtotal) * 100) / 100;
-  }, [discountValue, discountType, subtotal]);
-  const total = Math.round((subtotal - discountAmount) * 100) / 100;
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -239,102 +179,12 @@ export default function POS() {
       return;
     }
     setVariantPickFor(product);
-    setPickVariantId("");
-    setPickQty(1);
   };
 
-  const confirmVariant = () => {
-    if (!variantPickFor || !pickVariantId) {
-      toast.error("Selecione a variação");
-      return;
-    }
-    const v = variantPickFor.product_variants.find((x) => x.id === pickVariantId)!;
-    if (pickQty < 1 || pickQty > v.quantity) {
-      toast.error(`Quantidade inválida (estoque: ${v.quantity})`);
-      return;
-    }
-    pushItem({
-      productId: variantPickFor.id,
-      variantId: v.id,
-      productName: variantPickFor.name,
-      variantLabel: [v.size, v.color].filter(Boolean).join(" / "),
-      sku: v.sku ?? variantPickFor.sku,
-      quantity: pickQty,
-      unitPrice: Number(variantPickFor.price),
-      unitCost: Number(variantPickFor.cost),
-      maxQty: v.quantity,
-    });
-    setVariantPickFor(null);
-  };
-
-  const pushItem = (item: CartItem) => {
-    setCart((c) => {
-      const idx = c.findIndex(
-        (x) => x.productId === item.productId && x.variantId === item.variantId,
-      );
-      if (idx >= 0) {
-        const next = [...c];
-        const merged = { ...next[idx], quantity: Math.min(next[idx].maxQty, next[idx].quantity + item.quantity) };
-        next[idx] = merged;
-        return next;
-      }
-      return [...c, item];
-    });
-  };
-
-  const updateQty = (idx: number, delta: number) => {
-    setCart((c) => {
-      const next = [...c];
-      const item = { ...next[idx] };
-      const q = item.quantity + delta;
-      if (q < 1) {
-        if (typeof window !== "undefined" && window.confirm(`Remover "${item.productName}" do carrinho?`)) {
-          return c.filter((_, i) => i !== idx);
-        }
-        return c;
-      }
-      if (q > item.maxQty) {
-        toast.error(`Apenas ${item.maxQty} unidade(s) em estoque`);
-        return c;
-      }
-      item.quantity = q;
-      next[idx] = item;
-      return next;
-    });
-  };
-
-  const setQtyExact = (idx: number, raw: string) => {
-    const parsed = Math.floor(Number(raw));
-    setCart((c) => {
-      const next = [...c];
-      const item = { ...next[idx] };
-      if (!Number.isFinite(parsed) || parsed < 1) return c;
-      if (parsed > item.maxQty) {
-        toast.error(`Apenas ${item.maxQty} unidade(s) em estoque`);
-        item.quantity = item.maxQty;
-      } else {
-        item.quantity = parsed;
-      }
-      next[idx] = item;
-      return next;
-    });
-  };
-
-  const setUnitPrice = (idx: number, raw: string) => {
-    const normalized = String(raw).replace(",", ".");
-    const parsed = Number(normalized);
-    setCart((c) => {
-      if (!Number.isFinite(parsed) || parsed < 0) return c;
-      const next = [...c];
-      next[idx] = { ...next[idx], unitPrice: Math.round(parsed * 100) / 100 };
-      return next;
-    });
-  };
-
-  const removeItem = (idx: number) => setCart((c) => c.filter((_, i) => i !== idx));
-
+  /** Limpa a venda inteira para começar a próxima. */
   const resetAll = () => {
-    setCart([]);
+    cartApi.reset();   // itens + desconto
+    splitApi.reset();  // formas de pagamento misto
     setStep(1);
     setCustomerId(""); setSelectedCustomer(null);
     setCustomerSearch("");
@@ -343,12 +193,6 @@ export default function POS() {
     setGenerateReceivables(true);
     setCashReceived("");
     setNotes("");
-    setSplitMode(false);
-    setSplits([]);
-    setSplitMethod("pix");
-    setSplitAmount("");
-    setDiscountValue("");
-    setDiscountType("valor");
     setPaymentFrequency("mensal");
     setManualInstallments([]);
     setIsAdjustingInstallments(false);
@@ -357,10 +201,6 @@ export default function POS() {
     setFirstDueDate(d.toISOString().slice(0, 10));
   };
 
-  const splitsTotal = useMemo(() => splits.reduce((s, x) => s + (Number(x.amount) || 0), 0), [splits]);
-  const splitsRemaining = Math.round((total - splitsTotal) * 100) / 100;
-
-  // Gerador de parcelas automáticas/manuais
   const generatedInstallments = useMemo(() => {
     const isFiado = !splitMode && paymentMethod === "fiado";
     const isCredit = !splitMode && paymentMethod === "credito";
@@ -398,18 +238,6 @@ export default function POS() {
   const manualTotal = useMemo(() => generatedInstallments.reduce((s, x) => s + x.amount, 0), [generatedInstallments]);
   const manualDiff = Math.round(((!splitMode && (paymentMethod === "fiado" || (paymentMethod === "credito" && generateReceivables)) ? total : splitMode ? splits.filter(s => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0) - manualTotal) * 100) / 100;
 
-
-  const addSplit = () => {
-    const amt = Number(String(splitAmount).replace(",", "."));
-    if (!Number.isFinite(amt) || amt <= 0) { toast.error("Valor inválido"); return; }
-    if (amt - splitsRemaining > 0.009) { toast.error(`Valor excede o restante (${fmtBRL(splitsRemaining)})`); return; }
-    setSplits((s) => [...s, { method: splitMethod, amount: Math.round(amt * 100) / 100 }]);
-    setSplitAmount("");
-  };
-  const fillRemainingSplit = () => {
-    if (splitsRemaining <= 0) return;
-    setSplitAmount(splitsRemaining.toFixed(2));
-  };
 
   // ---------- Step navigation ----------
   const goNext = () => {
@@ -486,7 +314,7 @@ export default function POS() {
       }
 
       // 1) Monta as parcelas — a gravação acontece junto com a venda, na RPC.
-      let records: any[] = [];
+      const records: ReceivableDraft[] = [];
       if (willCreateReceivables || splitFiadoAmount > 0) {
         const baseDate = new Date(firstDueDate + "T00:00:00");
         const totalAmount = willCreateReceivables ? total : splitFiadoAmount;
@@ -603,32 +431,6 @@ export default function POS() {
     }
   };
 
-  const printReceipt = () => {
-    if (!printRef.current) return;
-    const html = printRef.current.innerHTML;
-    const w = window.open("", "_blank", "width=380,height=600");
-    if (!w) {
-      toast.error("Bloqueador de pop-up impediu a impressão");
-      return;
-    }
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cupom ${receipt?.number}</title>
-      <style>
-        @page { size: 80mm auto; margin: 4mm; }
-        body { font-family: 'Courier New', monospace; font-size: 12px; width: 72mm; margin: 0; color: #000; }
-        h1,h2,h3,p { margin: 0; }
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .row { display: flex; justify-content: space-between; gap: 6px; }
-        .sep { border-top: 1px dashed #000; margin: 6px 0; }
-        .bold { font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; }
-        td { padding: 2px 0; vertical-align: top; }
-      </style></head><body>${html}
-      <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 300); }<\/script>
-      </body></html>`);
-    w.document.close();
-  };
-
   const closeReceiptAndReset = () => {
     setReceiptOpen(false);
     setReceipt(null);
@@ -689,9 +491,6 @@ export default function POS() {
                   variant="outline"
                   className="rounded-xl whitespace-nowrap"
                   onClick={() => {
-                    setAvulsoName(search);
-                    setAvulsoPrice("");
-                    setAvulsoQty(1);
                     setAvulsoOpen(true);
                   }}
                 >
@@ -859,7 +658,7 @@ export default function POS() {
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold">{fmtBRL(s.amount)}</span>
                           <button
-                            onClick={() => setSplits((arr) => arr.filter((_, idx) => idx !== i))}
+                            onClick={() => removeSplit(i)}
                             className="text-destructive hover:opacity-70"
                             aria-label="Remover"
                           >
@@ -887,7 +686,6 @@ export default function POS() {
                   </div>
 
                   {splits.some((s) => s.method === "fiado") && (() => {
-                    const fiadoAmount = splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0);
                     const parts = Math.max(1, splitFiadoInstallments);
                     return (
                       <div className="space-y-3 rounded-xl bg-white/40 dark:bg-white/5 p-3">
@@ -1315,7 +1113,7 @@ export default function POS() {
             >
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Itens:</span>
-                <span>{cart.reduce((s, i) => s + i.quantity, 0)}</span>
+                <span>{totalUnits}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal:</span>
@@ -1387,236 +1185,20 @@ export default function POS() {
       </div>
 
       {/* VARIANT PICKER DIALOG */}
-      <Dialog open={!!variantPickFor} onOpenChange={(o) => !o && setVariantPickFor(null)}>
-        <DialogContent className="glass-card border-border max-w-md">
-          <DialogHeader>
-            <DialogTitle>{variantPickFor?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Variação</Label>
-              <Select value={pickVariantId} onValueChange={setPickVariantId}>
-                <SelectTrigger className="glass-input mt-1">
-                  <SelectValue placeholder="Selecione tamanho/cor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {variantPickFor?.product_variants.map((v) => (
-                    <SelectItem key={v.id} value={v.id} disabled={v.quantity === 0}>
-                      {[v.size, v.color].filter(Boolean).join(" / ") || "—"} (estoque: {v.quantity})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Quantidade</Label>
-              <Input
-                type="number"
-                min={1}
-                value={pickQty}
-                onChange={(e) => setPickQty(Math.max(1, Number(e.target.value) || 1))}
-                className="glass-input mt-1"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setVariantPickFor(null)}>
-              Cancelar
-            </Button>
-            <Button onClick={confirmVariant} className="bg-gradient-primary text-primary-foreground">
-              Adicionar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <VariantPickerDialog
+        product={variantPickFor}
+        onClose={() => setVariantPickFor(null)}
+        onConfirm={pushItem}
+      />
 
-      {/* PRODUTO AVULSO DIALOG */}
-      <Dialog open={avulsoOpen} onOpenChange={setAvulsoOpen}>
-        <DialogContent className="glass-card border-border max-w-md">
-          <DialogHeader>
-            <DialogTitle>Produto avulso</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Adiciona um item que não está no estoque. Não afeta o cadastro de produtos nem o inventário.
-            </p>
-            <div>
-              <Label>Nome do produto</Label>
-              <Input
-                autoFocus
-                value={avulsoName}
-                onChange={(e) => setAvulsoName(e.target.value)}
-                placeholder="Ex.: Sacola personalizada"
-                className="glass-input mt-1"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Valor unitário (R$)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  value={avulsoPrice}
-                  onChange={(e) => setAvulsoPrice(e.target.value)}
-                  placeholder="0,00"
-                  className="glass-input mt-1"
-                />
-              </div>
-              <div>
-                <Label>Quantidade</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={avulsoQty}
-                  onChange={(e) => setAvulsoQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-                  className="glass-input mt-1"
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAvulsoOpen(false)}>Cancelar</Button>
-            <Button
-              className="bg-gradient-primary text-primary-foreground"
-              onClick={() => {
-                const name = avulsoName.trim();
-                const price = Number(String(avulsoPrice).replace(",", "."));
-                const qty = Math.max(1, Math.floor(avulsoQty));
-                if (!name) { toast.error("Informe o nome"); return; }
-                if (!Number.isFinite(price) || price < 0) { toast.error("Valor inválido"); return; }
-                pushItem({
-                  productId: `avulso-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                  variantId: null,
-                  productName: name,
-                  variantLabel: "",
-                  sku: null,
-                  quantity: qty,
-                  unitPrice: Math.round(price * 100) / 100,
-                  unitCost: 0,
-                  maxQty: 9999,
-                  isAvulso: true,
-                });
-                setAvulsoOpen(false);
-                setAvulsoName("");
-                setAvulsoPrice("");
-                setAvulsoQty(1);
-                toast.success("Item avulso adicionado");
-              }}
-            >
-              Adicionar ao carrinho
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AvulsoDialog
+        open={avulsoOpen}
+        initialName={search}
+        onOpenChange={setAvulsoOpen}
+        onConfirm={pushItem}
+      />
 
-      {/* RECEIPT DIALOG */}
-      <Dialog open={receiptOpen} onOpenChange={(o) => !o && closeReceiptAndReset()}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Cupom — Pré-visualização</DialogTitle>
-          </DialogHeader>
-          {receipt && (
-            <div ref={printRef} className="font-mono text-xs leading-tight bg-white text-black p-4 rounded">
-              <div className="center">
-                <div className="bold" style={{ fontSize: 14 }}>JMK MODA</div>
-                <div>Cupom Não-Fiscal</div>
-                <div>Nº {receipt.number}</div>
-                <div>{receipt.date.toLocaleString("pt-BR")}</div>
-              </div>
-              <div className="sep" />
-              {receipt.customer && (
-                <>
-                  <div>Cliente: {receipt.customer.name}</div>
-                  {receipt.customer.phone && <div>Tel: {receipt.customer.phone}</div>}
-                  <div className="sep" />
-                </>
-              )}
-              <table>
-                <tbody>
-                  {receipt.items.map((it, i) => (
-                    <tr key={i}>
-                      <td>
-                        {it.productName}
-                        {it.variantLabel ? ` (${it.variantLabel})` : ""}
-                        <br />
-                        {it.quantity} x {fmtBRL(it.unitPrice)}
-                      </td>
-                      <td className="right">{fmtBRL(it.unitPrice * it.quantity)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="sep" />
-              {(receipt.discount ?? 0) > 0 && (
-                <>
-                  <div className="row">
-                    <span>Subtotal</span>
-                    <span>{fmtBRL(receipt.grossSubtotal ?? receipt.subtotal)}</span>
-                  </div>
-                  <div className="row">
-                    <span>Desconto</span>
-                    <span>- {fmtBRL(receipt.discount ?? 0)}</span>
-                  </div>
-                </>
-              )}
-              <div className="row bold" style={{ fontSize: 13 }}>
-                <span>TOTAL</span>
-                <span>{fmtBRL(receipt.subtotal)}</span>
-              </div>
-              <div className="sep" />
-              <div>Pagamento: {PAYMENT_LABELS[receipt.payment] ?? receipt.payment}</div>
-              {receipt.splits && receipt.splits.length > 0 && (
-                <>
-                  {receipt.splits.map((s, i) => (
-                    <div key={i} className="row">
-                      <span>· {PAYMENT_LABELS[s.method]}:</span>
-                      <span>{fmtBRL(s.amount)}</span>
-                    </div>
-                  ))}
-                </>
-              )}
-              {receipt.payment === "credito" && receipt.installments > 1 && (
-                <div>
-                  {receipt.installments}x de {fmtBRL(receipt.subtotal / receipt.installments)}
-                </div>
-              )}
-              {receipt.payment === "dinheiro" && receipt.cashReceived > 0 && (
-                <>
-                  <div className="row">
-                    <span>Recebido:</span>
-                    <span>{fmtBRL(receipt.cashReceived)}</span>
-                  </div>
-                  <div className="row">
-                    <span>Troco:</span>
-                    <span>{fmtBRL(receipt.change)}</span>
-                  </div>
-                </>
-              )}
-              {receipt.payment === "fiado" && (
-                <>
-                  {receipt.installments > 1 && (
-                    <div>
-                      {receipt.installments}x de {fmtBRL(receipt.subtotal / receipt.installments)}
-                    </div>
-                  )}
-                  <div>Lançado na carteira do cliente.</div>
-                </>
-              )}
-              <div className="sep" />
-              <div className="center">Obrigado pela preferência!</div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={closeReceiptAndReset}>
-              Fechar
-            </Button>
-            <Button onClick={printReceipt} className="bg-gradient-primary text-primary-foreground">
-              <Printer className="h-4 w-4 mr-1" /> Imprimir
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ReceiptDialog open={receiptOpen} receipt={receipt} onClose={closeReceiptAndReset} />
 
       <Dialog open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
         <DialogContent className="glass-card border-border max-w-md">
