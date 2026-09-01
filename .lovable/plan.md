@@ -1,40 +1,35 @@
-# Varredura das parcelas sem venda vinculada (órfãs)
+# Corrigir divergência no saldo da Elen (R$ 1.154,92 x R$ 1.054,92)
 
-São 31 parcelas em 9 grupos. A varredura mostra que a maioria **não é dívida fantasma** — é apenas falta de vínculo. Classificação:
+## O que está acontecendo
 
-## A) Vínculo perdido, dívida é real — apenas religar à venda (não excluir)
+A Elen (ELEN CAMPOS LOURENCO DA SILVA) tem 3 parcelas em aberto:
 
-| Cliente | Parcelas | Valor | Venda existente |
-|---|---|---|---|
-| RAQUEL SOUSA GOMES DA SILVA | 1 | R$ 356,00 | A80BB400 (19/08) |
-| TALITA ROSA ARAKAKI ALVES | 6 | R$ 240,00 | 8F5293C9 (13/08) |
-| ELIZABETE CORREA DA SILVA FERREIRA | 3 | R$ 710,00 | 7D2348DF (citada na descrição) |
-| Leila Assis | 7 | R$ 1.720,00 | 372FB4B9 (citada na descrição) |
-| LIS ANGELA ROSA DE ARAUJO ESPERANDIO | 1 | R$ 240,00 (já paga) | 7DA6B402 (citada na descrição) |
+```text
+30/08/2026  Carteira (2/3)   R$ 400,00  vencida  — já pagou R$ 100,00 (parcial)
+30/09/2026  Carteira (3/3)   R$ 414,92
+30/10/2026  Carteira         R$ 340,00
+```
 
-## B) Dívida real por transferência — manter como está
+Soma bruta = R$ 1.154,92. Descontando o pagamento parcial de R$ 100,00 = R$ 1.054,92.
 
-| Cliente | Parcelas | Valor | Observação |
-|---|---|---|---|
-| WILLIANE BARROS MONTEIRO DE SOUZA | 4 | R$ 826,66 | Dívida transferida de CAMILA M. PERESTRELO; sem venda própria por natureza |
+Os dois números vêm de dois caminhos diferentes do atendimento:
 
-## C) Precisa da sua decisão
+- O atalho da "ficha" (resposta rápida) já desconta pagamentos parciais → R$ 1.054,92 (correto).
+- O caminho da IA monta o contexto lendo só o valor original da parcela, sem olhar os pagamentos parciais → R$ 1.154,92 (errado).
 
-| Cliente | Parcelas | Valor | Situação |
-|---|---|---|---|
-| PATRICIA AVELAR | 5 | R$ 583,00 | Venda de 12/08 não existe mais e nada foi pago — dívida fantasma de venda excluída |
-| CONSTANCIA FAGUNDES CARDOSO | 2 | R$ 200,00 | Grupo "2/3 e 3/3" de 01/08 sem venda no sistema e sem pagamento — provável resíduo de exclusão |
-| ANDREA CARMO DOS SANTOS | 2 | R$ 250,00 | Grupo "3/4 e 4/4" de 04/07; há 3 vendas dela criadas no mesmo minuto (R$ 500 cada) — não dá para dizer qual é a certa sem sua confirmação |
+Por isso a cliente recebe um valor e, minutos depois, outro.
 
-## Plano
+## Correção
 
-1. **Religar os grupos do item A** às vendas correspondentes (preenchendo o vínculo `sale_id`). Nenhum valor muda; passa a aparecer certo na tela da venda e a exclusão futura funciona.
-2. **Excluir as 5 parcelas da PATRICIA AVELAR (R$ 583,00)** — dívida fantasma confirmada. Ela fica com R$ 340,00 (venda de hoje).
-3. **CONSTANCIA e ANDREA**: aguardo seu OK caso a caso — me diga se a dívida é real (mantenho e religo) ou se veio de venda excluída (removo).
-4. **Registro de exclusões (auditoria)**: nova tabela guardando cada exclusão de venda (cliente, valor, itens, parcelas removidas, peças estornadas, quem e quando) e uma tela "Vendas excluídas" na página de Vendas, para conferir a qualquer momento se o valor saiu da conta da cliente.
+Fazer o contexto da IA usar o mesmo cálculo do atalho da ficha: valor em aberto = valor da parcela menos os pagamentos já registrados nela; parcelas totalmente quitadas por pagamentos parciais somados saem da lista.
+
+Também reforçar no prompt que o valor a informar é sempre o saldo em aberto (já líquido de pagamentos), nunca o valor original da parcela.
+
+Resultado: qualquer pergunta da cliente (ficha, "quanto eu devo", parcela do dia) responde R$ 1.054,92.
 
 ## Detalhes técnicos
 
-- Religação e limpeza via SQL de dados (update de `accounts_receivable.sale_id`; delete dos 5 ids da Patricia — nenhum tem pagamento ou comprovante).
-- Migração: tabela `deleted_sales_log` (`sale_id`, `customer_id`, `customer_name`, `sale_total`, `sale_date`, `items` jsonb, `removed_receivables` jsonb, `restored_stock` jsonb, `deleted_by`, `created_at`), com GRANTs e RLS para autenticados.
-- `src/pages/Sales.tsx`: gravar o snapshot em `deleted_sales_log` dentro de `confirmDeleteSale` antes dos deletes; toast final com resumo do estorno; nova aba listando o histórico de exclusões.
+- `supabase/functions/_shared/monica-core.ts`: na consulta de `accounts_receivable` incluir `receivable_payments(amount_paid)`; calcular `open = max(0, amount - soma(amount_paid))`; filtrar itens com `open <= 0`; expor `open` no bloco "DÍVIDAS PENDENTES" (e um TOTAL EM ABERTO já somado, para a IA não recalcular errado).
+- Ajuste de texto no prompt (regra 3.1) para citar o valor em aberto e o total fornecido no contexto.
+- Sem migração de banco; nenhum dado é alterado.
+- Verificação: consultar o saldo da Elen pelos dois caminhos e conferir R$ 1.054,92 nos dois.
