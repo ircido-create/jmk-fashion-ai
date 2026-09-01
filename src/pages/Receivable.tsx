@@ -971,7 +971,19 @@ export default function Receivable() {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {r.description || "—"} • Venc: {format(parseISO(r.due_date), "dd/MM/yyyy", { locale: ptBR })}
+                  {r.status === "pago" ? (
+                    <>
+                      {r.description || "—"} • Venc: {format(parseISO(r.due_date), "dd/MM/yyyy", { locale: ptBR })}
+                      {" • "}
+                      <span className="text-success">Pago em: {r.paid_at
+                        ? format(parseISO(r.paid_at), "dd/MM/yyyy", { locale: ptBR })
+                        : r.proofs?.[0]?.payment_date
+                        ? format(parseISO(r.proofs[0].payment_date), "dd/MM/yyyy", { locale: ptBR })
+                        : "—"}</span>
+                    </>
+                  ) : (
+                    <>{r.description || "—"} • Venc: {format(parseISO(r.due_date), "dd/MM/yyyy", { locale: ptBR })}</>
+                  )}
                 </div>
               </div>
               <div className="text-right shrink-0">
