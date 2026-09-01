@@ -98,7 +98,7 @@ export default function Receivable() {
       if (ids.length > 0) {
         const { data: rp } = await supabase
           .from("receivable_payments")
-          .select("receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path)")
+          .select("receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path, payment_date)")
           .in("receivable_id", ids);
         const map = new Map<string, Receivable["proofs"]>();
         const paidByReceivable = new Map<string, number>();
@@ -108,6 +108,7 @@ export default function Receivable() {
             proof_id: row.proof_id,
             original_filename: row.payment_proofs?.original_filename ?? null,
             storage_path: row.payment_proofs?.storage_path ?? "",
+            payment_date: row.payment_proofs?.payment_date ?? null,
           });
           map.set(row.receivable_id, arr);
           paidByReceivable.set(
