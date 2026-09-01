@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
     const { data: overdue, error: erroBusca } = await supabase
       .rpc('get_overdue_receivables_to_dunning', {
         p_today: today,
-        p_limit: 20,
+        p_limit: 60,
         p_max_dias_vencido: 180
       });
 
