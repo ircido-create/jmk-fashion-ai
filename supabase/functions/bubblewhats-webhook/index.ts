@@ -403,7 +403,7 @@ Deno.serve(async (req) => {
           const { data: recs } = await withTimeout(
             supabase
               .from("accounts_receivable")
-              .select("description, amount, due_date, status, receivable_payments(amount_paid)")
+              .select("description, amount, due_date, status")
               .in("customer_id", custIds)
               .in("status", ["pendente", "vencido"])
               .order("due_date", { ascending: true }),
@@ -419,8 +419,7 @@ Deno.serve(async (req) => {
             };
             let total = 0;
             const lines = recs.map((r: any) => {
-              const paid = (r.receivable_payments ?? []).reduce((s: number, p: any) => s + Number(p.amount_paid || 0), 0);
-              const open = Math.max(0, Number(r.amount || 0) - paid);
+              const open = Number(r.amount || 0);
               total += open;
               const flag = r.status === "vencido" ? " ⚠️ vencida" : "";
               const desc = r.description ? ` — ${r.description}` : "";
