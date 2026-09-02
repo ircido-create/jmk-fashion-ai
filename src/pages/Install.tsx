@@ -131,7 +131,7 @@ export default function Install() {
         <GlassCard>
           <h3 className="font-semibold mb-2 text-sm">Dica</h3>
           <p className="text-xs text-muted-foreground">
-            A instalação só funciona na versão publicada do app (HTTPS). Se você abriu pelo editor do Lovable, abra o link publicado pelo celular antes de instalar.
+            A instalação só funciona na versão publicada do app (HTTPS). Abra o link publicado pelo celular antes de instalar.
           </p>
         </GlassCard>
       </div>

@@ -17,14 +17,17 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Conversas" />
 
-    <link rel="canonical" href="https://jmk-fashion-ai.lovable.app/" />
+    <!-- Sem canonical nem og:url absolutos: apontavam para o domínio do Lovable e
+         ficariam errados após a migração. Sistema interno atrás de login, então
+         compartilhamento e indexação não têm papel aqui; o caminho relativo da
+         imagem basta. Se um domínio próprio for configurado, dá para voltar com
+         as URLs absolutas apontando para ele. -->
     <meta property="og:title" content="JMK Fashion — Gestão de Moda" />
     <meta property="og:description" content="Sistema de gestão JMK Fashion: clientes, estoque, vendas e atendimento WhatsApp." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://jmk-fashion-ai.lovable.app/" />
-    <meta property="og:image" content="https://jmk-fashion-ai.lovable.app/icon-512.png" />
+    <meta property="og:image" content="/icon-512.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://jmk-fashion-ai.lovable.app/icon-512.png" />
+    <meta name="twitter:image" content="/icon-512.png" />
   </head>
 
   <body>
