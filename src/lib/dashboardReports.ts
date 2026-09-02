@@ -119,8 +119,8 @@ function summarizeByCustomer(
 
 export async function generateDashboardReport(key: DashboardReportKey) {
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const monthStart = startOfMonth(now).toISOString().slice(0, 10);
+  const today = todaySP();
+  const monthStart = monthStartSP();
   const stamp = format(now, "yyyy-MM-dd", { locale: ptBR });
   const generated = `Gerado em ${format(now, "dd/MM/yyyy HH:mm", { locale: ptBR })}`;
 
@@ -130,11 +130,11 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       sb
         .from("sales")
         .select("total, sale_date, payment_method, installments, notes, customers(name, nickname, phone)")
-        .gte("sale_date", isDay ? today : monthStart)
+        .gte("sale_date", `${monthStart}T00:00:00-03:00`)
         .order("sale_date", { ascending: true })
     );
     const filtered = rows.filter((r) =>
-      isDay ? String(r.sale_date).slice(0, 10) === today : true
+      isDay ? toSaoPauloDate(r.sale_date) === today : toSaoPauloDate(r.sale_date) >= monthStart
     );
     const total = filtered.reduce((s, r) => s + Number(r.total || 0), 0);
     build(
