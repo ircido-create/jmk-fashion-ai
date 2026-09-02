@@ -12,6 +12,7 @@ import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { generateDashboardReport, DashboardReportKey } from "@/lib/dashboardReports";
+import { todaySP, monthStartSP, toSaoPauloDate } from "@/lib/tz";
 
 
 interface Stats {
@@ -82,8 +83,8 @@ export default function Dashboard() {
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const monthStart = startOfMonth(new Date()).toISOString().slice(0, 10);
+    const today = todaySP();
+    const monthStart = monthStartSP();
     const [c, p, r, ap, od, odm, ls, salesRows, receivedRows] = await Promise.all([
       supabase.from("customers").select("id", { count: "exact", head: true }),
       supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
@@ -99,13 +100,13 @@ export default function Dashboard() {
     const lowStock = ls.filter((v: any) => v.quantity <= (v.products?.low_stock_threshold ?? 5)).length;
 
     const salesToday = salesRows
-      .filter((s) => s.sale_date.slice(0, 10) === today)
+      .filter((s) => toSaoPauloDate(s.sale_date) === today)
       .reduce((sum, s) => sum + Number(s.total), 0);
     const salesMonth = salesRows
-      .filter((s) => s.sale_date.slice(0, 10) >= monthStart)
+      .filter((s) => toSaoPauloDate(s.sale_date) >= monthStart)
       .reduce((sum, s) => sum + Number(s.total), 0);
     const receivedMonth = receivedRows
-      .filter((p) => p.created_at.slice(0, 10) >= monthStart)
+      .filter((p) => toSaoPauloDate(p.created_at) >= monthStart)
       .reduce((sum, p) => sum + Number(p.amount_paid), 0);
 
     const overdueMonth = odm.reduce((s, x) => s + Number(x.amount), 0);

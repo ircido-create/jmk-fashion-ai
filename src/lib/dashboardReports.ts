@@ -1,8 +1,9 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { format, parseISO, startOfMonth } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { fetchAll } from "@/lib/fetchAll";
+import { todaySP, monthStartSP, toSaoPauloDate } from "@/lib/tz";
 
 export type DashboardReportKey = "salesToday" | "salesMonth" | "receivedMonth" | "overdueMonth";
 
@@ -119,8 +120,8 @@ function summarizeByCustomer(
 
 export async function generateDashboardReport(key: DashboardReportKey) {
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const monthStart = startOfMonth(now).toISOString().slice(0, 10);
+  const today = todaySP();
+  const monthStart = monthStartSP();
   const stamp = format(now, "yyyy-MM-dd", { locale: ptBR });
   const generated = `Gerado em ${format(now, "dd/MM/yyyy HH:mm", { locale: ptBR })}`;
 
@@ -130,11 +131,11 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       sb
         .from("sales")
         .select("total, sale_date, payment_method, installments, notes, customers(name, nickname, phone)")
-        .gte("sale_date", isDay ? today : monthStart)
+        .gte("sale_date", `${monthStart}T00:00:00-03:00`)
         .order("sale_date", { ascending: true })
     );
     const filtered = rows.filter((r) =>
-      isDay ? String(r.sale_date).slice(0, 10) === today : true
+      isDay ? toSaoPauloDate(r.sale_date) === today : toSaoPauloDate(r.sale_date) >= monthStart
     );
     const total = filtered.reduce((s, r) => s + Number(r.total || 0), 0);
     build(
@@ -142,7 +143,7 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       `${isDay ? fmtDate(today) : format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
       ["Data", "Cliente", "Telefone", "Pagamento", "Parcelas", "Valor"],
       filtered.map((r) => [
-        fmtDate(String(r.sale_date).slice(0, 10)),
+        fmtDate(toSaoPauloDate(r.sale_date)),
         r.customers?.name ?? r.customers?.nickname ?? "Consumidor",
         r.customers?.phone ?? "—",
         r.payment_method ?? "—",
@@ -164,20 +165,21 @@ export async function generateDashboardReport(key: DashboardReportKey) {
   }
 
   if (key === "receivedMonth") {
-    const rows = await fetchAll<any>((sb) =>
+    const allRows = await fetchAll<any>((sb) =>
       sb
         .from("receivable_payments")
         .select("amount_paid, created_at, accounts_receivable(description, due_date, customers(name, phone))")
-        .gte("created_at", monthStart)
+        .gte("created_at", `${monthStart}T00:00:00-03:00`)
         .order("created_at", { ascending: true })
     );
+    const rows = allRows.filter((r) => toSaoPauloDate(r.created_at) >= monthStart);
     const total = rows.reduce((s, r) => s + Number(r.amount_paid || 0), 0);
     build(
       "Relatório de Recebimentos do Mês",
       `${format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
       ["Data", "Cliente", "Telefone", "Descrição", "Vencimento", "Valor pago"],
       rows.map((r) => [
-        fmtDate(String(r.created_at).slice(0, 10)),
+        fmtDate(toSaoPauloDate(r.created_at)),
         r.accounts_receivable?.customers?.name ?? "—",
         r.accounts_receivable?.customers?.phone ?? "—",
         r.accounts_receivable?.description ?? "—",
