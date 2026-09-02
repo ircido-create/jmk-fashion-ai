@@ -1,8 +1,9 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { format, parseISO, startOfMonth } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { fetchAll } from "@/lib/fetchAll";
+import { todaySP, monthStartSP, toSaoPauloDate } from "@/lib/tz";
 
 export type DashboardReportKey = "salesToday" | "salesMonth" | "receivedMonth" | "overdueMonth";
 
