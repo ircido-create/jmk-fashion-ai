@@ -62,6 +62,24 @@ export function usePaymentSplit(total: number) {
     setSplitFiadoInstallments(1);
   }, []);
 
+  /** Repõe as formas de pagamento vindas de um rascunho salvo. */
+  const restore = useCallback(
+    (d: {
+      splitMode: boolean;
+      splits: SplitEntry[];
+      splitMethod: PaymentMethod;
+      splitAmount: string;
+      splitFiadoInstallments: number;
+    }) => {
+      setSplitMode(d.splitMode);
+      setSplits(d.splits);
+      setSplitMethod(d.splitMethod);
+      setSplitAmount(d.splitAmount);
+      setSplitFiadoInstallments(d.splitFiadoInstallments);
+    },
+    [],
+  );
+
   return {
     splitMode,
     setSplitMode,
@@ -80,5 +98,6 @@ export function usePaymentSplit(total: number) {
     fillRemainingSplit,
     removeSplit,
     reset,
+    restore,
   };
 }

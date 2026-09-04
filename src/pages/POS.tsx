@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -22,6 +22,7 @@ import { usePaymentSplit } from "./pos/usePaymentSplit";
 import { ReceiptDialog } from "./pos/ReceiptDialog";
 import { VariantPickerDialog } from "./pos/VariantPickerDialog";
 import { AvulsoDialog } from "./pos/AvulsoDialog";
+import { clearDraft, loadDraft, saveDraft, type SaleDraft } from "./pos/saleDraft";
 
 
 
@@ -84,6 +85,78 @@ export default function POS() {
   const [saving, setSaving] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+
+  // Rascunho da venda em andamento. A leitura é feita no inicializador, e não
+  // num efeito: o autosave roda na mesma primeira renderização e apagaria o
+  // rascunho antes de o operador ter a chance de retomá-lo.
+  const [pendingDraft, setPendingDraft] = useState<SaleDraft | null>(() => loadDraft());
+  const draftDirty = useRef(false);
+
+  useEffect(() => {
+    // Decisão de retomada pendente: nada é gravado até o operador escolher.
+    if (pendingDraft) return;
+    // Venda já gravada, cupom na tela: o carrinho continua cheio até o reset,
+    // e ressalvá-lo ofereceria retomar — e refazer — uma venda concluída.
+    if (receiptOpen) return;
+
+    if (cart.length > 0) {
+      draftDirty.current = true;
+      saveDraft({
+        savedAt: new Date().toISOString(),
+        step, cart, discountValue, discountType,
+        customerId, selectedCustomer,
+        paymentMethod, installments, generateReceivables, cashReceived, notes,
+        firstDueDate, paymentFrequency, manualInstallments, isAdjustingInstallments,
+        splitMode, splits, splitMethod, splitAmount, splitFiadoInstallments,
+      });
+      return;
+    }
+
+    // Carrinho esvaziado item a item depois de já ter tido peças: o atendimento
+    // foi abandonado, então o rascunho vai junto. Carrinho vazio desde a
+    // abertura não mexe em rascunho nenhum.
+    if (draftDirty.current) {
+      draftDirty.current = false;
+      clearDraft();
+    }
+  }, [
+    pendingDraft, receiptOpen, step, cart, discountValue, discountType, customerId, selectedCustomer,
+    paymentMethod, installments, generateReceivables, cashReceived, notes, firstDueDate,
+    paymentFrequency, manualInstallments, isAdjustingInstallments,
+    splitMode, splits, splitMethod, splitAmount, splitFiadoInstallments,
+  ]);
+
+  /** Repõe a venda salva e volta o operador exatamente onde parou. */
+  const resumeDraft = () => {
+    const d = pendingDraft;
+    if (!d) return;
+    cartApi.restore({ cart: d.cart, discountValue: d.discountValue, discountType: d.discountType });
+    splitApi.restore({
+      splitMode: d.splitMode, splits: d.splits, splitMethod: d.splitMethod,
+      splitAmount: d.splitAmount, splitFiadoInstallments: d.splitFiadoInstallments,
+    });
+    setCustomerId(d.customerId);
+    setSelectedCustomer(d.selectedCustomer);
+    setPaymentMethod(d.paymentMethod);
+    setInstallments(d.installments);
+    setGenerateReceivables(d.generateReceivables);
+    setCashReceived(d.cashReceived);
+    setNotes(d.notes);
+    setFirstDueDate(d.firstDueDate);
+    setPaymentFrequency(d.paymentFrequency);
+    setManualInstallments(d.manualInstallments);
+    setIsAdjustingInstallments(d.isAdjustingInstallments);
+    setStep(d.step);
+    draftDirty.current = true;
+    setPendingDraft(null);
+    toast.success("Venda retomada");
+  };
+
+  const discardDraft = () => {
+    clearDraft();
+    draftDirty.current = false;
+    setPendingDraft(null);
+  };
 
   // Só o catálogo é carregado de uma vez. Clientes vêm por busca no servidor —
   // trazer a base inteira só para preencher um campo que mostra 50 resultados
@@ -183,6 +256,9 @@ export default function POS() {
 
   /** Limpa a venda inteira para começar a próxima. */
   const resetAll = () => {
+    // Venda concluída ou descartada: o rascunho perdeu a razão de existir.
+    clearDraft();
+    draftDirty.current = false;
     cartApi.reset();   // itens + desconto
     splitApi.reset();  // formas de pagamento misto
     setStep(1);
@@ -420,6 +496,10 @@ export default function POS() {
         change,
         splits: splitMode ? [...splits] : undefined,
       });
+      // O rascunho morre aqui, e não só ao fechar o cupom: fechar o navegador
+      // com o cupom aberto não pode ressuscitar uma venda já gravada.
+      clearDraft();
+      draftDirty.current = false;
       setReceiptOpen(true);
       toast.success("Venda registrada");
       // Recarrega produtos pra atualizar estoque
@@ -1199,6 +1279,55 @@ export default function POS() {
       />
 
       <ReceiptDialog open={receiptOpen} receipt={receipt} onClose={closeReceiptAndReset} />
+
+      {/* Retomada da venda interrompida. Fechar no X apenas adia a decisão:
+          o rascunho continua guardado para a próxima abertura do PDV. */}
+      <Dialog open={!!pendingDraft} onOpenChange={(o) => { if (!o) setPendingDraft(null); }}>
+        <DialogContent className="glass-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle>Retomar venda em andamento?</DialogTitle>
+          </DialogHeader>
+          {pendingDraft && (
+            <div className="space-y-2 text-sm">
+              <p className="text-muted-foreground">
+                Uma venda ficou aberta em {new Date(pendingDraft.savedAt).toLocaleString("pt-BR")}.
+              </p>
+              <div className="rounded-xl bg-white/40 dark:bg-white/5 p-3 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Cliente:</span>
+                  <span className="font-medium">{pendingDraft.selectedCustomer?.name ?? "não informado"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Itens:</span>
+                  <span className="font-medium">
+                    {pendingDraft.cart.reduce((n, i) => n + i.quantity, 0)} peça(s)
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Subtotal:</span>
+                  <span className="font-semibold">
+                    {fmtBRL(pendingDraft.cart.reduce((v, i) => v + i.unitPrice * i.quantity, 0))}
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                O estoque é conferido de novo na hora de finalizar.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={discardDraft} className="rounded-xl">
+              Descartar
+            </Button>
+            <Button
+              onClick={resumeDraft}
+              className="rounded-xl bg-gradient-primary text-primary-foreground shadow-glow"
+            >
+              Retomar venda
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
         <DialogContent className="glass-card border-border max-w-md">

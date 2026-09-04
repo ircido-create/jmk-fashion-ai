@@ -109,6 +109,16 @@ export function useCart() {
     setDiscountType("valor");
   }, []);
 
+  /** Repõe itens e desconto vindos de um rascunho salvo. */
+  const restore = useCallback(
+    (d: { cart: CartItem[]; discountValue: string; discountType: DiscountType }) => {
+      setCart(d.cart);
+      setDiscountValue(d.discountValue);
+      setDiscountType(d.discountType);
+    },
+    [],
+  );
+
   return {
     cart,
     subtotal,
@@ -125,5 +135,6 @@ export function useCart() {
     setUnitPrice,
     removeItem,
     reset,
+    restore,
   };
 }
