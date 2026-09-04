@@ -698,7 +698,7 @@ export default function POS() {
                             >
                               <SelectTrigger className="glass-input mt-1"><SelectValue /></SelectTrigger>
                               <SelectContent>
-                                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                                {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
                                   <SelectItem key={n} value={String(n)}>
                                     {n}x de {fmtBRL(fiadoAmount / n)}
                                   </SelectItem>
@@ -878,7 +878,7 @@ export default function POS() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                            {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
                               <SelectItem key={n} value={String(n)}>
                                 {n === 1
                                   ? `À vista — ${fmtBRL(total)}`
