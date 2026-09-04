@@ -4,14 +4,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import {
-  ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff, FileDown, Loader2, WifiOff,
+  ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff, FileDown, FileSearch, Loader2, WifiOff,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { generateDashboardReport, DashboardReportKey } from "@/lib/dashboardReports";
+import {
+  buildDashboardReport, emitReportPdf, generateDashboardReport,
+  type DashboardReport, type DashboardReportKey,
+} from "@/lib/dashboardReports";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { todaySP, monthStartSP, toSaoPauloDate } from "@/lib/tz";
 
 
@@ -38,6 +42,8 @@ export default function Dashboard() {
   const [chart, setChart] = useState<{ month: string; receber: number; pagar: number }[]>([]);
   const [showValues, setShowValues] = useState(true);
   const [reporting, setReporting] = useState<DashboardReportKey | null>(null);
+  const [viewing, setViewing] = useState<DashboardReportKey | null>(null);
+  const [openReport, setOpenReport] = useState<DashboardReport | null>(null);
   const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
   const [inboundChecked, setInboundChecked] = useState(false);
 
@@ -170,6 +176,21 @@ export default function Dashboard() {
     }
   };
 
+  /** Abre o relatório na tela. Conferir um número não exige baixar arquivo. */
+  const handleViewReport = async (key: DashboardReportKey) => {
+    setViewing(key);
+    try {
+      setOpenReport(await buildDashboardReport(key));
+    } catch (e) {
+      console.error(e);
+      toast.error("Falha ao abrir o relatório. Tente novamente.");
+    } finally {
+      setViewing(null);
+    }
+  };
+
+  const busy = reporting !== null || viewing !== null;
+
   return (
     <div>
       <PageHeader
@@ -233,21 +254,38 @@ export default function Dashboard() {
               <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${c.gradient} flex items-center justify-center shadow-soft`}>
                 <c.icon className="h-5 w-5 text-white" />
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                onClick={() => handleReport(c.key, c.label)}
-                disabled={reporting !== null}
-                aria-label={`Gerar relatório detalhado para ${c.label}`}
-                title="Gerar relatório"
-              >
-                {reporting === c.key ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                ) : (
-                  <FileDown className="h-4 w-4" aria-hidden />
-                )}
-              </Button>
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                  onClick={() => handleViewReport(c.key)}
+                  disabled={busy}
+                  aria-label={`Visualizar relatório de ${c.label} na tela`}
+                  title="Ver na tela"
+                >
+                  {viewing === c.key ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <FileSearch className="h-4 w-4" aria-hidden />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                  onClick={() => handleReport(c.key, c.label)}
+                  disabled={busy}
+                  aria-label={`Baixar relatório de ${c.label} em PDF`}
+                  title="Baixar PDF"
+                >
+                  {reporting === c.key ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <FileDown className="h-4 w-4" aria-hidden />
+                  )}
+                </Button>
+              </div>
             </div>
 
             <div className="text-xs text-muted-foreground">{c.label}</div>
@@ -347,6 +385,94 @@ Para investigar a causa raiz e evitar futuras ocorrências, solicitamos a análi
 2.  **Revisão do Código:** Inspecionar a lógica de seleção de clientes e geração de cobranças para garantir que ela esteja funcionando conforme o esperado.
 3.  **Melhorias de Feedback:** Planejar e implementar as melhorias de UI/UX para proporcionar maior clareza e feedback útil ao usuário durante e após as execuções do processo de cobrança.`}</ReactMarkdown>
       </GlassCard>
+
+      {/* Relatório na tela: o mesmo conteúdo do PDF, sem baixar arquivo. */}
+      <Dialog open={!!openReport} onOpenChange={(o) => { if (!o) setOpenReport(null); }}>
+        <DialogContent className="glass-card border-border max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{openReport?.title}</DialogTitle>
+          </DialogHeader>
+
+          {openReport && (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">{openReport.subtitle}</p>
+
+              {openReport.summary && openReport.summary.body.length > 0 && (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold">{openReport.summary.title}</h3>
+                  <ReportTable head={openReport.summary.head} body={openReport.summary.body} />
+                </section>
+              )}
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Detalhamento</h3>
+                <ReportTable head={openReport.head} body={openReport.body} />
+              </section>
+
+              <div className="flex justify-between items-center border-t border-border pt-3 text-sm">
+                <span className="text-muted-foreground">{openReport.body.length} registro(s)</span>
+                <span className="font-bold text-lg">{brl(openReport.total)}</span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => openReport && emitReportPdf(openReport)}
+            >
+              <FileDown className="h-4 w-4 mr-1" /> Baixar PDF
+            </Button>
+            <Button className="rounded-xl" onClick={() => setOpenReport(null)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Tabela do relatório em tela. A última coluna é sempre o valor, alinhada à
+ * direita como no PDF, e a rolagem horizontal fica presa aqui — o painel não
+ * pode rolar de lado no celular por causa de uma tabela larga.
+ */
+function ReportTable({ head, body }: { head: string[]; body: (string | number)[][] }) {
+  if (body.length === 0) {
+    return <p className="text-sm text-muted-foreground py-3">Nenhum registro encontrado.</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border">
+      <table className="w-full text-xs">
+        <thead className="bg-white/40 dark:bg-white/5">
+          <tr>
+            {head.map((h, i) => (
+              <th
+                key={h}
+                className={`px-3 py-2 font-semibold whitespace-nowrap ${i === head.length - 1 ? "text-right" : "text-left"}`}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={ri} className="border-t border-border">
+              {row.map((cell, ci) => (
+                <td
+                  key={ci}
+                  className={`px-3 py-2 ${ci === row.length - 1 ? "text-right font-medium whitespace-nowrap" : ""}`}
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

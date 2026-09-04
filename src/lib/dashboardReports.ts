@@ -29,9 +29,28 @@ function header(doc: jsPDF, title: string, subtitle: string) {
   doc.setTextColor(0);
 }
 
-type Summary = { head: string[]; body: (string | number)[][]; title: string };
+export type Summary = { head: string[]; body: (string | number)[][]; title: string };
 
-function build(
+/**
+ * Relatorio ja consultado e formatado, antes de virar arquivo.
+ *
+ * A consulta e a montagem das tabelas foram separadas da emissao do PDF para
+ * que o painel possa mostrar o mesmo conteudo na tela — conferir um numero nao
+ * deveria obrigar a baixar um arquivo e abri-lo fora do sistema.
+ */
+export interface DashboardReport {
+  key: DashboardReportKey;
+  title: string;
+  subtitle: string;
+  head: string[];
+  body: (string | number)[][];
+  total: number;
+  filename: string;
+  summary?: Summary;
+}
+
+function compose(
+  key: DashboardReportKey,
   title: string,
   subtitle: string,
   head: string[],
@@ -39,7 +58,12 @@ function build(
   total: number,
   filename: string,
   summary?: Summary
-) {
+): DashboardReport {
+  return { key, title, subtitle, head, body, total, filename, summary };
+}
+
+/** Converte o relatorio ja montado no PDF que o navegador baixa. */
+export function emitReportPdf({ title, subtitle, head, body, total, filename, summary }: DashboardReport) {
   const doc = new jsPDF();
   header(doc, title, subtitle);
 
@@ -118,7 +142,13 @@ function summarizeByCustomer(
   };
 }
 
+/** Baixa o PDF. Mantido para quem so quer o arquivo, como antes. */
 export async function generateDashboardReport(key: DashboardReportKey) {
+  emitReportPdf(await buildDashboardReport(key));
+}
+
+/** Consulta e monta o relatorio, sem gerar arquivo nenhum. */
+export async function buildDashboardReport(key: DashboardReportKey): Promise<DashboardReport> {
   const now = new Date();
   const today = todaySP();
   const monthStart = monthStartSP();
@@ -138,7 +168,8 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       isDay ? toSaoPauloDate(r.sale_date) === today : toSaoPauloDate(r.sale_date) >= monthStart
     );
     const total = filtered.reduce((s, r) => s + Number(r.total || 0), 0);
-    build(
+    return compose(
+      key,
       isDay ? "Relatório de Vendas do Dia" : "Relatório de Vendas do Mês",
       `${isDay ? fmtDate(today) : format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
       ["Data", "Cliente", "Telefone", "Pagamento", "Parcelas", "Valor"],
@@ -161,7 +192,6 @@ export async function generateDashboardReport(key: DashboardReportKey) {
         "Total"
       )
     );
-    return;
   }
 
   if (key === "receivedMonth") {
@@ -174,7 +204,8 @@ export async function generateDashboardReport(key: DashboardReportKey) {
     );
     const rows = allRows.filter((r) => toSaoPauloDate(r.created_at) >= monthStart);
     const total = rows.reduce((s, r) => s + Number(r.amount_paid || 0), 0);
-    build(
+    return compose(
+      key,
       "Relatório de Recebimentos do Mês",
       `${format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
       ["Data", "Cliente", "Telefone", "Descrição", "Vencimento", "Valor pago"],
@@ -197,7 +228,6 @@ export async function generateDashboardReport(key: DashboardReportKey) {
         "Total pago"
       )
     );
-    return;
   }
 
   const rows = await fetchAll<any>((sb) =>
@@ -209,7 +239,8 @@ export async function generateDashboardReport(key: DashboardReportKey) {
       .order("due_date", { ascending: true })
   );
   const total = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
-  build(
+  return compose(
+    key,
     "Relatório de Atrasados do Mês",
     `${format(now, "MMMM 'de' yyyy", { locale: ptBR })} • ${generated}`,
     ["Vencimento", "Cliente", "Telefone", "Descrição", "Valor"],
