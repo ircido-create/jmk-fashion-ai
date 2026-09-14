@@ -614,6 +614,7 @@ export type Database = {
           cost: number
           created_at: string
           description: string | null
+          garment_type: string | null
           id: string
           image_url: string | null
           is_draft: boolean
@@ -630,6 +631,7 @@ export type Database = {
           cost?: number
           created_at?: string
           description?: string | null
+          garment_type?: string | null
           id?: string
           image_url?: string | null
           is_draft?: boolean
@@ -646,6 +648,7 @@ export type Database = {
           cost?: number
           created_at?: string
           description?: string | null
+          garment_type?: string | null
           id?: string
           image_url?: string | null
           is_draft?: boolean
@@ -908,6 +911,178 @@ export type Database = {
           id?: string
           phone?: string
           target_key?: string
+        }
+        Relationships: []
+      }
+      store_order_items: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          order_id: string
+          product_id: string | null
+          product_name: string
+          quantity: number
+          size: string | null
+          unit_cost: number
+          unit_price: number
+          variant_id: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          order_id: string
+          product_id?: string | null
+          product_name: string
+          quantity: number
+          size?: string | null
+          unit_cost?: number
+          unit_price: number
+          variant_id?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          order_id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          size?: string | null
+          unit_cost?: number
+          unit_price?: number
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "store_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_order_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_orders: {
+        Row: {
+          address: Json | null
+          code: string
+          created_at: string
+          customer_email: string | null
+          customer_id: string | null
+          customer_name: string
+          customer_phone: string
+          delivery_method: string
+          id: string
+          notes: string | null
+          sale_id: string | null
+          status: string
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          address?: Json | null
+          code: string
+          created_at?: string
+          customer_email?: string | null
+          customer_id?: string | null
+          customer_name: string
+          customer_phone: string
+          delivery_method: string
+          id?: string
+          notes?: string | null
+          sale_id?: string | null
+          status?: string
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          address?: Json | null
+          code?: string
+          created_at?: string
+          customer_email?: string | null
+          customer_id?: string | null
+          customer_name?: string
+          customer_phone?: string
+          delivery_method?: string
+          id?: string
+          notes?: string | null
+          sale_id?: string | null
+          status?: string
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_orders_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_settings: {
+        Row: {
+          delivery_note: string | null
+          id: boolean
+          pickup_address: string | null
+          updated_at: string
+          whatsapp: string | null
+        }
+        Insert: {
+          delivery_note?: string | null
+          id?: boolean
+          pickup_address?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Update: {
+          delivery_note?: string | null
+          id?: boolean
+          pickup_address?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Relationships: []
+      }
+      store_tryon_usage: {
+        Row: {
+          client_key: string
+          created_at: string
+          id: number
+        }
+        Insert: {
+          client_key: string
+          created_at?: string
+          id?: number
+        }
+        Update: {
+          client_key?: string
+          created_at?: string
+          id?: number
         }
         Relationships: []
       }
@@ -1192,6 +1367,31 @@ export type Database = {
       increment_variant_stock: {
         Args: { qty: number; variant_id: string }
         Returns: number
+      }
+      store_catalog: {
+        Args: never
+        Returns: {
+          created_at: string
+          description: string
+          garment_type: string
+          id: string
+          image_url: string
+          name: string
+          price: number
+          variants: Json
+        }[]
+      }
+      store_place_order: {
+        Args: { p_items: Json; p_order: Json }
+        Returns: Json
+      }
+      store_update_order: {
+        Args: {
+          p_order_id: string
+          p_payment_method?: string
+          p_status: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
