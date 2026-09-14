@@ -94,14 +94,12 @@ function StoreShell() {
               )}
             </Link>
 
-            {/* Acesso ao administrativo: mesma origem, mesma sessão. */}
-            {user ? (
+            {/* Cliente não tem conta na loja: um "Entrar" no cabeçalho parecia login de
+                cliente e levava ao sistema interno. O acesso da equipe fica no rodapé;
+                aqui só aparece o atalho para quem já está logado. */}
+            {user && (
               <Link to="/" className="s-btn s-btn-ghost !h-9 !px-3 !text-xs" title="Ir para o sistema administrativo">
                 <LayoutDashboard /> <span className="hidden sm:inline">Painel</span>
-              </Link>
-            ) : (
-              <Link to="/auth" className="s-btn s-btn-ghost !h-9 !px-3 !text-xs" title="Acesso da equipe JMK">
-                <LogIn /> <span className="hidden sm:inline">Entrar</span>
               </Link>
             )}
           </div>
@@ -171,7 +169,7 @@ function StoreShell() {
               {settings?.pickup_address && <li className="s-muted">{settings.pickup_address}</li>}
               <li>
                 <Link to="/auth" className="s-link s-muted inline-flex items-center gap-2">
-                  <LogIn className="h-4 w-4" /> Área da equipe
+                  <LogIn className="h-4 w-4" /> Administrativo
                 </Link>
               </li>
             </ul>
