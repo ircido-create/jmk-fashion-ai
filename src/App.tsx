@@ -39,6 +39,19 @@ const Install = lazy(() => import("./pages/Install"));
 const Reports = lazy(() => import("./pages/Reports"));
 const PaymentProofs = lazy(() => import("./pages/PaymentProofs"));
 const ReceivableReports = lazy(() => import("./pages/ReceivableReports"));
+const StoreOrders = lazy(() => import("./pages/StoreOrders"));
+
+// Loja virtual — módulo público, com layout e tema próprios. Fica em /loja para
+// não mexer em nenhum endereço do administrativo.
+const StoreLayout = lazy(() => import("./store/StoreLayout"));
+const StoreHome = lazy(() => import("./store/pages/StoreHome"));
+const StoreProduct = lazy(() => import("./store/pages/StoreProduct"));
+const StoreFittingRoom = lazy(() => import("./store/pages/StoreFittingRoom"));
+const StoreCart = lazy(() => import("./store/pages/StoreCart"));
+const StoreOrderDone = lazy(() => import("./store/pages/StoreOrderDone"));
+// Enquanto o bundle da loja baixa, o fallback geral mostraria o esqueleto claro
+// do administrativo para o visitante. Um fundo no tom da loja evita o clarão.
+const StoreBootFallback = () => <div style={{ minHeight: "100vh", background: "#0b0b0e" }} aria-busy="true" />;
 
 const App = () => (
   <ThemeProvider>
@@ -52,6 +65,20 @@ const App = () => (
               <Routes>
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route
+                  path="/loja"
+                  element={
+                    <Suspense fallback={<StoreBootFallback />}>
+                      <StoreLayout />
+                    </Suspense>
+                  }
+                >
+                  <Route index element={<StoreHome />} />
+                  <Route path="produto/:id" element={<StoreProduct />} />
+                  <Route path="provador" element={<StoreFittingRoom />} />
+                  <Route path="carrinho" element={<StoreCart />} />
+                  <Route path="pedido/:code" element={<StoreOrderDone />} />
+                </Route>
                 <Route element={<ProtectedRoute />}>
                   <Route element={<AppLayout />}>
                     <Route path="/" element={<Dashboard />} />
@@ -72,6 +99,7 @@ const App = () => (
                     <Route path="/relatorios" element={<Reports />} />
                     <Route path="/relatorios/contas-receber" element={<ReceivableReports />} />
                     <Route path="/comprovantes" element={<PaymentProofs />} />
+                    <Route path="/pedidos-loja" element={<StoreOrders />} />
                     <Route path="/instalar" element={<Install />} />
                   </Route>
                   <Route element={<ProtectedRoute adminOnly />}>

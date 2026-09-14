@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Package, ArrowDownCircle, ArrowUpCircle,
-  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag, Smartphone, ScanLine, Camera, FileBarChart2, Receipt
+  MessageSquare, MessageCircle, UserCog, Settings, Sparkles, ShoppingBag, Smartphone, ScanLine, Camera, FileBarChart2, Receipt, Store
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -17,6 +17,7 @@ const mainItems = [
   { title: "PDV / Caixa", url: "/pdv", icon: ScanLine },
   { title: "Pré-Vendas", url: "/pre-vendas", icon: Camera },
   { title: "Vendas", url: "/vendas", icon: ShoppingBag },
+  { title: "Pedidos da Loja", url: "/pedidos-loja", icon: Store },
   { title: "Contas a Pagar", url: "/contas-pagar", icon: ArrowDownCircle },
   { title: "Contas a Receber", url: "/contas-receber", icon: ArrowUpCircle },
   { title: "Comprovantes", url: "/comprovantes", icon: Receipt },

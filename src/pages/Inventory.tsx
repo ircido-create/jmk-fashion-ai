@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { GARMENT_LABEL, GARMENT_TYPES, isGarmentType } from "@/lib/garments";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
@@ -21,6 +22,7 @@ interface Product {
   sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
   image_url?: string | null;
+  garment_type?: string | null;
   product_variants?: Variant[];
 }
 
@@ -29,6 +31,7 @@ const schema = z.object({
   sku: z.string().trim().max(60).optional().or(z.literal("")),
   supplier: z.string().trim().max(120).optional().or(z.literal("")),
   category: z.string().trim().max(60).optional().or(z.literal("")),
+  garment_type: z.enum(GARMENT_TYPES).optional().or(z.literal("")),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   price: z.number().nonnegative(),
   cost: z.number().nonnegative(),
@@ -304,6 +307,7 @@ export default function Inventory() {
       sku: f.get("sku"),
       supplier: f.get("supplier"),
       category: f.get("category"),
+      garment_type: f.get("garment_type") ?? "",
       description: f.get("description"),
       price: Number(f.get("price")),
       cost: Number(f.get("cost")),
@@ -316,6 +320,7 @@ export default function Inventory() {
       supplier: parsed.data.supplier || null,
       description: parsed.data.description || null,
       category: parsed.data.category || null,
+      garment_type: parsed.data.garment_type || null,
       price: parsed.data.price,
       cost: parsed.data.cost,
       low_stock_threshold: parsed.data.low_stock_threshold,
@@ -469,6 +474,7 @@ export default function Inventory() {
                     <span className="font-medium">{p.name}</span>
                     {p.sku && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">SKU: {p.sku}</span>}
                     {p.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{p.category}</span>}
+                    {isGarmentType(p.garment_type) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground">{GARMENT_LABEL[p.garment_type].split(" (")[0]}</span>}
                     {p.supplier && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground">{p.supplier}</span>}
                     {isLow(p) && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground inline-flex items-center gap-1">
@@ -519,7 +525,19 @@ export default function Inventory() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Estoque mínimo</Label><Input name="low_stock_threshold" type="number" defaultValue={editing?.low_stock_threshold ?? 5} min={0} className="glass-input" /></div>
-              <div></div>
+              <div>
+                {/* Define a seção da loja virtual e a parte do corpo que a IA veste no provador. */}
+                <Label htmlFor="garment_type">Tipo de peça</Label>
+                <select
+                  id="garment_type"
+                  name="garment_type"
+                  defaultValue={editing?.garment_type ?? ""}
+                  className="glass-input flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                  <option value="">Não definido</option>
+                  {GARMENT_TYPES.map((t) => <option key={t} value={t}>{GARMENT_LABEL[t]}</option>)}
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Preço (R$)</Label><Input name="price" type="number" step="0.01" defaultValue={editing?.price ?? 0} required className="glass-input" /></div>
