@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,7 +11,16 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 export function AppLayout() {
   const { user, signOut, isAdmin } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const hideAssistant = location.pathname.startsWith("/conversas");
+
+  // Sair leva ao login explicitamente. Antes o redirecionamento vinha do
+  // ProtectedRoute, mas agora "/" sem sessão abre a loja — quem sai do Painel
+  // cairia na vitrine em vez da tela de login.
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth", { replace: true });
+  };
 
   return (
     <SidebarProvider>
@@ -39,7 +48,7 @@ export function AppLayout() {
                 {isAdmin ? "Admin" : "Vendedor"}
               </span>
               <ThemeToggle />
-              <Button variant="ghost" size="sm" onClick={signOut} aria-label="Sair">
+              <Button variant="ghost" size="sm" onClick={handleSignOut} aria-label="Sair">
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>
