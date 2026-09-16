@@ -1342,6 +1342,7 @@ export type Database = {
           id: string
         }[]
       }
+      get_internal_secret: { Args: { p_name: string }; Returns: string }
       get_overdue_receivables_to_dunning: {
         Args: {
           p_limit?: number
