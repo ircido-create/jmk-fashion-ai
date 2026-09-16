@@ -105,7 +105,15 @@ Deno.serve(async (req) => {
       ? (Date.now() - new Date(lastInboundAt).getTime()) / 3600000
       : null;
 
-    const webhookOk = !!registeredWebhook && registeredWebhook === expectedWebhook;
+    // A URL registrada leva ?k=<segredo>: compara só a base e exige que o segredo esteja lá.
+    const registeredBase = registeredWebhook ? registeredWebhook.split("?")[0] : null;
+    let registeredHasSecret = false;
+    try {
+      registeredHasSecret = !!registeredWebhook && new URL(registeredWebhook).searchParams.has("k");
+    } catch {
+      registeredHasSecret = false;
+    }
+    const webhookOk = registeredBase === expectedWebhook && registeredHasSecret;
 
     // Validade do token: 401/403 em qualquer endpoint = credencial inválida.
     // 5xx/0 = provedor indisponível (não dá para concluir nada sobre o token).
@@ -159,7 +167,8 @@ Deno.serve(async (req) => {
       rawState,
       statusHttp: statusRes.status,
       configHttp: configRes.status,
-      registeredWebhook,
+      // Só a base: a URL registrada carrega o segredo e esta resposta vai para o navegador.
+      registeredWebhook: registeredBase,
       expectedWebhook,
       webhookOk,
       groupsEnabled,

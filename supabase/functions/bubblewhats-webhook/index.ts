@@ -12,6 +12,7 @@ import {
   findPhotoMatches,
   synthesizeVoice,
 } from "../_shared/monica-core.ts";
+import { getSecret } from "../_shared/secrets.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +28,8 @@ let groupWebhookConfigEnsured = false;
 // então ela precisa autorizar por conta própria. Sem isso, qualquer um que
 // descubra a URL forja uma mensagem e faz a Mônica responder ficha e PIX de
 // cliente real para o número que quiser.
-const WEBHOOK_SECRET = Deno.env.get("BUBBLEWHATS_WEBHOOK_SECRET");
+// Variável da função ou, na falta dela, o cofre do banco (_shared/secrets.ts).
+const webhookSecret = () => getSecret("BUBBLEWHATS_WEBHOOK_SECRET", "bubblewhats_webhook_secret");
 
 /** Compara sem vazar pelo tempo de resposta onde as strings divergem. */
 function secretsMatch(a: string, b: string): boolean {
@@ -44,11 +46,12 @@ function secretsMatch(a: string, b: string): boolean {
  * permite cabeçalho personalizado na URL de webhook. Nega por padrão — se o
  * segredo não estiver configurado, ninguém entra.
  */
-function webhookAutorizado(req: Request): boolean {
-  if (!WEBHOOK_SECRET) return false;
+async function webhookAutorizado(req: Request): Promise<boolean> {
+  const secret = await webhookSecret();
+  if (!secret) return false;
   const viaHeader = req.headers.get("x-webhook-secret") ?? "";
   const viaQuery = new URL(req.url).searchParams.get("k") ?? "";
-  return secretsMatch(viaHeader, WEBHOOK_SECRET) || secretsMatch(viaQuery, WEBHOOK_SECRET);
+  return secretsMatch(viaHeader, secret) || secretsMatch(viaQuery, secret);
 }
 
 // Timeout defensivo — nunca deixa o worker travado esperando uma promise pendurada.
@@ -92,9 +95,10 @@ async function ensureGroupWebhookConfig() {
   if (groupWebhookConfigEnsured) return;
   // A URL registrada precisa carregar o segredo, senão o próprio BubbleWhats
   // passa a bater aqui sem credencial e leva 404.
+  const secret = await webhookSecret();
   const webhookUrl =
     `${Deno.env.get("SUPABASE_URL")}/functions/v1/bubblewhats-webhook` +
-    (WEBHOOK_SECRET ? `?k=${encodeURIComponent(WEBHOOK_SECRET)}` : "");
+    (secret ? `?k=${encodeURIComponent(secret)}` : "");
   const res = await bwPost("/config", {
     receiveMessagesWebhook: webhookUrl,
     receiveMessagesFromGroups: true,
@@ -321,7 +325,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok", { headers: corsHeaders });
 
   // 404 em vez de 401: não confirma a existência do endpoint para quem varre.
-  if (!webhookAutorizado(req)) {
+  if (!(await webhookAutorizado(req))) {
     console.warn("webhook rejeitado: segredo ausente ou inválido");
     return new Response("not found", { status: 404, headers: corsHeaders });
   }

@@ -1,5 +1,6 @@
 // Cobrança automática diária via BubbleWhats
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getSecret } from "../_shared/secrets.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,9 +38,10 @@ function secretsMatch(a: string, b: string): boolean {
  * Devolve null quando autorizado, ou o motivo da recusa.
  */
 async function motivoRecusa(req: Request): Promise<string | null> {
-  const segredo = Deno.env.get("DUNNING_SECRET");
+  // Variável da função ou, na falta dela, o cofre do banco — o mesmo que o agendamento lê.
+  const segredo = await getSecret("DUNNING_SECRET", "dunning_secret");
   if (!segredo) {
-    return "DUNNING_SECRET não configurado nas variáveis da edge function — a cobrança automática está parada até o segredo ser definido.";
+    return "Segredo da cobrança não encontrado (DUNNING_SECRET ou cofre dunning_secret) — a cobrança automática está parada.";
   }
 
   const enviado = req.headers.get("x-dunning-secret");

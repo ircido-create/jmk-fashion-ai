@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getSecret } from "../_shared/secrets.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +46,14 @@ Deno.serve(async (req) => {
 
     if (!DEVICE_ID || !BW_TOKEN) return json({ error: "BubbleWhats não configurado" }, 500);
 
-    const webhookUrl = `${SUPABASE_URL}/functions/v1/bubblewhats-webhook`;
+    // A URL registrada precisa levar o segredo: o webhook recusa (404) toda
+    // chamada sem ele. Registrar sem ?k= foi o que deixou o WhatsApp mudo em 14/09.
+    const webhookSecret = await getSecret("BUBBLEWHATS_WEBHOOK_SECRET", "bubblewhats_webhook_secret");
+    if (!webhookSecret) {
+      return json({ error: "Segredo do webhook não encontrado no servidor. Nada foi alterado no BubbleWhats." }, 500);
+    }
+    const webhookBase = `${SUPABASE_URL}/functions/v1/bubblewhats-webhook`;
+    const webhookUrl = `${webhookBase}?k=${encodeURIComponent(webhookSecret)}`;
 
     let res: Response | null = null;
     let raw = "";
@@ -89,7 +97,8 @@ Deno.serve(async (req) => {
       return json({ error: msg, status, details: (raw || lastErr).slice(0, 300) }, 502);
     }
 
-    return json({ ok: true, receiveMessagesFromGroups: true, receiveMessagesWebhook: webhookUrl });
+    // Devolve a URL sem o segredo: a resposta vai para o navegador.
+    return json({ ok: true, receiveMessagesFromGroups: true, receiveMessagesWebhook: webhookBase });
   } catch (error) {
     console.error("bubblewhats-configure-groups error:", error);
     return json({ error: error instanceof Error ? error.message : "Erro inesperado" }, 500);
