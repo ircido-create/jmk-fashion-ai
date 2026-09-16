@@ -87,14 +87,25 @@ Deno.serve(async (req) => {
     }
 
     if (!res || !res.ok) {
-      const status = res?.status ?? 0;
-      const msg =
-        status >= 500 || status === 0
-          ? "O servidor do BubbleWhats está fora do ar no momento (erro temporário do provedor). Aguarde alguns minutos e tente novamente."
-          : status === 401 || status === 403
-            ? "Credenciais do BubbleWhats inválidas ou expiradas."
-            : "Falha ao configurar o BubbleWhats.";
-      return json({ error: msg, status, details: (raw || lastErr).slice(0, 300) }, 502);
+      const providerStatus = res?.status ?? 0;
+      const temporaryFailure = providerStatus === 0 || [502, 503, 504].includes(providerStatus);
+      const msg = temporaryFailure
+        ? "O servidor do BubbleWhats está fora do ar no momento. Aguarde alguns minutos e tente novamente."
+        : providerStatus === 401 || providerStatus === 403
+          ? "Credenciais do BubbleWhats inválidas ou expiradas."
+          : "Falha ao configurar o BubbleWhats.";
+
+      // Uma indisponibilidade temporária do provedor é uma resposta esperada da
+      // operação, não uma falha da Edge Function. HTTP 200 permite que o painel
+      // apresente a orientação acima sem substituir o corpo pelo erro genérico.
+      if (temporaryFailure) {
+        return json({ ok: false, error: msg, temporary: true, providerStatus });
+      }
+
+      return json(
+        { ok: false, error: msg, providerStatus, details: (raw || lastErr).slice(0, 300) },
+        providerStatus >= 400 && providerStatus < 500 ? providerStatus : 502,
+      );
     }
 
     // Devolve a URL sem o segredo: a resposta vai para o navegador.
