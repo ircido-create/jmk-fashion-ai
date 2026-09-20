@@ -1369,6 +1369,7 @@ export type Database = {
         Args: { qty: number; variant_id: string }
         Returns: number
       }
+      reverse_payment_proof: { Args: { p_proof_id: string }; Returns: Json }
       store_catalog: {
         Args: never
         Returns: {
