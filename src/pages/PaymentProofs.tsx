@@ -57,7 +57,6 @@ const manualSchema = z.object({
 export default function PaymentProofs() {
   const { toast } = useToast();
   const [proofs, setProofs] = useState<Proof[]>([]);
-  const [allocationsByProof, setAllocationsByProof] = useState<Record<string, Proof["receivable_payments"]>>({});
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [onlyValid, setOnlyValid] = useState<boolean>(() => {
@@ -107,7 +106,24 @@ export default function PaymentProofs() {
       toast({ title: "Erro ao carregar comprovantes", description: error.message, variant: "destructive" });
     } else {
       const proofRows = data ?? [];
-      const rows: Proof[] = proofRows.map((r: any) => ({ ...r, customer: r.customers }));
+      const visibleProofIds = new Set(proofRows.map((proof) => proof.id));
+      const { data: paymentRows, error: paymentsError } = await supabase
+        .from("receivable_payments")
+        .select("proof_id, amount_paid")
+        .limit(1000);
+      if (paymentsError) console.warn("receivable_payments load:", paymentsError.message);
+      const paymentsByProof: Record<string, Proof["receivable_payments"]> = {};
+      for (const payment of paymentRows ?? []) {
+        if (!visibleProofIds.has(payment.proof_id)) continue;
+        const current = paymentsByProof[payment.proof_id] ?? [];
+        current.push({ amount_paid: Number(payment.amount_paid), accounts_receivable: null });
+        paymentsByProof[payment.proof_id] = current;
+      }
+      const rows: Proof[] = proofRows.map((r: any) => ({
+        ...r,
+        customer: r.customers,
+        receivable_payments: paymentsByProof[r.id] ?? [],
+      }));
       setProofs(rows);
 
       // URLs assinadas para whatsapp-media (edge function)
@@ -128,38 +144,6 @@ export default function PaymentProofs() {
     }
     setLoading(false);
   };
-
-  useEffect(() => {
-    if (proofs.length === 0) {
-      setAllocationsByProof({});
-      return;
-    }
-    let cancelled = false;
-    const loadAllocations = async () => {
-      const visibleProofIds = new Set(proofs.map((proof) => proof.id));
-      const { data: paymentRows, error: paymentsError } = await supabase
-        .from("receivable_payments")
-        .select("proof_id, amount_paid")
-        .limit(1000);
-      if (paymentsError) {
-        console.warn("receivable_payments load:", paymentsError.message);
-        return;
-      }
-      const next: Record<string, Proof["receivable_payments"]> = {};
-      for (const payment of paymentRows ?? []) {
-        if (!visibleProofIds.has(payment.proof_id)) continue;
-        const current = next[payment.proof_id] ?? [];
-        current.push({
-          amount_paid: Number(payment.amount_paid),
-          accounts_receivable: null,
-        });
-        next[payment.proof_id] = current;
-      }
-      if (!cancelled) setAllocationsByProof(next);
-    };
-    void loadAllocations();
-    return () => { cancelled = true; };
-  }, [proofs]);
 
   useEffect(() => { load(); loadCustomers(); }, []);
 
@@ -264,7 +248,7 @@ export default function PaymentProofs() {
   };
 
   const deleteProof = async (p: Proof) => {
-    const allocated = (allocationsByProof[p.id] ?? []).reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
+    const allocated = (p.receivable_payments ?? []).reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
     const restoreText = allocated > 0
       ? ` O pagamento de ${currency(allocated)} será estornado e voltará para as parcelas.`
       : "";
@@ -466,7 +450,7 @@ export default function PaymentProofs() {
             const isImage = (p.mime_type ?? "").startsWith("image/");
             const isPdf = (p.mime_type ?? "").includes("pdf");
             const noFile = p.storage_path.startsWith("manual/no-file/");
-            const allocations = allocationsByProof[p.id] ?? [];
+            const allocations = p.receivable_payments ?? [];
             const allocatedTotal = allocations.reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
             const displayAmount = allocatedTotal > 0 ? allocatedTotal : p.ai_amount;
             return (
