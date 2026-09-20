@@ -33,6 +33,10 @@ interface Proof {
   ai_transaction_id: string | null;
   ai_summary: string | null;
   customer?: { name: string | null; phone: string | null } | null;
+  receivable_payments?: {
+    amount_paid: number;
+    accounts_receivable?: { description: string | null; due_date: string } | null;
+  }[];
 }
 
 interface CustomerOpt { id: string; name: string; phone: string | null }
@@ -53,6 +57,7 @@ const manualSchema = z.object({
 export default function PaymentProofs() {
   const { toast } = useToast();
   const [proofs, setProofs] = useState<Proof[]>([]);
+  const [allocationsByProof, setAllocationsByProof] = useState<Record<string, Proof["receivable_payments"]>>({});
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [onlyValid, setOnlyValid] = useState<boolean>(() => {
@@ -80,6 +85,7 @@ export default function PaymentProofs() {
   });
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadCustomers = async () => {
     const { data } = await supabase
@@ -100,7 +106,8 @@ export default function PaymentProofs() {
     if (error) {
       toast({ title: "Erro ao carregar comprovantes", description: error.message, variant: "destructive" });
     } else {
-      const rows: Proof[] = (data ?? []).map((r: any) => ({ ...r, customer: r.customers }));
+      const proofRows = data ?? [];
+      const rows: Proof[] = proofRows.map((r: any) => ({ ...r, customer: r.customers }));
       setProofs(rows);
 
       // URLs assinadas para whatsapp-media (edge function)
@@ -121,6 +128,38 @@ export default function PaymentProofs() {
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (proofs.length === 0) {
+      setAllocationsByProof({});
+      return;
+    }
+    let cancelled = false;
+    const loadAllocations = async () => {
+      const visibleProofIds = new Set(proofs.map((proof) => proof.id));
+      const { data: paymentRows, error: paymentsError } = await supabase
+        .from("receivable_payments")
+        .select("proof_id, amount_paid")
+        .limit(1000);
+      if (paymentsError) {
+        console.warn("receivable_payments load:", paymentsError.message);
+        return;
+      }
+      const next: Record<string, Proof["receivable_payments"]> = {};
+      for (const payment of paymentRows ?? []) {
+        if (!visibleProofIds.has(payment.proof_id)) continue;
+        const current = next[payment.proof_id] ?? [];
+        current.push({
+          amount_paid: Number(payment.amount_paid),
+          accounts_receivable: null,
+        });
+        next[payment.proof_id] = current;
+      }
+      if (!cancelled) setAllocationsByProof(next);
+    };
+    void loadAllocations();
+    return () => { cancelled = true; };
+  }, [proofs]);
 
   useEffect(() => { load(); loadCustomers(); }, []);
 
@@ -225,20 +264,31 @@ export default function PaymentProofs() {
   };
 
   const deleteProof = async (p: Proof) => {
-    if (!confirm(`Excluir este comprovante${p.customer?.name ? ` de ${p.customer.name}` : ""}? Esta ação não pode ser desfeita.`)) return;
+    const allocated = (allocationsByProof[p.id] ?? []).reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
+    const restoreText = allocated > 0
+      ? ` O pagamento de ${currency(allocated)} será estornado e voltará para as parcelas.`
+      : "";
+    if (!confirm(`Excluir este comprovante${p.customer?.name ? ` de ${p.customer.name}` : ""}?${restoreText} Esta ação não pode ser desfeita.`)) return;
+    setDeletingId(p.id);
     try {
       const bucket = p.bucket ?? "payment-proofs";
       const noFile = p.storage_path.startsWith("manual/no-file/");
+      const { data: reversal, error } = await supabase.rpc("reverse_payment_proof", { p_proof_id: p.id });
+      if (error) throw error;
       if (!noFile) {
         const { error: sErr } = await supabase.storage.from(bucket).remove([p.storage_path]);
         if (sErr) console.warn("storage remove:", sErr.message);
       }
-      const { error } = await supabase.from("payment_proofs").delete().eq("id", p.id);
-      if (error) throw error;
       setProofs((prev) => prev.filter((x) => x.id !== p.id));
-      toast({ title: "Comprovante excluído" });
+      const restoredTotal = Number((reversal as { restored_total?: number } | null)?.restored_total ?? 0);
+      toast({
+        title: restoredTotal > 0 ? "Pagamento estornado" : "Comprovante excluído",
+        description: restoredTotal > 0 ? `${currency(restoredTotal)} voltou para Contas a Receber.` : undefined,
+      });
     } catch (e: any) {
       toast({ title: "Erro ao excluir", description: e?.message ?? "Tente novamente", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -416,6 +466,9 @@ export default function PaymentProofs() {
             const isImage = (p.mime_type ?? "").startsWith("image/");
             const isPdf = (p.mime_type ?? "").includes("pdf");
             const noFile = p.storage_path.startsWith("manual/no-file/");
+            const allocations = allocationsByProof[p.id] ?? [];
+            const allocatedTotal = allocations.reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
+            const displayAmount = allocatedTotal > 0 ? allocatedTotal : p.ai_amount;
             return (
               <GlassCard key={p.id} className="space-y-3">
                 <div className="flex items-start justify-between gap-2">
@@ -460,7 +513,7 @@ export default function PaymentProofs() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <div className="text-muted-foreground">Valor</div>
-                    <div className="font-semibold">{currency(p.ai_amount)}</div>
+                    <div className="font-semibold">{currency(displayAmount)}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Banco</div>
@@ -476,6 +529,22 @@ export default function PaymentProofs() {
                   </div>
                 </div>
 
+                {allocations.length > 0 && (
+                  <div className="space-y-1 border-t border-border/50 pt-2 text-xs">
+                    <div className="font-medium">Distribuição do pagamento</div>
+                    {allocations.map((allocation, index) => (
+                      <div key={`${p.id}-${index}`} className="flex items-start justify-between gap-3 text-muted-foreground">
+                        <span className="min-w-0 truncate">
+                          {allocation.accounts_receivable?.description ?? `Parcela ${index + 1}`}
+                        </span>
+                        <span className="shrink-0 font-medium text-foreground">
+                          {currency(Number(allocation.amount_paid))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {p.ai_summary && (
                   <p className="text-xs text-muted-foreground border-t border-border/50 pt-2">{p.ai_summary}</p>
                 )}
@@ -488,14 +557,17 @@ export default function PaymentProofs() {
                         Abrir <ExternalLink className="h-3 w-3" />
                       </a>
                     )}
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => deleteProof(p)}
-                      className="inline-flex items-center gap-1 text-destructive hover:underline"
+                      disabled={deletingId === p.id}
+                      className="h-auto gap-1 p-0 text-destructive hover:text-destructive"
                       aria-label="Excluir comprovante"
                     >
-                      <Trash2 className="h-3 w-3" /> Excluir
-                    </button>
+                      <Trash2 className="h-3 w-3" /> {deletingId === p.id ? "Estornando…" : "Excluir"}
+                    </Button>
                   </div>
                 </div>
 
