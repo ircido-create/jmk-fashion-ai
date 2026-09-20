@@ -284,9 +284,13 @@ export default function Receivable() {
     }
   };
 
-  const remove = async (id: string) => {
+  const remove = async (receivable: Receivable) => {
+    if (receivable.status === "pago" || (receivable.proofs?.length ?? 0) > 0) {
+      toast.error("Esta parcela possui pagamento. Exclua o comprovante para estornar o valor corretamente.");
+      return;
+    }
     if (!confirm("Excluir?")) return;
-    const { error } = await supabase.from("accounts_receivable").delete().eq("id", id);
+    const { error } = await supabase.from("accounts_receivable").delete().eq("id", receivable.id);
     if (error) toast.error(error.message); else { toast.success("Excluído"); load(); }
   };
 
@@ -995,7 +999,7 @@ export default function Receivable() {
                     </Button>
                   )}
                   <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setOpen(true); }} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => remove(r.id)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => remove(r)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                 </div>
               </div>
             </div>
