@@ -285,7 +285,7 @@ export default function Receivable() {
   };
 
   const remove = async (receivable: Receivable) => {
-    if (receivable.status === "pago" || (receivable.proofs?.length ?? 0) > 0) {
+    if ((receivable.proofs?.length ?? 0) > 0) {
       toast.error("Esta parcela possui pagamento. Exclua o comprovante para estornar o valor corretamente.");
       return;
     }
