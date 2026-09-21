@@ -374,6 +374,39 @@ Deno.serve(async (req) => {
 
     console.log("[chk] parsed", { conversationKey, isGroup, hasText: !!text, senderNumber, delayMinutes: Math.round(delayMinutes) });
 
+    // ---- MENSAGEM DO PRÓPRIO APARELHO ----
+    // O BubbleWhats também entrega o que a equipe digita no celular (key.fromMe).
+    // Não é cliente falando: sem este filtro a Mônica respondia a si mesma — em
+    // 18/09 reenviou a chave PIX que a equipe tinha acabado de mandar pelo celular.
+    // Grava do lado certo (enviada), sem contar como não lida e sem acionar nada.
+    // As respostas automáticas saem pela API e não voltam como eco (histórico até
+    // 21/09: 973 cobranças e 422 confirmações de comprovante, nenhum eco recente).
+    // Só conversa individual: em grupo nenhuma automação responde.
+    const fromMe = messageKey.fromMe === true || payload.fromMe === true || payload.isFromMe === true;
+    if (fromMe && !isGroup) {
+      console.log("[fromMe] enviada pelo próprio aparelho — sem automação", { conversationKey });
+      try {
+        // Sem nome: o pushName do eco é o de quem digitou no celular, e
+        // getOrCreateConversation renomearia a conversa da cliente com ele.
+        const convOwn = await withTimeout(
+          getOrCreateConversation(conversationKey, null),
+          5000, "fromMe:getOrCreateConversation",
+        );
+        if (convOwn) {
+          await supabase.from("whatsapp_messages").insert({
+            conversation_id: convOwn.id,
+            direction: "outbound",
+            content: text || "[mídia enviada pelo celular]",
+          });
+        }
+      } catch (e) {
+        console.error("[fromMe] log err:", e);
+      }
+      return new Response(JSON.stringify({ ok: true, fromMe: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
 
     // ---- ATENDIMENTO HUMANO (prioridade máxima) ----
     // Se a conversa está marcada como handoff humano, a Mônica fica em silêncio total:
