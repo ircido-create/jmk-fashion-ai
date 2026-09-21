@@ -193,14 +193,10 @@ Deno.serve(async (req) => {
     const mensagemCobranca = (nome: string, r: any) =>
       `Olá, ${nome} 💕 Aqui é da JMK! Passando com muito carinho para te lembrar do pagamento de R$ ${r.amount} (${r.description ?? "sua comprinha"}) que venceu em ${dataBR(r.due_date)}. Qualquer dúvida estou por aqui, tá? Que Deus te abençoe! 🌸\n\n👉🏻 Caso tenha efetuado o pagamento, desconsidere este lembrete!`;
 
-    const processar = async (
-      lista: any[],
-      tipo: "lembrete" | "cobranca",
-    ) => {
-      for (const r of lista) {
+    const processarItem = async (r: any, tipo: "lembrete" | "cobranca") => {
         const cust: any = (r as any).customers;
         const phone = String(cust?.phone || "").replace(/\D/g, "");
-        if (!phone) continue;
+        if (!phone) return;
 
         // Regra Anti-Spam: não envia se o título venceu há muito tempo
         // (evita spam de dívidas legadas). Só se aplica à cobrança.
@@ -208,7 +204,7 @@ Deno.serve(async (req) => {
           const daysOverdue = Math.floor((new Date(today).getTime() - new Date(r.due_date).getTime()) / 86400000);
           if (daysOverdue > 180) {
             skippedOld++;
-            continue;
+            return;
           }
         }
 
@@ -221,7 +217,7 @@ Deno.serve(async (req) => {
 
         if ((count ?? 0) > 0) {
           skippedAlreadySent++;
-          continue;
+          return;
         }
 
         // Verifica se o contato está na White List (Silêncio)
@@ -232,7 +228,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (isBlocked) {
           skippedBlocked++;
-          continue;
+          return;
         }
 
         const msg = tipo === "lembrete"
@@ -248,7 +244,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ jid, message: msg }),
             // Sem timeout, um envio pendurado trava a rodada inteira até o limite da
             // edge function, e os clientes seguintes da fila não são cobrados.
-            signal: AbortSignal.timeout(20000),
+            signal: AbortSignal.timeout(8000),
           });
 
           if (res.ok) {
@@ -289,9 +285,22 @@ Deno.serve(async (req) => {
           if (erros.length < 5) erros.push(`${phone}: ${detalhe}`);
         }
 
-        // Pequeno delay para não sobrecarregar a API/WhatsApp
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+    };
+
+    // Mantém poucos envios simultâneos para terminar dentro do limite da função,
+    // sem disparar toda a fila de uma vez contra o provedor.
+    const processar = async (
+      lista: any[],
+      tipo: "lembrete" | "cobranca",
+    ) => {
+      const fila = [...lista];
+      const workers = Array.from({ length: Math.min(8, fila.length) }, async () => {
+        while (fila.length > 0) {
+          const item = fila.shift();
+          if (item) await processarItem(item, tipo);
+        }
+      });
+      await Promise.all(workers);
     };
 
     await processar(dueToday ?? [], "lembrete");
