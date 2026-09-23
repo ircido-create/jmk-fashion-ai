@@ -160,13 +160,11 @@ export default function Customers() {
         .update(dupPayload)
         .eq("id", dupExisting.id);
       if (upErr) throw upErr;
-      // If we were editing a different record, merge it into the existing via edge function
+      // Se estava editando outro cadastro, junta-o ao existente (move parcelas,
+      // vendas, conversas, comprovantes e cobrança numa única transação).
       if (editing && editing.id !== dupExisting.id) {
-        const { data, error } = await supabase.functions.invoke("merge-customers", {
-          body: { keep_id: dupExisting.id, drop_id: editing.id },
-        });
+        const { error } = await supabase.rpc("merge_customers", { p_keep: dupExisting.id, p_drop: editing.id });
         if (error) throw error;
-        if ((data as any)?.error) throw new Error((data as any).error);
       }
       toast.success("Cadastros mesclados");
       setDupExisting(null); setDupPayload(null); setOpen(false); setEditing(null); load();

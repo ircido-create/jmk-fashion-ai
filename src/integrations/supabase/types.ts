@@ -1391,6 +1391,10 @@ export type Database = {
         }
         Returns: Json
       }
+      merge_customers: {
+        Args: { p_drop: string; p_keep: string }
+        Returns: Json
+      }
       reverse_payment_proof: { Args: { p_proof_id: string }; Returns: Json }
       set_payment_proof_pending_status: {
         Args: { p_ignore: boolean; p_note?: string; p_proof_id: string }

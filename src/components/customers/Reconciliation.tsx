@@ -25,8 +25,10 @@ interface Pair {
 }
 
 interface Counts {
-  [customerId: string]: { sales: number; receivable: number };
+  [customerId: string]: { sales: number; receivable: number; conversations: number };
 }
+
+const emptyCount = () => ({ sales: 0, receivable: 0, conversations: 0 });
 
 const norm = (s: string | null | undefined) =>
   (s ?? "")
@@ -39,6 +41,13 @@ const norm = (s: string | null | undefined) =>
 
 const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
+/** Telefone sem o 55 do Brasil, para "5511987480029" e "11987480029" casarem. */
+const nationalPhone = (s: string | null | undefined) => {
+  const d = digits(s);
+  if (d.length < 10) return "";
+  return d.startsWith("55") && d.length >= 12 ? d.slice(2) : d;
+};
+
 function detectPairs(customers: Customer[], counts: Counts, ignored: Set<string>): Pair[] {
   const pairs: Pair[] = [];
   const seen = new Set<string>();
@@ -47,7 +56,7 @@ function detectPairs(customers: Customer[], counts: Counts, ignored: Set<string>
 
   const chooseKeep = (a: Customer, b: Customer): string => {
     const score = (c: Customer) => {
-      const cnt = counts[c.id] ?? { sales: 0, receivable: 0 };
+      const cnt = counts[c.id] ?? emptyCount();
       return (
         cnt.sales * 10 +
         cnt.receivable * 5 +
@@ -61,6 +70,32 @@ function detectPairs(customers: Customer[], counts: Counts, ignored: Set<string>
     };
     return score(a) >= score(b) ? a.id : b.id;
   };
+
+  // Rule 0: mesmo telefone. Caso mais comum: o cadastro com as parcelas e outro
+  // criado pela Mônica com o apelido do WhatsApp.
+  const byPhone = new Map<string, Customer[]>();
+  for (const c of customers) {
+    const p = nationalPhone(c.phone);
+    if (!p) continue;
+    if (!byPhone.has(p)) byPhone.set(p, []);
+    byPhone.get(p)!.push(c);
+  }
+  for (const arr of byPhone.values()) {
+    if (arr.length < 2) continue;
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const k = pairKey(arr[i].id, arr[j].id);
+        if (ignored.has(k) || seen.has(k)) continue;
+        seen.add(k);
+        pairs.push({
+          a: arr[i],
+          b: arr[j],
+          reason: "Mesmo telefone",
+          keepId: chooseKeep(arr[i], arr[j]),
+        });
+      }
+    }
+  }
 
   // Rule 1: same tax_id
   const byTax = new Map<string, Customer[]>();
@@ -130,21 +165,25 @@ export default function CustomerReconciliation() {
       const all = await fetchAll<Customer>((sb) =>
         sb.from("customers").select("id,name,nickname,phone,email,address,notes,tax_id").order("name")
       );
-      const [salesRes, recRes, ignRes] = await Promise.all([
-        supabase.from("sales").select("customer_id"),
-        supabase.from("accounts_receivable").select("customer_id"),
+      // fetchAll: o limite padrão de 1000 linhas cortava as contagens de parcelas.
+      const [sales, receivables, conversations, ignRes] = await Promise.all([
+        fetchAll<{ customer_id: string | null }>((sb) => sb.from("sales").select("customer_id").order("id")),
+        fetchAll<{ customer_id: string | null }>((sb) => sb.from("accounts_receivable").select("customer_id").order("id")),
+        fetchAll<{ customer_id: string | null }>((sb) => sb.from("whatsapp_conversations").select("customer_id").not("customer_id", "is", null).order("id")),
         supabase.from("customer_merge_ignored").select("id,customer_a_id,customer_b_id"),
       ]);
       const c: Counts = {};
-      for (const r of salesRes.data ?? []) {
+      for (const r of sales) {
         if (!r.customer_id) continue;
-        c[r.customer_id] ??= { sales: 0, receivable: 0 };
-        c[r.customer_id].sales++;
+        (c[r.customer_id] ??= emptyCount()).sales++;
       }
-      for (const r of recRes.data ?? []) {
+      for (const r of receivables) {
         if (!r.customer_id) continue;
-        c[r.customer_id] ??= { sales: 0, receivable: 0 };
-        c[r.customer_id].receivable++;
+        (c[r.customer_id] ??= emptyCount()).receivable++;
+      }
+      for (const r of conversations) {
+        if (!r.customer_id) continue;
+        (c[r.customer_id] ??= emptyCount()).conversations++;
       }
       const ign = ignRes.data ?? [];
       setIgnoredRows(ign);
@@ -170,16 +209,15 @@ export default function CustomerReconciliation() {
     const dropId = keepId === pair.a.id ? pair.b.id : pair.a.id;
     const dropName = keepId === pair.a.id ? pair.b.name : pair.a.name;
     const keepName = keepId === pair.a.id ? pair.a.name : pair.b.name;
-    if (!confirm(`Mesclar "${dropName}" em "${keepName}"?\n\nVendas e contas a receber serão movidas e o cadastro duplicado será excluído.`)) return;
+    if (!confirm(`Mesclar "${dropName}" em "${keepName}"?\n\nVendas, parcelas, conversas do WhatsApp, comprovantes e cobranças serão movidos e o cadastro duplicado será excluído.`)) return;
     setBusy(key);
     try {
-      const { data, error } = await supabase.functions.invoke("merge-customers", {
-        body: { keep_id: keepId, drop_id: dropId },
-      });
+      const { data, error } = await supabase.rpc("merge_customers", { p_keep: keepId, p_drop: dropId });
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const moves = (data as any)?.moves ?? {};
-      toast.success(`Mesclado. Vendas: ${moves.sales ?? 0}, receber: ${moves.accounts_receivable ?? 0}`);
+      const moves = ((data as { moves?: Record<string, number> } | null)?.moves) ?? {};
+      toast.success(
+        `Mesclado. Vendas: ${moves.sales ?? 0}, parcelas: ${moves.accounts_receivable ?? 0}, conversas: ${moves.whatsapp_conversations ?? 0}`
+      );
       await load();
     } catch (e: any) {
       toast.error(e.message ?? "Erro ao mesclar");
@@ -234,7 +272,7 @@ export default function CustomerReconciliation() {
         const key = [pair.a.id, pair.b.id].sort().join("|");
         const currentKeep = overrideKeep[key] ?? pair.keepId;
         const renderSide = (c: Customer, isKeep: boolean) => {
-          const cnt = counts[c.id] ?? { sales: 0, receivable: 0 };
+          const cnt = counts[c.id] ?? emptyCount();
           return (
             <div
               className={`flex-1 p-3 rounded-xl border transition-all cursor-pointer ${
@@ -252,8 +290,9 @@ export default function CustomerReconciliation() {
                 <div>Apelido: {c.nickname || "—"}</div>
                 <div>CPF/CNPJ: {c.tax_id ? formatTaxId(c.tax_id) : "—"}</div>
                 <div>Telefone: {c.phone || "—"}</div>
+                <div className="truncate" title={c.address ?? undefined}>Endereço: {c.address || "—"}</div>
                 <div>
-                  Vendas: {cnt.sales} · Receber: {cnt.receivable}
+                  Vendas: {cnt.sales} · Receber: {cnt.receivable} · Conversas: {cnt.conversations}
                 </div>
               </div>
             </div>
