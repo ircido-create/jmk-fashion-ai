@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetchAll";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { parseAmount } from "@/lib/spreadsheet";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/contexts/AuthContext";
@@ -59,6 +62,11 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "ignorado", label: "Descartados" },
 ];
 
+const PAGE_SIZE = 24;
+
+/** Termo seguro para o filtro `or` do PostgREST (vírgula e parênteses quebram a sintaxe). */
+const orSafe = (t: string) => t.replace(/[%_,()]/g, " ").replace(/\s+/g, " ").trim();
+
 interface OpenReceivable { id: string; description: string | null; amount: number; due_date: string; status: string }
 
 const formatDate = (iso: string) => {
@@ -92,6 +100,12 @@ export default function PaymentProofs() {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
   const [statusCounts, setStatusCounts] = useState<Partial<Record<StatusFilter, number>>>({});
+  // Paginação e busca no servidor: antes carregava os 200 mais recentes e a
+  // busca só enxergava esses 200 (e gerava um link de imagem para cada um).
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const debouncedQ = useDebouncedValue(q, 300);
+  const requestSeq = useRef(0);
 
   // ---- Baixa manual a partir do comprovante ----
   const [settleTarget, setSettleTarget] = useState<Proof | null>(null);
@@ -125,13 +139,17 @@ export default function PaymentProofs() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // fetchAll: com limit(500) as clientes do fim do alfabeto não apareciam nos
+  // seletores (já são mais de 500 cadastros).
   const loadCustomers = async () => {
-    const { data } = await supabase
-      .from("customers")
-      .select("id, name, phone")
-      .order("name", { ascending: true })
-      .limit(500);
-    setCustomers((data ?? []) as CustomerOpt[]);
+    try {
+      const data = await fetchAll<CustomerOpt>((sb) =>
+        sb.from("customers").select("id, name, phone").order("name", { ascending: true }).order("id"),
+      );
+      setCustomers(data);
+    } catch (e: any) {
+      console.warn("customers load:", e?.message);
+    }
   };
 
   const loadCounts = async () => {
@@ -145,15 +163,39 @@ export default function PaymentProofs() {
   };
 
   const load = async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
+    const from = page * PAGE_SIZE;
     let query = supabase
       .from("payment_proofs")
-      .select("id, created_at, storage_path, bucket, original_filename, mime_type, source, customer_id, ai_is_payment_proof, ai_amount, ai_payer_name, ai_bank, ai_transaction_id, ai_summary, settlement_status, settlement_note, settled_at, customers(name, phone)")
+      .select("id, created_at, storage_path, bucket, original_filename, mime_type, source, customer_id, ai_is_payment_proof, ai_amount, ai_payer_name, ai_bank, ai_transaction_id, ai_summary, settlement_status, settlement_note, settled_at, customers(name, phone)", { count: "exact" })
       .order("created_at", { ascending: false })
-      .limit(200);
+      .order("id", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
     if (statusFilter !== "todos") query = query.eq("settlement_status", statusFilter);
-    const { data, error } = await query;
+    if (onlyValid) query = query.eq("ai_is_payment_proof", true);
+
+    const term = orSafe(debouncedQ);
+    if (term) {
+      const digits = term.replace(/\D/g, "");
+      const custFilters = [`name.ilike.%${term}%`, `nickname.ilike.%${term}%`];
+      if (digits.length >= 4) custFilters.push(`phone.ilike.%${digits}%`);
+      const { data: custs } = await supabase.from("customers").select("id").or(custFilters.join(",")).limit(200);
+      const ors = ["ai_payer_name", "ai_bank", "ai_transaction_id", "ai_summary", "original_filename"].map((c) => `${c}.ilike.%${term}%`);
+      const ids = (custs ?? []).map((c) => c.id);
+      if (ids.length > 0) ors.push(`customer_id.in.(${ids.join(",")})`);
+      // "150", "150,00", "R$ 1.234,56" → procura também pelo valor exato
+      if (/^[\d\s.,R$]+$/i.test(term)) {
+        const v = parseAmount(term);
+        if (v > 0) ors.push(`ai_amount.eq.${v}`);
+      }
+      query = query.or(ors.join(","));
+    }
+
+    const { data, error, count } = await query;
+    if (seq !== requestSeq.current) return; // resposta de uma busca antiga
     loadCounts();
+    setTotalCount(count ?? 0);
     if (error) {
       toast({ title: "Erro ao carregar comprovantes", description: error.message, variant: "destructive" });
     } else {
@@ -172,6 +214,7 @@ export default function PaymentProofs() {
         current.push({ amount_paid: Number(payment.amount_paid), accounts_receivable: payment.accounts_receivable ?? null });
         paymentsByProof[payment.proof_id] = current;
       }
+      if (seq !== requestSeq.current) return;
       const rows: Proof[] = proofRows.map((r: any) => ({
         ...r,
         customer: r.customers,
@@ -199,18 +242,12 @@ export default function PaymentProofs() {
   };
 
   useEffect(() => { loadCustomers(); }, []);
-  useEffect(() => { load(); }, [statusFilter]);
+  // Filtro ou busca novos voltam para a primeira página.
+  useEffect(() => { setPage(0); }, [statusFilter, onlyValid, debouncedQ]);
+  useEffect(() => { load(); }, [statusFilter, onlyValid, debouncedQ, page]);
 
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    let list = proofs;
-    if (onlyValid) list = list.filter((p) => p.ai_is_payment_proof === true);
-    if (!term) return list;
-    return list.filter((p) =>
-      [p.ai_payer_name, p.ai_bank, p.ai_transaction_id, p.ai_summary, p.customer?.name, p.customer?.phone, p.original_filename]
-        .filter(Boolean).some((v) => String(v).toLowerCase().includes(term))
-    );
-  }, [proofs, q, onlyValid]);
+  const filtered = proofs;
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const filteredCustomers = useMemo(() => {
     const t = customerQuery.trim().toLowerCase();
@@ -749,6 +786,23 @@ export default function PaymentProofs() {
               </GlassCard>
             );
           })}
+        </div>
+      )}
+
+      {totalCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+          <span>
+            {page * PAGE_SIZE + 1}–{Math.min(totalCount, (page + 1) * PAGE_SIZE)} de {totalCount} comprovante(s)
+          </span>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage((n) => n - 1)}>
+              Anterior
+            </Button>
+            <span>Página {page + 1} de {pageCount}</span>
+            <Button type="button" variant="outline" size="sm" disabled={page + 1 >= pageCount || loading} onClick={() => setPage((n) => n + 1)}>
+              Próxima
+            </Button>
+          </div>
         </div>
       )}
 

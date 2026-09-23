@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,8 +59,10 @@ export default function PreSaleForm() {
   const [editingMatchOpts, setEditingMatchOpts] = useState<any[]>([]);
 
   useEffect(() => {
-    supabase.from("customers").select("id,name,phone,tax_id").order("name").limit(500)
-      .then(({ data }) => setCustomers((data as any) ?? []));
+    // fetchAll: com limit(500) as clientes do fim do alfabeto não apareciam (já são mais de 500).
+    fetchAll((sb) => sb.from("customers").select("id,name,phone,tax_id").order("name").order("id"))
+      .then((data) => setCustomers(data as any))
+      .catch((e: any) => console.warn("customers load:", e?.message));
   }, []);
 
   // autosave rascunho (apenas para nova)
