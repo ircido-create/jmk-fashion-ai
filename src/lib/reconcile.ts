@@ -93,6 +93,16 @@ export function reconcile(
   // Índices auxiliares para resolver pagamento → customer_id
   const taxToCustomerId = new Map<string, string>();
   const nameToCustomerId = new Map<string, string>();
+  // Nome/apelido que pertence a mais de uma cliente: sem CPF no extrato não dá
+  // para saber quem pagou. Antes valia a última cliente da lista — o pagamento
+  // de uma podia quitar a parcela da outra.
+  const ambiguousNames = new Set<string>();
+  const addName = (key: string, customerId: string) => {
+    if (!key) return;
+    const current = nameToCustomerId.get(key);
+    if (current && current !== customerId) ambiguousNames.add(key);
+    else nameToCustomerId.set(key, customerId);
+  };
 
   for (const r of pendings) {
     if (!r.customer_id) continue;
@@ -101,10 +111,8 @@ export function reconcile(
     byCustomerId.set(r.customer_id, arr);
     const tax = digitsOnly(r.customer_tax_id ?? "");
     if (tax) taxToCustomerId.set(tax, r.customer_id);
-    const nm = norm(r.customer_name);
-    if (nm) nameToCustomerId.set(nm, r.customer_id);
-    const nick = norm(r.customer_nickname ?? "");
-    if (nick) nameToCustomerId.set(nick, r.customer_id);
+    addName(norm(r.customer_name), r.customer_id);
+    addName(norm(r.customer_nickname ?? ""), r.customer_id);
   }
 
   // Ordena cada bucket por due_date asc (mais antigo primeiro), depois por amount asc
@@ -135,6 +143,13 @@ export function reconcile(
     if (tax && taxToCustomerId.has(tax)) cid = taxToCustomerId.get(tax)!;
     if (!cid) {
       const nm = norm(p.customer_name);
+      if (nm && ambiguousNames.has(nm)) {
+        unmatched.push({
+          payment: p,
+          reason: "Nome corresponde a mais de uma cliente — informe o CPF para identificar",
+        });
+        return;
+      }
       if (nm && nameToCustomerId.has(nm)) cid = nameToCustomerId.get(nm)!;
     }
     if (!cid) {
