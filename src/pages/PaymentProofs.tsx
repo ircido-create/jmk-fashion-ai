@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/contexts/AuthContext";
 import { reconcileManualPayment, type ReceivableLite } from "@/lib/reconcile";
+import { applyReceivablePayment } from "@/lib/applyPayment";
 import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload, Trash2, CheckCircle2, Ban, RotateCcw } from "lucide-react";
 import { z } from "zod";
 
@@ -378,40 +379,8 @@ export default function PaymentProofs() {
     setSettleSaving(true);
     try {
       const paidAtIso = new Date(`${settleDate}T12:00:00`).toISOString();
-      const settleIds = settlePreview.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
-      const reduceActions = settlePreview.actions.filter((a) => a.kind === "reduce");
-
-      if (settleIds.length > 0) {
-        const { data: updated, error } = await supabase
-          .from("accounts_receivable")
-          .update({ status: "pago", paid_at: paidAtIso })
-          .in("id", settleIds)
-          .select("id");
-        if (error) throw error;
-        if (!updated || updated.length === 0) {
-          throw new Error("Não foi possível atualizar (permissão negada). Verifique sua função de usuário.");
-        }
-      }
-      for (const a of reduceActions) {
-        const { error } = await supabase
-          .from("accounts_receivable")
-          .update({ amount: a.new_amount })
-          .eq("id", a.receivable_id);
-        if (error) throw error;
-      }
-
       // O vínculo com este comprovante marca a baixa como manual (trigger no banco).
-      const links = settlePreview.actions.map((a) => ({
-        receivable_id: a.receivable_id,
-        proof_id: settleTarget.id,
-        amount_paid: a.amount_paid,
-      }));
-      const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
-      if (linkErr) {
-        throw new Error(
-          `As parcelas foram baixadas, mas o vínculo com o comprovante não foi gravado: ${linkErr.message}. Confira em Contas a Receber antes de repetir a baixa.`,
-        );
-      }
+      await applyReceivablePayment({ actions: settlePreview.actions, paidAtIso, proofId: settleTarget.id });
 
       const t = settlePreview.totals;
       const leftover = settlePreview.leftovers[0]?.amount;

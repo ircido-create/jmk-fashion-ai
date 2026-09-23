@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { reconcileManualPayment, type ReceivableLite } from "@/lib/reconcile";
+import { applyReceivablePayment } from "@/lib/applyPayment";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
@@ -129,47 +130,13 @@ export default function CustomerDetail() {
       const result = reconcileManualPayment(lite, received, ids);
       if (result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
 
-      const settleIds = result.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
-      const reduceActions = result.actions.filter((a) => a.kind === "reduce");
-
-      if (settleIds.length > 0) {
-        const { error } = await supabase
-          .from("accounts_receivable")
-          .update({ status: "pago", paid_at: paidAtIso })
-          .in("id", settleIds);
-        if (error) throw error;
-      }
-
-      for (const a of reduceActions) {
-        const { error } = await supabase
-          .from("accounts_receivable")
-          .update({ amount: a.new_amount })
-          .eq("id", a.receivable_id);
-        if (error) throw error;
-      }
-
-      try {
-        const { data: proof, error: proofErr } = await supabase
-          .from("payment_proofs")
-          .insert({
-            storage_path: "",
-            description: `Recebimento manual — ${customer?.name ?? "cliente"}`,
-            payment_date: paidAtIso,
-          })
-          .select("id")
-          .single();
-        if (proofErr) throw proofErr;
-
-        const payments = result.actions.map((a) => ({
-          receivable_id: a.receivable_id,
-          proof_id: proof.id,
-          amount_paid: a.amount_paid,
-        }));
-        const { error: pErr } = await supabase.from("receivable_payments").insert(payments as any);
-        if (pErr) throw pErr;
-      } catch (historyErr: any) {
-        console.warn("receivable_payments insert:", historyErr?.message);
-      }
+      // Antes o registro do pagamento era gravado depois, e uma falha ali era só
+      // um console.warn: a parcela ficava paga sem rastro. Agora é tudo ou nada.
+      await applyReceivablePayment({
+        actions: result.actions,
+        paidAtIso,
+        proof: { storage_path: "", description: `Recebimento manual — ${customer?.name ?? "cliente"}`, customer_id: id ?? null },
+      });
 
       setPayOpen(false);
       const leftoverMsg = result.leftovers.length > 0 ? ` • sobra ${fmtBRL(result.leftovers[0].amount)}` : "";

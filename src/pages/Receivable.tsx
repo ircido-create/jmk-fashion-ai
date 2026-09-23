@@ -19,6 +19,7 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { digitsOnly, formatTaxId } from "@/lib/taxId";
 import { reconcile, reconcileManualPayment, type PaymentRow, type ReconciliationResult, type ReceivableLite } from "@/lib/reconcile";
+import { applyReceivablePayment, type NewProof } from "@/lib/applyPayment";
 
 interface Customer { id: string; name: string; nickname: string | null; tax_id: string | null; phone: string | null; }
 interface Receivable {
@@ -161,38 +162,25 @@ export default function Receivable() {
     toast.success("Salvo"); setOpen(false); setEditing(null); load();
   };
 
-  // Sobe arquivo (se houver) e cria payment_proof. Retorna proof_id (ou null se nada).
-  const uploadProof = async (file: File | null, description: string): Promise<string | null> => {
-    if (!file) {
-      // Cria proof "vazio" sem arquivo? Aqui retornamos null se não tem arquivo.
-      // Para baixa em massa SEM arquivo, ainda criamos um proof só com descrição.
-      if (!description) return null;
-      const { data, error } = await supabase
-        .from("payment_proofs")
-        .insert({ storage_path: "", description, payment_date: new Date().toISOString() })
-        .select("id").single();
-      if (error) throw error;
-      return data.id;
-    }
+  // Sobe o arquivo (se houver) e devolve os dados do comprovante. O registro em
+  // payment_proofs é criado junto com a baixa, na mesma transação
+  // (applyReceivablePayment) — se a baixa falhar, sobra no máximo o arquivo.
+  const prepareProof = async (file: File | null, description: string, customerId: string | null): Promise<NewProof> => {
+    if (!file) return { storage_path: "", description: description || null, customer_id: customerId };
     const ext = file.name.split(".").pop() ?? "bin";
     const path = `${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, "0")}/${crypto.randomUUID()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("payment-proofs").upload(path, file, {
       contentType: file.type || "application/octet-stream",
     });
     if (upErr) throw upErr;
-    const { data, error } = await supabase
-      .from("payment_proofs")
-      .insert({
-        storage_path: path,
-        original_filename: file.name,
-        mime_type: file.type || null,
-        file_size: file.size,
-        description: description || null,
-        payment_date: new Date().toISOString(),
-      })
-      .select("id").single();
-    if (error) throw error;
-    return data.id;
+    return {
+      storage_path: path,
+      original_filename: file.name,
+      mime_type: file.type || null,
+      file_size: file.size,
+      description: description || null,
+      customer_id: customerId,
+    };
   };
 
   const openPay = (r: Receivable) => {
@@ -228,47 +216,8 @@ export default function Receivable() {
       const result = reconcileManualPayment(lite, amt, [payTarget.id]);
       if (result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
 
-      const settleIds = result.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
-      const reduceActions = result.actions.filter((a) => a.kind === "reduce");
-
-      if (settleIds.length > 0) {
-        const { data: updated, error } = await supabase
-          .from("accounts_receivable")
-          .update({ status: "pago", paid_at: paidAtIso })
-          .in("id", settleIds)
-          .select("id");
-        if (error) throw error;
-        if (!updated || updated.length === 0) {
-          throw new Error("Não foi possível atualizar (permissão negada). Verifique sua função de usuário.");
-        }
-      }
-
-      for (const a of reduceActions) {
-        const { error } = await supabase
-          .from("accounts_receivable")
-          .update({ amount: a.new_amount })
-          .eq("id", a.receivable_id);
-        if (error) throw error;
-      }
-
-      // O histórico do recebimento não é opcional: sem ele a parcela fica quitada
-      // sem rastro de quem pagou, quanto e com qual comprovante. Se falhar aqui, o
-      // operador precisa saber — antes isso era engolido com um console.warn e a
-      // tela ainda dizia "Recebimento aplicado".
-      const proofId = await uploadProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`);
-      if (proofId) {
-        const links = result.actions.map((a) => ({
-          receivable_id: a.receivable_id,
-          proof_id: proofId,
-          amount_paid: a.amount_paid,
-        }));
-        const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
-        if (linkErr) {
-          throw new Error(
-            `As parcelas foram baixadas, mas o histórico do recebimento não foi gravado: ${linkErr.message}. Confira em Comprovantes antes de repetir a baixa.`,
-          );
-        }
-      }
+      const proof = await prepareProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`, payTarget.customer_id);
+      await applyReceivablePayment({ actions: result.actions, paidAtIso, proof });
 
       const leftoverMsg = result.leftovers.length > 0 ? ` • sobra R$ ${result.leftovers[0].amount.toFixed(2)}` : "";
       toast.success(
@@ -449,43 +398,13 @@ export default function Receivable() {
     }
     setBulkSaving(true);
     try {
-      const proofId = await uploadProof(
+      const proof = await prepareProof(
         bulkFile,
-        bulkDesc || `Conciliação em massa — ${format(new Date(), "dd/MM/yyyy")}`
+        bulkDesc || `Conciliação em massa — ${format(new Date(), "dd/MM/yyyy")}`,
+        null,
       );
-
-      // Aplica ações
-      const settleIds = bulkResult.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
-      const reduceActions = bulkResult.actions.filter((a) => a.kind === "reduce");
-
-      // 1) Quitações integrais
-      if (settleIds.length > 0) {
-        const { error } = await supabase
-          .from("accounts_receivable")
-          .update({ status: "pago", paid_at: new Date().toISOString() })
-          .in("id", settleIds);
-        if (error) throw error;
-      }
-
-      // 2) Reduções de parcela (uma por uma — cada uma tem novo amount diferente)
-      for (const a of reduceActions) {
-        const { error } = await supabase
-          .from("accounts_receivable")
-          .update({ amount: a.new_amount })
-          .eq("id", a.receivable_id);
-        if (error) throw error;
-      }
-
-      // 3) Vincula comprovante (se houver) com o valor abatido em cada receivable
-      if (proofId) {
-        const links = bulkResult.actions.map((a) => ({
-          receivable_id: a.receivable_id,
-          proof_id: proofId,
-          amount_paid: a.amount_paid,
-        }));
-        const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
-        if (linkErr) throw linkErr;
-      }
+      // Tudo ou nada: se uma parcela do extrato mudou desde a leitura, nenhuma é baixada.
+      await applyReceivablePayment({ actions: bulkResult.actions, paidAtIso: new Date().toISOString(), proof });
 
       const t = bulkResult.totals;
       toast.success(

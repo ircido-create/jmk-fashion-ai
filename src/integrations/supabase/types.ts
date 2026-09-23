@@ -1382,6 +1382,15 @@ export type Database = {
         Args: { p_whatsapp_message_id: string }
         Returns: string
       }
+      apply_receivable_payment: {
+        Args: {
+          p_actions: Json
+          p_paid_at: string
+          p_proof?: Json
+          p_proof_id?: string
+        }
+        Returns: Json
+      }
       reverse_payment_proof: { Args: { p_proof_id: string }; Returns: Json }
       set_payment_proof_pending_status: {
         Args: { p_ignore: boolean; p_note?: string; p_proof_id: string }
