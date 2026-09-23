@@ -75,16 +75,6 @@ export const PAYMENT_LABELS: Record<string, string> = {
 
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
-export const addPeriod = (date: Date, n: number, freq: PaymentFrequency) => {
-  const d = new Date(date);
-  if (freq === "quinzenal") {
-    d.setDate(d.getDate() + n * 15);
-  } else {
-    d.setMonth(d.getMonth() + n);
-  }
-  return d;
-};
-
 /**
  * Parcela a criar junto com a venda. `type` e não `interface` de propósito:
  * aliases ganham index signature implícita e são aceitos onde o cliente do

@@ -7,14 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Minus, Trash2, Search, ShoppingCart, Loader2, ChevronRight, ChevronLeft, Receipt, UserPlus } from "lucide-react";
+import { Plus, Trash2, Loader2, ChevronRight, ChevronLeft, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 import {
-  PAYMENT_LABELS, addPeriod,
-  type CartItem, type Customer, type PaymentMethod, type Product,
+  PAYMENT_LABELS,
+  type Customer, type PaymentMethod, type Product,
   type ReceiptData, type ReceivableDraft, type Step,
 } from "./pos/types";
 import { useCart } from "./pos/useCart";
@@ -23,6 +22,13 @@ import { ReceiptDialog } from "./pos/ReceiptDialog";
 import { VariantPickerDialog } from "./pos/VariantPickerDialog";
 import { AvulsoDialog } from "./pos/AvulsoDialog";
 import { clearDraft, loadDraft, saveDraft, type SaleDraft } from "./pos/saleDraft";
+import { carteiraBase, dueDates, installmentAmounts, installmentsDiff } from "./pos/installments";
+import { InstallmentsEditor } from "./pos/InstallmentsEditor";
+import { ProductGrid } from "./pos/ProductGrid";
+import { CustomerPicker } from "./pos/CustomerPicker";
+import { CartPanel } from "./pos/CartPanel";
+import { NewCustomerDialog } from "./pos/NewCustomerDialog";
+import { ResumeDraftDialog } from "./pos/ResumeDraftDialog";
 
 
 
@@ -53,9 +59,6 @@ export default function POS() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const { debt: customerDebt, loading: debtLoading } = useCustomerDebt(customerId || null);
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
-  const [newCustomerName, setNewCustomerName] = useState("");
-  const [newCustomerPhone, setNewCustomerPhone] = useState("");
-  const [creatingCustomer, setCreatingCustomer] = useState(false);
 
   // Step 3
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
@@ -277,43 +280,27 @@ export default function POS() {
     setFirstDueDate(d.toISOString().slice(0, 10));
   };
 
-  const generatedInstallments = useMemo(() => {
-    const isFiado = !splitMode && paymentMethod === "fiado";
-    const isCredit = !splitMode && paymentMethod === "credito";
-    const splitFiadoAmount = splitMode ? splits.filter(s => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0;
-    
-    let baseAmount = 0;
-    let numParts = 1;
-
-    if (isFiado || (isCredit && generateReceivables)) {
-      baseAmount = total;
-      numParts = Math.max(1, installments);
-    } else if (splitFiadoAmount > 0) {
-      baseAmount = splitFiadoAmount;
-      numParts = Math.max(1, splitFiadoInstallments);
-    } else {
-      return [];
-    }
-
-    if (manualInstallments.length === numParts && isAdjustingInstallments) {
-      return manualInstallments.map((v, i) => ({
-        index: i,
-        amount: Number(v.replace(",", ".")) || 0,
-      }));
-    }
-
-    const parcelaValor = Math.round((baseAmount / numParts) * 100) / 100;
-    return Array.from({ length: numParts }, (_, i) => ({
-      index: i,
-      amount: i === numParts - 1 
-        ? Math.round((baseAmount - parcelaValor * (numParts - 1)) * 100) / 100 
-        : parcelaValor,
-    }));
-  }, [total, installments, splitMode, splits, splitFiadoInstallments, paymentMethod, generateReceivables, manualInstallments, isAdjustingInstallments]);
-
+  // O que vai para contas a receber e em quantas parcelas (pos/installments.ts).
+  const carteira = useMemo(
+    () => carteiraBase({ splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments }),
+    [splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments],
+  );
+  const generatedInstallments = useMemo(
+    () => installmentAmounts(carteira, manualInstallments, isAdjustingInstallments).map((amount, index) => ({ index, amount })),
+    [carteira, manualInstallments, isAdjustingInstallments],
+  );
   const manualTotal = useMemo(() => generatedInstallments.reduce((s, x) => s + x.amount, 0), [generatedInstallments]);
-  const manualDiff = Math.round(((!splitMode && (paymentMethod === "fiado" || (paymentMethod === "credito" && generateReceivables)) ? total : splitMode ? splits.filter(s => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0) - manualTotal) * 100) / 100;
-
+  const manualDiff = installmentsDiff(carteira, generatedInstallments.map((g) => g.amount));
+  const previewDues = useMemo(
+    () => (firstDueDate ? dueDates(firstDueDate, generatedInstallments.length, paymentFrequency) : []),
+    [firstDueDate, generatedInstallments.length, paymentFrequency],
+  );
+  const toggleAdjust = () => {
+    if (!isAdjustingInstallments) {
+      setManualInstallments(generatedInstallments.map((g) => g.amount.toString()));
+    }
+    setIsAdjustingInstallments(!isAdjustingInstallments);
+  };
 
   // ---------- Step navigation ----------
   const goNext = () => {
@@ -392,7 +379,7 @@ export default function POS() {
       // 1) Monta as parcelas — a gravação acontece junto com a venda, na RPC.
       const records: ReceivableDraft[] = [];
       if (willCreateReceivables || splitFiadoAmount > 0) {
-        const baseDate = new Date(firstDueDate + "T00:00:00");
+        const dues = dueDates(firstDueDate, generatedInstallments.length, paymentFrequency);
         const totalAmount = willCreateReceivables ? total : splitFiadoAmount;
         
         if (isAdjustingInstallments && Math.abs(manualDiff) > 0.01) {
@@ -403,12 +390,10 @@ export default function POS() {
 
         for (let i = 0; i < generatedInstallments.length; i++) {
           const inst = generatedInstallments[i];
-          const due = i === 0 ? baseDate : addPeriod(baseDate, i, paymentFrequency);
-          
           records.push({
             customer_id: customerId,
             amount: inst.amount,
-            due_date: due.toISOString().slice(0, 10),
+            due_date: dues[i],
             description:
               generatedInstallments.length === 1
                 ? `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} — ${cart.length} item(ns)`
@@ -555,128 +540,24 @@ export default function POS() {
         {/* MAIN COLUMN */}
         <div className="lg:col-span-2 space-y-4">
           {step === 1 && (
-            <GlassCard className="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Search className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  autoFocus
-                  placeholder="Buscar por nome ou SKU…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="glass-input"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl whitespace-nowrap"
-                  onClick={() => {
-                    setAvulsoOpen(true);
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Produto avulso
-                </Button>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto pr-1">
-                {filteredProducts.map((p) => {
-                  const stock = p.product_variants.reduce((s, v) => s + v.quantity, 0);
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => addProductToCart(p)}
-                      disabled={stock === 0 && p.product_variants.length > 0}
-                      className="group text-left rounded-xl border border-border bg-white/40 dark:bg-white/5 backdrop-blur p-2 hover:shadow-glow hover:border-primary transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <div className="aspect-square rounded-lg overflow-hidden bg-muted mb-2 flex items-center justify-center">
-                        {p.image_url ? (
-                          <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <ShoppingCart className="h-8 w-8 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="text-xs font-medium line-clamp-2">{p.name}</div>
-                      <div className="flex justify-between items-center mt-1">
-                        <span className="text-xs font-bold text-primary">{fmtBRL(p.price)}</span>
-                        <span className="text-[10px] text-muted-foreground">est: {stock}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-                {filteredProducts.length === 0 && (
-                  <div className="col-span-full text-center text-sm text-muted-foreground py-6">
-                    Nenhum produto encontrado
-                  </div>
-                )}
-              </div>
-            </GlassCard>
+            <ProductGrid
+              search={search}
+              onSearchChange={setSearch}
+              products={filteredProducts}
+              onPick={addProductToCart}
+              onAvulso={() => setAvulsoOpen(true)}
+            />
           )}
 
           {step === 2 && (
-            <GlassCard className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="block">Selecionar cliente</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={() => {
-                    setNewCustomerName(customerSearch);
-                    setNewCustomerPhone("");
-                    setNewCustomerOpen(true);
-                  }}
-                >
-                  <UserPlus className="h-4 w-4 mr-1" /> Novo cliente
-                </Button>
-              </div>
-              <div className="flex items-center gap-2 mb-3">
-                <Search className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  autoFocus
-                  placeholder="Buscar cliente por nome ou telefone…"
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  className="glass-input"
-                />
-              </div>
-              <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-                {filteredCustomers.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => { setCustomerId(c.id); setSelectedCustomer(c); }}
-                    className={`w-full text-left rounded-lg px-3 py-2 transition-all border ${
-                      customerId === c.id
-                        ? "bg-gradient-primary text-primary-foreground border-transparent shadow-glow"
-                        : "border-border bg-white/40 dark:bg-white/5 hover:border-primary"
-                    }`}
-                  >
-                    <div className="font-medium text-sm">{c.name}{c.nickname ? <span className={`ml-1 text-xs font-normal ${customerId === c.id ? "opacity-90" : "text-muted-foreground"}`}>({c.nickname})</span> : null}</div>
-                    {c.phone && (
-                      <div className={`text-xs ${customerId === c.id ? "opacity-90" : "text-muted-foreground"}`}>
-                        {c.phone}
-                      </div>
-                    )}
-                  </button>
-                ))}
-                {filteredCustomers.length === 0 && (
-                  <div className="text-center py-6 space-y-3">
-                    <div className="text-sm text-muted-foreground">Nenhum cliente encontrado</div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="rounded-xl"
-                      onClick={() => {
-                        setNewCustomerName(customerSearch);
-                        setNewCustomerPhone("");
-                        setNewCustomerOpen(true);
-                      }}
-                    >
-                      <UserPlus className="h-4 w-4 mr-1" /> Adicionar novo cliente
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </GlassCard>
+            <CustomerPicker
+              search={customerSearch}
+              onSearchChange={setCustomerSearch}
+              customers={filteredCustomers}
+              selectedId={customerId}
+              onSelect={(c) => { setCustomerId(c.id); setSelectedCustomer(c); }}
+              onNewCustomer={() => setNewCustomerOpen(true)}
+            />
           )}
 
           {step === 3 && (
@@ -801,53 +682,17 @@ export default function POS() {
                           </div>
                         </div>
 
-                        {/* Adjust values button */}
-                        <div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="text-xs rounded-lg h-7"
-                            onClick={() => {
-                              if (!isAdjustingInstallments) {
-                                setManualInstallments(generatedInstallments.map(g => g.amount.toString()));
-                              }
-                              setIsAdjustingInstallments(!isAdjustingInstallments);
-                            }}
-                          >
-                            {isAdjustingInstallments ? "Cancelar ajuste manual" : "Ajustar valores (Arredondar)"}
-                          </Button>
-                        </div>
-
-                        {isAdjustingInstallments && (
-                          <div className="space-y-2 pt-2 border-t border-border">
-                            {manualInstallments.map((val, idx) => (
-                              <div key={idx} className="flex items-center justify-between gap-2">
-                                <span className="text-xs text-muted-foreground w-16">{idx + 1}ª Parcela:</span>
-                                <div className="flex-1 relative">
-                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    className="h-7 pl-7 text-xs glass-input"
-                                    value={val}
-                                    onChange={(e) => {
-                                      const next = [...manualInstallments];
-                                      next[idx] = e.target.value;
-                                      setManualInstallments(next);
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                            <div className="flex justify-between items-center text-xs font-medium pt-1">
-                              <span>Total Carteira: {fmtBRL(fiadoAmount)}</span>
-                              <span className={Math.abs(manualDiff) > 0.01 ? "text-destructive" : "text-emerald-500"}>
-                                Dif: {fmtBRL(manualDiff)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                        <InstallmentsEditor
+                          isAdjusting={isAdjustingInstallments}
+                          manual={manualInstallments}
+                          amounts={generatedInstallments.map((g) => g.amount)}
+                          dues={previewDues}
+                          diff={manualDiff}
+                          totalLabel="Total Carteira"
+                          totalAmount={fiadoAmount}
+                          onToggleAdjust={toggleAdjust}
+                          onChangeManual={setManualInstallments}
+                        />
                         <div>
                           <Label>Vencimento da 1ª parcela</Label>
                           <Input
@@ -860,7 +705,7 @@ export default function POS() {
                         <p className="text-xs text-muted-foreground">
                           {parts === 1
                             ? `1 conta a receber de ${fmtBRL(fiadoAmount)} em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}.`
-                            : `${parts}x de ${fmtBRL(fiadoAmount / parts)} — 1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}, demais mensais.`}
+                            : `${parts}x de ${fmtBRL(fiadoAmount / parts)} — 1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}, demais ${paymentFrequency === "quinzenal" ? "quinzenais" : "mensais"}.`}
                         </p>
                       </div>
                     );
@@ -983,53 +828,17 @@ export default function POS() {
                       </div>
                     </div>
 
-                    {/* Adjust values button */}
-                    <div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-xs rounded-lg h-7"
-                        onClick={() => {
-                          if (!isAdjustingInstallments) {
-                            setManualInstallments(generatedInstallments.map(g => g.amount.toString()));
-                          }
-                          setIsAdjustingInstallments(!isAdjustingInstallments);
-                        }}
-                      >
-                        {isAdjustingInstallments ? "Cancelar ajuste manual" : "Ajustar valores (Arredondar)"}
-                      </Button>
-                    </div>
-
-                    {isAdjustingInstallments && (
-                      <div className="space-y-2 pt-2 border-t border-border">
-                        {manualInstallments.map((val, idx) => (
-                          <div key={idx} className="flex items-center justify-between gap-2">
-                            <span className="text-xs text-muted-foreground w-16">{idx + 1}ª Parcela:</span>
-                            <div className="flex-1 relative">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                className="h-7 pl-7 text-xs glass-input"
-                                value={val}
-                                onChange={(e) => {
-                                  const next = [...manualInstallments];
-                                  next[idx] = e.target.value;
-                                  setManualInstallments(next);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                        <div className="flex justify-between items-center text-xs font-medium pt-1">
-                          <span>Total Venda: {fmtBRL(total)}</span>
-                          <span className={Math.abs(manualDiff) > 0.01 ? "text-destructive" : "text-emerald-500"}>
-                            Dif: {fmtBRL(manualDiff)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                    <InstallmentsEditor
+                      isAdjusting={isAdjustingInstallments}
+                      manual={manualInstallments}
+                      amounts={generatedInstallments.map((g) => g.amount)}
+                      dues={previewDues}
+                      diff={manualDiff}
+                      totalLabel="Total Venda"
+                      totalAmount={total}
+                      onToggleAdjust={toggleAdjust}
+                      onChangeManual={setManualInstallments}
+                    />
                   </div>
                   <div>
                     <Label>Vencimento da 1ª parcela</Label>
@@ -1093,174 +902,13 @@ export default function POS() {
 
         {/* CART SIDEBAR */}
         <div className="lg:sticky lg:top-4 self-start">
-          <GlassCard className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold flex items-center gap-2">
-                <ShoppingCart className="h-4 w-4" /> Carrinho
-              </h3>
-              {cart.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={resetAll} className="h-7 text-xs">
-                  Limpar
-                </Button>
-              )}
-            </div>
-
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
-              {cart.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum item no carrinho
-                </p>
-              )}
-              {cart.map((it, i) => (
-                <div key={i} className="rounded-lg border border-border bg-white/40 dark:bg-white/5 p-2">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{it.productName}</div>
-                      {it.variantLabel && (
-                        <div className="text-xs text-muted-foreground">{it.variantLabel}</div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => removeItem(i)}
-                      className="text-destructive hover:opacity-70"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-6 w-6"
-                        onClick={() => updateQty(i, -1)}
-                        disabled={it.quantity <= 1}
-                        aria-label="Diminuir quantidade"
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={it.maxQty}
-                        value={it.quantity}
-                        onChange={(e) => setQtyExact(i, e.target.value)}
-                        onBlur={(e) => {
-                          if (!e.target.value || Number(e.target.value) < 1) setQtyExact(i, "1");
-                        }}
-                        className="h-6 w-12 px-1 text-center text-sm glass-input"
-                        aria-label="Quantidade"
-                      />
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-6 w-6"
-                        onClick={() => updateQty(i, 1)}
-                        disabled={it.quantity >= it.maxQty}
-                        aria-label="Aumentar quantidade"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground">R$</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={it.unitPrice}
-                        onChange={(e) => setUnitPrice(i, e.target.value)}
-                        onBlur={(e) => {
-                          if (!e.target.value || Number(e.target.value) < 0) setUnitPrice(i, "0");
-                        }}
-                        className="h-6 w-20 px-1 text-right text-sm glass-input"
-                        aria-label="Preço unitário"
-                      />
-                      <span className="text-sm font-semibold ml-1">= {fmtBRL(it.unitPrice * it.quantity)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Os totais mudam a cada item somado ao carrinho sem que nada receba
-                foco; sem aria-live o leitor de tela não anuncia a alteração. */}
-            <div
-              className="border-t border-border mt-3 pt-3 space-y-1"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Itens:</span>
-                <span>{totalUnits}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal:</span>
-                <span>{fmtBRL(subtotal)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-muted-foreground">Desconto:</span>
-                <div className="flex items-center gap-1">
-                  <div className="flex rounded-md overflow-hidden border border-border">
-                    <button
-                      type="button"
-                      onClick={() => setDiscountType("valor")}
-                      className={`px-2 py-0.5 text-xs ${discountType === "valor" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground"}`}
-                      aria-pressed={discountType === "valor"}
-                    >
-                      R$
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDiscountType("percent")}
-                      className={`px-2 py-0.5 text-xs ${discountType === "percent" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground"}`}
-                      aria-pressed={discountType === "percent"}
-                    >
-                      %
-                    </button>
-                  </div>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
-                    placeholder="0"
-                    className="h-7 w-24 px-2 text-right text-sm glass-input"
-                    aria-label="Desconto"
-                  />
-                </div>
-              </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-sm text-destructive">
-                  <span>Desconto aplicado:</span>
-                  <span>- {fmtBRL(discountAmount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-lg">
-                <span>Total:</span>
-                <span className="text-primary">{fmtBRL(total)}</span>
-              </div>
-              {customerId && (
-                <div className="text-xs text-muted-foreground pt-1 space-y-1">
-                  <div>
-                    Cliente: <span className="font-medium text-foreground">{selectedCustomer?.name}</span>
-                  </div>
-                  <div className="flex items-center justify-between" aria-live="polite">
-                    <span>Dívida Total:</span>
-                    {debtLoading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (customerDebt ?? 0) > 0 ? (
-                      <span className="font-semibold text-destructive">{fmtBRL(customerDebt ?? 0)}</span>
-                    ) : (
-                      <span className="font-medium text-emerald-600 dark:text-emerald-400">Nenhuma dívida</span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </GlassCard>
+          <CartPanel
+            cartApi={cartApi}
+            onClear={resetAll}
+            customer={customerId ? selectedCustomer ?? { id: customerId, name: "", nickname: null, phone: null } : null}
+            debt={customerDebt}
+            debtLoading={debtLoading}
+          />
         </div>
       </div>
 
@@ -1280,112 +928,23 @@ export default function POS() {
 
       <ReceiptDialog open={receiptOpen} receipt={receipt} onClose={closeReceiptAndReset} />
 
-      {/* Retomada da venda interrompida. Fechar no X apenas adia a decisão:
-          o rascunho continua guardado para a próxima abertura do PDV. */}
-      <Dialog open={!!pendingDraft} onOpenChange={(o) => { if (!o) setPendingDraft(null); }}>
-        <DialogContent className="glass-card border-border max-w-md">
-          <DialogHeader>
-            <DialogTitle>Retomar venda em andamento?</DialogTitle>
-          </DialogHeader>
-          {pendingDraft && (
-            <div className="space-y-2 text-sm">
-              <p className="text-muted-foreground">
-                Uma venda ficou aberta em {new Date(pendingDraft.savedAt).toLocaleString("pt-BR")}.
-              </p>
-              <div className="rounded-xl bg-white/40 dark:bg-white/5 p-3 space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Cliente:</span>
-                  <span className="font-medium">{pendingDraft.selectedCustomer?.name ?? "não informado"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Itens:</span>
-                  <span className="font-medium">
-                    {pendingDraft.cart.reduce((n, i) => n + i.quantity, 0)} peça(s)
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-semibold">
-                    {fmtBRL(pendingDraft.cart.reduce((v, i) => v + i.unitPrice * i.quantity, 0))}
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                O estoque é conferido de novo na hora de finalizar.
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={discardDraft} className="rounded-xl">
-              Descartar
-            </Button>
-            <Button
-              onClick={resumeDraft}
-              className="rounded-xl bg-gradient-primary text-primary-foreground shadow-glow"
-            >
-              Retomar venda
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ResumeDraftDialog
+        draft={pendingDraft}
+        onResume={resumeDraft}
+        onDiscard={discardDraft}
+        onPostpone={() => setPendingDraft(null)}
+      />
 
-      <Dialog open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
-        <DialogContent className="glass-card border-border max-w-md">
-          <DialogHeader>
-            <DialogTitle>Novo cliente</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="mb-1 block">Nome *</Label>
-              <Input
-                autoFocus
-                value={newCustomerName}
-                onChange={(e) => setNewCustomerName(e.target.value)}
-                placeholder="Nome do cliente"
-                className="glass-input"
-              />
-            </div>
-            <div>
-              <Label className="mb-1 block">Telefone</Label>
-              <Input
-                value={newCustomerPhone}
-                onChange={(e) => setNewCustomerPhone(e.target.value)}
-                placeholder="(00) 00000-0000"
-                className="glass-input"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewCustomerOpen(false)} disabled={creatingCustomer}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={async () => {
-                const name = newCustomerName.trim();
-                if (!name) { toast.error("Informe o nome"); return; }
-                setCreatingCustomer(true);
-                const { data, error } = await supabase
-                  .from("customers")
-                  .insert({ name, phone: newCustomerPhone.trim() || null })
-                  .select("id, name, nickname, phone")
-                  .single();
-                setCreatingCustomer(false);
-                if (error || !data) { toast.error(error?.message || "Falha ao cadastrar"); return; }
-                setCustomerId(data.id);
-                setSelectedCustomer(data as Customer);
-                setCustomerSearch("");
-                setNewCustomerOpen(false);
-                toast.success("Cliente cadastrado");
-              }}
-              disabled={creatingCustomer}
-              className="bg-gradient-primary text-primary-foreground"
-            >
-              {creatingCustomer ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <UserPlus className="h-4 w-4 mr-1" />}
-              Cadastrar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NewCustomerDialog
+        open={newCustomerOpen}
+        onOpenChange={setNewCustomerOpen}
+        initialName={customerSearch}
+        onCreated={(c) => {
+          setCustomerId(c.id);
+          setSelectedCustomer(c);
+          setCustomerSearch("");
+        }}
+      />
     </div>
   );
 }
