@@ -12,6 +12,29 @@ export interface NewProof {
   customer_id?: string | null;
 }
 
+/**
+ * Sobe o arquivo do comprovante (se houver) e devolve os dados para
+ * applyReceivablePayment. O registro em payment_proofs é criado junto com a
+ * baixa, na mesma transação — se a baixa falhar, sobra no máximo o arquivo.
+ */
+export async function prepareProof(file: File | null, description: string, customerId: string | null): Promise<NewProof> {
+  if (!file) return { storage_path: "", description: description || null, customer_id: customerId };
+  const ext = file.name.split(".").pop() ?? "bin";
+  const path = `${new Date().getFullYear()}/${String(new Date().getMonth() + 1).padStart(2, "0")}/${crypto.randomUUID()}.${ext}`;
+  const { error: upErr } = await supabase.storage.from("payment-proofs").upload(path, file, {
+    contentType: file.type || "application/octet-stream",
+  });
+  if (upErr) throw upErr;
+  return {
+    storage_path: path,
+    original_filename: file.name,
+    mime_type: file.type || null,
+    file_size: file.size,
+    description: description || null,
+    customer_id: customerId,
+  };
+}
+
 export interface AppliedPayment {
   proof_id: string;
   settled: number;
