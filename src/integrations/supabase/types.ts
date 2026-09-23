@@ -1320,10 +1320,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_receivable_payment: {
+        Args: {
+          p_actions: Json
+          p_paid_at: string
+          p_proof?: Json
+          p_proof_id?: string
+        }
+        Returns: Json
+      }
       bump_conversation_unread: {
         Args: { conv_id: string }
         Returns: undefined
       }
+      close_stale_dunning_runs: { Args: never; Returns: number }
       create_sale: {
         Args: {
           p_customer_id: string
@@ -1378,22 +1388,14 @@ export type Database = {
         Args: { qty: number; variant_id: string }
         Returns: number
       }
-      resolve_payment_proof_customer: {
-        Args: { p_whatsapp_message_id: string }
-        Returns: string
-      }
-      apply_receivable_payment: {
-        Args: {
-          p_actions: Json
-          p_paid_at: string
-          p_proof?: Json
-          p_proof_id?: string
-        }
-        Returns: Json
-      }
       merge_customers: {
         Args: { p_drop: string; p_keep: string }
         Returns: Json
+      }
+      resolve_customer_by_phone: { Args: { p_phone: string }; Returns: string }
+      resolve_payment_proof_customer: {
+        Args: { p_whatsapp_message_id: string }
+        Returns: string
       }
       reverse_payment_proof: { Args: { p_proof_id: string }; Returns: Json }
       set_payment_proof_pending_status: {
