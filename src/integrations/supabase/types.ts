@@ -1378,6 +1378,10 @@ export type Database = {
         Args: { qty: number; variant_id: string }
         Returns: number
       }
+      resolve_payment_proof_customer: {
+        Args: { p_whatsapp_message_id: string }
+        Returns: string
+      }
       reverse_payment_proof: { Args: { p_proof_id: string }; Returns: Json }
       set_payment_proof_pending_status: {
         Args: { p_ignore: boolean; p_note?: string; p_proof_id: string }
