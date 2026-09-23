@@ -47,6 +47,19 @@ export async function requireUser(req: Request): Promise<Caller> {
   return { id: data.user.id, isAdmin: !!isAdmin };
 }
 
+/** Admin ou vendedor. Para funções internas que gastam créditos de IA. */
+export async function requireStaff(req: Request): Promise<Caller> {
+  const caller = await requireUser(req);
+  if (caller.isAdmin) return caller;
+  const admin = createClient(URL_, SERVICE);
+  const { data: isSeller } = await admin.rpc("has_role", {
+    _user_id: caller.id,
+    _role: "vendedor",
+  });
+  if (!isSeller) throw deny(403, "forbidden");
+  return caller;
+}
+
 export async function requireAdmin(req: Request): Promise<Caller> {
   const caller = await requireUser(req);
   if (!caller.isAdmin) throw deny(403, "forbidden");

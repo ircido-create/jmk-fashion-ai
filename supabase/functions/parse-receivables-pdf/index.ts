@@ -1,3 +1,4 @@
+import { requireStaff } from "../_shared/auth.ts";
 // @ts-nocheck
 import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
@@ -210,6 +211,9 @@ async function aiExtractPass(file_base64: string, filename: string, exclude: any
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Só a equipe: sem isso qualquer pessoa na internet usava a IA nos créditos da loja.
+  try { await requireStaff(req); } catch (e) { if (e instanceof Response) return e; throw e; }
 
   try {
     const { file_base64, filename } = await req.json();

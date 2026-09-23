@@ -1,3 +1,4 @@
+import { requireStaff } from "../_shared/auth.ts";
 // Edge function: scan-label
 // Recebe imagem (base64 data url) de etiqueta e usa Lovable AI Gemini Vision
 // para extrair fornecedor, código, descrição, cor, tamanho, etc.
@@ -39,6 +40,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Só a equipe: sem isso qualquer pessoa na internet usava a IA nos créditos da loja.
+  try { await requireStaff(req); } catch (e) { if (e instanceof Response) return e; throw e; }
 
   try {
     const { image } = await req.json();

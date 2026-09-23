@@ -1,3 +1,4 @@
+import { requireStaff } from "../_shared/auth.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -10,6 +11,9 @@ Seja breve, amigável e prática. Responda sempre em português do Brasil.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Só a equipe: sem isso qualquer pessoa na internet usava a IA nos créditos da loja.
+  try { await requireStaff(req); } catch (e) { if (e instanceof Response) return e; throw e; }
 
   try {
     const { messages } = await req.json();
