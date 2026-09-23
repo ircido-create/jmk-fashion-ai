@@ -374,6 +374,9 @@ export type Database = {
           mime_type: string | null
           original_filename: string | null
           payment_date: string
+          settled_at: string | null
+          settlement_note: string | null
+          settlement_status: string | null
           source: string
           storage_path: string
           whatsapp_message_id: string | null
@@ -395,6 +398,9 @@ export type Database = {
           mime_type?: string | null
           original_filename?: string | null
           payment_date?: string
+          settled_at?: string | null
+          settlement_note?: string | null
+          settlement_status?: string | null
           source?: string
           storage_path: string
           whatsapp_message_id?: string | null
@@ -416,6 +422,9 @@ export type Database = {
           mime_type?: string | null
           original_filename?: string | null
           payment_date?: string
+          settled_at?: string | null
+          settlement_note?: string | null
+          settlement_status?: string | null
           source?: string
           storage_path?: string
           whatsapp_message_id?: string | null
@@ -1370,6 +1379,10 @@ export type Database = {
         Returns: number
       }
       reverse_payment_proof: { Args: { p_proof_id: string }; Returns: Json }
+      set_payment_proof_pending_status: {
+        Args: { p_ignore: boolean; p_note?: string; p_proof_id: string }
+        Returns: undefined
+      }
       store_catalog: {
         Args: never
         Returns: {

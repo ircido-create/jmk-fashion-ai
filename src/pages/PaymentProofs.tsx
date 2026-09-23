@@ -14,7 +14,10 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useAuth } from "@/contexts/AuthContext";
+import { reconcileManualPayment, type ReceivableLite } from "@/lib/reconcile";
+import { FileText, Image as ImageIcon, ExternalLink, Sparkles, Search, Plus, Upload, Trash2, CheckCircle2, Ban, RotateCcw } from "lucide-react";
 import { z } from "zod";
 
 interface Proof {
@@ -32,6 +35,9 @@ interface Proof {
   ai_bank: string | null;
   ai_transaction_id: string | null;
   ai_summary: string | null;
+  settlement_status: SettlementStatus | null;
+  settlement_note: string | null;
+  settled_at: string | null;
   customer?: { name: string | null; phone: string | null } | null;
   receivable_payments?: {
     amount_paid: number;
@@ -40,6 +46,24 @@ interface Proof {
 }
 
 interface CustomerOpt { id: string; name: string; phone: string | null }
+
+type SettlementStatus = "auto" | "manual" | "pendente" | "ignorado";
+type StatusFilter = "todos" | SettlementStatus;
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "auto", label: "Baixa automática" },
+  { value: "pendente", label: "Aguardando baixa manual" },
+  { value: "manual", label: "Baixa manual" },
+  { value: "ignorado", label: "Descartados" },
+];
+
+interface OpenReceivable { id: string; description: string | null; amount: number; due_date: string; status: string }
+
+const formatDate = (iso: string) => {
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+};
 
 const currency = (n: number | null) =>
   n == null ? "—" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -56,6 +80,7 @@ const manualSchema = z.object({
 
 export default function PaymentProofs() {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [proofs, setProofs] = useState<Proof[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -64,6 +89,19 @@ export default function PaymentProofs() {
     return localStorage.getItem("payment_proofs_only_valid") === "1";
   });
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
+  const [statusCounts, setStatusCounts] = useState<Partial<Record<StatusFilter, number>>>({});
+
+  // ---- Baixa manual a partir do comprovante ----
+  const [settleTarget, setSettleTarget] = useState<Proof | null>(null);
+  const [settleCustomerId, setSettleCustomerId] = useState("");
+  const [settleCustomerQuery, setSettleCustomerQuery] = useState("");
+  const [settleAmount, setSettleAmount] = useState("");
+  const [settleDate, setSettleDate] = useState("");
+  const [settleOpenList, setSettleOpenList] = useState<OpenReceivable[]>([]);
+  const [settleSelected, setSettleSelected] = useState<string[]>([]);
+  const [settleSaving, setSettleSaving] = useState(false);
+  const [statusChangingId, setStatusChangingId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem("payment_proofs_only_valid", onlyValid ? "1" : "0");
@@ -95,28 +133,42 @@ export default function PaymentProofs() {
     setCustomers((data ?? []) as CustomerOpt[]);
   };
 
+  const loadCounts = async () => {
+    const statuses: SettlementStatus[] = ["auto", "pendente", "manual", "ignorado"];
+    const results = await Promise.all(statuses.map((st) =>
+      supabase.from("payment_proofs").select("id", { count: "exact", head: true }).eq("settlement_status", st)
+    ));
+    const counts: Partial<Record<StatusFilter, number>> = {};
+    statuses.forEach((st, i) => { counts[st] = results[i].count ?? 0; });
+    setStatusCounts(counts);
+  };
+
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from("payment_proofs")
-      .select("id, created_at, storage_path, bucket, original_filename, mime_type, source, customer_id, ai_is_payment_proof, ai_amount, ai_payer_name, ai_bank, ai_transaction_id, ai_summary, customers(name, phone)")
+      .select("id, created_at, storage_path, bucket, original_filename, mime_type, source, customer_id, ai_is_payment_proof, ai_amount, ai_payer_name, ai_bank, ai_transaction_id, ai_summary, settlement_status, settlement_note, settled_at, customers(name, phone)")
       .order("created_at", { ascending: false })
       .limit(200);
+    if (statusFilter !== "todos") query = query.eq("settlement_status", statusFilter);
+    const { data, error } = await query;
+    loadCounts();
     if (error) {
       toast({ title: "Erro ao carregar comprovantes", description: error.message, variant: "destructive" });
     } else {
       const proofRows = data ?? [];
-      const visibleProofIds = new Set(proofRows.map((proof) => proof.id));
-      const { data: paymentRows, error: paymentsError } = await supabase
-        .from("receivable_payments")
-        .select("proof_id, amount_paid")
-        .limit(1000);
+      const proofIds = proofRows.map((proof) => proof.id);
+      const { data: paymentRows, error: paymentsError } = proofIds.length > 0
+        ? await supabase
+          .from("receivable_payments")
+          .select("proof_id, amount_paid, accounts_receivable(description, due_date)")
+          .in("proof_id", proofIds)
+        : { data: [], error: null };
       if (paymentsError) console.warn("receivable_payments load:", paymentsError.message);
       const paymentsByProof: Record<string, Proof["receivable_payments"]> = {};
       for (const payment of paymentRows ?? []) {
-        if (!visibleProofIds.has(payment.proof_id)) continue;
         const current = paymentsByProof[payment.proof_id] ?? [];
-        current.push({ amount_paid: Number(payment.amount_paid), accounts_receivable: null });
+        current.push({ amount_paid: Number(payment.amount_paid), accounts_receivable: payment.accounts_receivable ?? null });
         paymentsByProof[payment.proof_id] = current;
       }
       const rows: Proof[] = proofRows.map((r: any) => ({
@@ -145,7 +197,8 @@ export default function PaymentProofs() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); loadCustomers(); }, []);
+  useEffect(() => { loadCustomers(); }, []);
+  useEffect(() => { load(); }, [statusFilter]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -276,6 +329,135 @@ export default function PaymentProofs() {
     }
   };
 
+  const loadOpenReceivables = async (customerId: string) => {
+    setSettleOpenList([]);
+    setSettleSelected([]);
+    if (!customerId) return;
+    const { data, error } = await supabase
+      .from("accounts_receivable")
+      .select("id, description, amount, due_date, status")
+      .eq("customer_id", customerId)
+      .in("status", ["pendente", "vencido"])
+      .order("due_date", { ascending: true });
+    if (error) {
+      toast({ title: "Erro ao carregar parcelas", description: error.message, variant: "destructive" });
+      return;
+    }
+    setSettleOpenList((data ?? []).map((r) => ({ ...r, amount: Number(r.amount) })));
+  };
+
+  const openSettle = (p: Proof) => {
+    setSettleTarget(p);
+    setSettleCustomerId(p.customer_id ?? "");
+    setSettleCustomerQuery("");
+    setSettleAmount(p.ai_amount != null ? String(p.ai_amount) : "");
+    setSettleDate(new Date(p.created_at).toISOString().slice(0, 10));
+    loadOpenReceivables(p.customer_id ?? "");
+  };
+
+  const settlePreview = useMemo(() => {
+    const amt = Number(settleAmount.replace(",", "."));
+    if (!settleTarget || !(amt > 0) || settleOpenList.length === 0 || settleSelected.length === 0) return null;
+    const lite: ReceivableLite[] = settleOpenList.map((r) => ({
+      id: r.id,
+      customer_id: settleCustomerId,
+      customer_name: "",
+      amount: r.amount,
+      due_date: r.due_date,
+      status: r.status,
+    }));
+    return reconcileManualPayment(lite, amt, settleSelected);
+  }, [settleTarget, settleAmount, settleOpenList, settleSelected, settleCustomerId]);
+
+  const confirmSettle = async () => {
+    if (!settleTarget || !settlePreview || settlePreview.actions.length === 0) return;
+    if (!settleDate) {
+      toast({ title: "Informe a data do recebimento", variant: "destructive" });
+      return;
+    }
+    setSettleSaving(true);
+    try {
+      const paidAtIso = new Date(`${settleDate}T12:00:00`).toISOString();
+      const settleIds = settlePreview.actions.filter((a) => a.kind === "settle").map((a) => a.receivable_id);
+      const reduceActions = settlePreview.actions.filter((a) => a.kind === "reduce");
+
+      if (settleIds.length > 0) {
+        const { data: updated, error } = await supabase
+          .from("accounts_receivable")
+          .update({ status: "pago", paid_at: paidAtIso })
+          .in("id", settleIds)
+          .select("id");
+        if (error) throw error;
+        if (!updated || updated.length === 0) {
+          throw new Error("Não foi possível atualizar (permissão negada). Verifique sua função de usuário.");
+        }
+      }
+      for (const a of reduceActions) {
+        const { error } = await supabase
+          .from("accounts_receivable")
+          .update({ amount: a.new_amount })
+          .eq("id", a.receivable_id);
+        if (error) throw error;
+      }
+
+      // O vínculo com este comprovante marca a baixa como manual (trigger no banco).
+      const links = settlePreview.actions.map((a) => ({
+        receivable_id: a.receivable_id,
+        proof_id: settleTarget.id,
+        amount_paid: a.amount_paid,
+      }));
+      const { error: linkErr } = await supabase.from("receivable_payments").insert(links);
+      if (linkErr) {
+        throw new Error(
+          `As parcelas foram baixadas, mas o vínculo com o comprovante não foi gravado: ${linkErr.message}. Confira em Contas a Receber antes de repetir a baixa.`,
+        );
+      }
+
+      const t = settlePreview.totals;
+      const leftover = settlePreview.leftovers[0]?.amount;
+      toast({
+        title: "Baixa aplicada",
+        description: `${t.fullySettled} quitada(s) + ${t.partiallyReduced} reduzida(s)${leftover ? ` • sobra ${currency(leftover)}` : ""}`,
+      });
+      setSettleTarget(null);
+      await load();
+    } catch (e: any) {
+      toast({ title: "Erro ao dar baixa", description: e?.message ?? "Tente novamente", variant: "destructive" });
+    } finally {
+      setSettleSaving(false);
+    }
+  };
+
+  const changePendingStatus = async (p: Proof, ignore: boolean) => {
+    if (ignore && !confirm('Descartar este comprovante? Ele continua na lista, mas sai de "Aguardando baixa manual".')) return;
+    setStatusChangingId(p.id);
+    const { error } = await supabase.rpc("set_payment_proof_pending_status", { p_proof_id: p.id, p_ignore: ignore });
+    setStatusChangingId(null);
+    if (error) {
+      toast({ title: "Erro ao alterar", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: ignore ? "Comprovante descartado" : "Comprovante reaberto" });
+    await load();
+  };
+
+  const settleCustomers = useMemo(() => {
+    const t = settleCustomerQuery.trim().toLowerCase();
+    const list = t
+      ? customers.filter((c) => c.name?.toLowerCase().includes(t) || (c.phone ?? "").toLowerCase().includes(t))
+      : customers;
+    return list.slice(0, 100);
+  }, [customers, settleCustomerQuery]);
+
+  const settlementBadge = (p: Proof) => {
+    switch (p.settlement_status) {
+      case "auto": return <Badge className="bg-emerald-600 hover:bg-emerald-600">Baixa automática</Badge>;
+      case "manual": return <Badge className="bg-sky-600 hover:bg-sky-600">Baixa manual</Badge>;
+      case "pendente": return <Badge className="bg-amber-500 hover:bg-amber-500 text-black">Aguardando baixa manual</Badge>;
+      case "ignorado": return <Badge variant="outline">Descartado</Badge>;
+      default: return null;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -407,7 +589,23 @@ export default function PaymentProofs() {
       />
 
 
-      <GlassCard>
+      <GlassCard className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {STATUS_FILTERS.map((f) => (
+            <Button
+              key={f.value}
+              type="button"
+              size="sm"
+              variant={statusFilter === f.value ? "default" : "outline"}
+              onClick={() => setStatusFilter(f.value)}
+            >
+              {f.label}
+              {f.value !== "todos" && statusCounts[f.value] != null && (
+                <span className="ml-1.5 rounded-full bg-background/20 px-1.5 text-xs">{statusCounts[f.value]}</span>
+              )}
+            </Button>
+          ))}
+        </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -474,9 +672,7 @@ export default function PaymentProofs() {
                     {p.ai_is_payment_proof === false && (
                       <Badge variant="destructive">Não é comprovante</Badge>
                     )}
-                    {p.ai_is_payment_proof === true && p.source === "monica" && (
-                      <Badge className="bg-emerald-600 hover:bg-emerald-600">Comprovante</Badge>
-                    )}
+                    {settlementBadge(p)}
                   </div>
                 </div>
 
@@ -529,8 +725,34 @@ export default function PaymentProofs() {
                   </div>
                 )}
 
+                {p.settlement_note && p.settlement_status !== "manual" && (
+                  <p className={`text-xs border-t border-border/50 pt-2 ${p.settlement_status === "pendente" ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"}`}>
+                    {p.settlement_note}
+                  </p>
+                )}
+
                 {p.ai_summary && (
                   <p className="text-xs text-muted-foreground border-t border-border/50 pt-2">{p.ai_summary}</p>
+                )}
+
+                {(p.settlement_status === "pendente" || (p.settlement_status == null && allocations.length === 0)) && (
+                  <div className="flex flex-wrap gap-2 border-t border-border/50 pt-2">
+                    <Button type="button" size="sm" className="gap-1" onClick={() => openSettle(p)}>
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Dar baixa
+                    </Button>
+                    {isAdmin && p.settlement_status === "pendente" && (
+                      <Button type="button" size="sm" variant="outline" className="gap-1" disabled={statusChangingId === p.id} onClick={() => changePendingStatus(p, true)}>
+                        <Ban className="h-3.5 w-3.5" /> Descartar
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {isAdmin && p.settlement_status === "ignorado" && (
+                  <div className="border-t border-border/50 pt-2">
+                    <Button type="button" size="sm" variant="outline" className="gap-1" disabled={statusChangingId === p.id} onClick={() => changePendingStatus(p, false)}>
+                      <RotateCcw className="h-3.5 w-3.5" /> Reabrir
+                    </Button>
+                  </div>
                 )}
 
                 <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground">
@@ -560,6 +782,107 @@ export default function PaymentProofs() {
           })}
         </div>
       )}
+
+      <Dialog open={!!settleTarget} onOpenChange={(v) => { if (!v) setSettleTarget(null); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Dar baixa pelo comprovante</DialogTitle>
+          </DialogHeader>
+          {settleTarget && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs space-y-1">
+                <div>Valor lido no comprovante: <span className="font-semibold">{currency(settleTarget.ai_amount)}</span></div>
+                {settleTarget.ai_payer_name && <div>Pagador: {settleTarget.ai_payer_name}</div>}
+                {settleTarget.settlement_note && <div className="text-amber-600 dark:text-amber-400">{settleTarget.settlement_note}</div>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Cliente</Label>
+                <Select
+                  value={settleCustomerId}
+                  onValueChange={(v) => { setSettleCustomerId(v); loadOpenReceivables(v); }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione a cliente" /></SelectTrigger>
+                  <SelectContent>
+                    <div className="p-2">
+                      <Input
+                        placeholder="Buscar por nome ou telefone…"
+                        value={settleCustomerQuery}
+                        onChange={(e) => setSettleCustomerQuery(e.target.value)}
+                      />
+                    </div>
+                    {settleCustomerId && !settleCustomers.some((c) => c.id === settleCustomerId) && settleTarget.customer && (
+                      <SelectItem value={settleCustomerId}>{settleTarget.customer.name}</SelectItem>
+                    )}
+                    {settleCustomers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name} {c.phone ? `— ${c.phone}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Valor recebido (R$)</Label>
+                  <Input inputMode="decimal" value={settleAmount} onChange={(e) => setSettleAmount(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Data do recebimento</Label>
+                  <Input type="date" value={settleDate} onChange={(e) => setSettleDate(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Parcelas em aberto</Label>
+                {!settleCustomerId ? (
+                  <p className="text-xs text-muted-foreground">Selecione a cliente para ver as parcelas.</p>
+                ) : settleOpenList.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Nenhuma parcela em aberto para esta cliente.</p>
+                ) : (
+                  <div className="space-y-1 rounded-lg border border-border/50 p-2">
+                    {settleOpenList.map((r) => (
+                      <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+                        <Checkbox
+                          checked={settleSelected.includes(r.id)}
+                          onCheckedChange={(v) => setSettleSelected((prev) => v ? [...prev, r.id] : prev.filter((id) => id !== r.id))}
+                        />
+                        <span className="flex-1 min-w-0 truncate">
+                          {formatDate(r.due_date)}{r.description ? ` — ${r.description}` : ""}
+                          {r.status === "vencido" && <span className="ml-1 text-xs text-destructive">vencida</span>}
+                        </span>
+                        <span className="font-medium">{currency(r.amount)}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {settlePreview && (
+                <div className="rounded-lg border border-border/50 p-2 text-xs space-y-1">
+                  <div className="font-medium">O que será feito</div>
+                  {settlePreview.actions.map((a) => (
+                    <div key={a.receivable_id} className="flex justify-between gap-3 text-muted-foreground">
+                      <span>{formatDate(a.due_date)} — {a.kind === "settle" ? "quitada" : `reduzida para ${currency(a.new_amount ?? 0)}`}</span>
+                      <span className="font-medium text-foreground">{currency(a.amount_paid)}</span>
+                    </div>
+                  ))}
+                  {settlePreview.leftovers[0] && (
+                    <div className="text-amber-600 dark:text-amber-400">Sobra sem parcela: {currency(settlePreview.leftovers[0].amount)}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSettleTarget(null)} disabled={settleSaving}>Cancelar</Button>
+            <Button onClick={confirmSettle} disabled={settleSaving || !settlePreview || settlePreview.actions.length === 0}>
+              {settleSaving ? "Aplicando…" : "Confirmar baixa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
