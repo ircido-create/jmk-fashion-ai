@@ -216,5 +216,17 @@ BEGIN
   IF NOT v_bool THEN RAISE EXCEPTION 'FALHOU: baixa sem login foi aceita'; END IF;
   n := n + 4;
 
+  -- ------------- parcela com pagamento não pode ser excluída; sem pagamento, pode
+  v_bool := false;
+  BEGIN DELETE FROM public.accounts_receivable WHERE id = r1; EXCEPTION WHEN OTHERS THEN v_bool := true; END;
+  IF NOT v_bool OR NOT EXISTS (SELECT 1 FROM public.accounts_receivable WHERE id = r1) THEN
+    RAISE EXCEPTION 'FALHOU: parcela paga foi excluída';
+  END IF;
+  DELETE FROM public.accounts_receivable WHERE id = r5;
+  IF EXISTS (SELECT 1 FROM public.accounts_receivable WHERE id = r5) THEN
+    RAISE EXCEPTION 'FALHOU: parcela sem pagamento não pôde ser excluída';
+  END IF;
+  n := n + 2;
+
   RAISE EXCEPTION 'TESTES OK: % verificações', n;
 END $testes$;

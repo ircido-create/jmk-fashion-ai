@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchAll } from "@/lib/fetchAll";
+import { fetchAll, fetchByIds } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,10 +74,14 @@ export default function Receivable() {
       // Buscar comprovantes vinculados
       const ids = items.map((i) => i.id);
       if (ids.length > 0) {
-        const { data: rp } = await supabase
-          .from("receivable_payments")
-          .select("receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path, payment_date)")
-          .in("receivable_id", ids);
+        // Em lotes: com todas as parcelas numa consulta só, o servidor recusava e a
+        // tela tratava toda parcela como sem pagamento (e deixava excluir as pagas).
+        const rp = await fetchByIds<any>(ids, (sb, chunk) =>
+          sb.from("receivable_payments")
+            .select("id, receivable_id, proof_id, amount_paid, payment_proofs(original_filename, storage_path, payment_date)")
+            .in("receivable_id", chunk)
+            .order("id")
+        );
         const map = new Map<string, Receivable["proofs"]>();
         const paidByReceivable = new Map<string, number>();
         (rp ?? []).forEach((row: any) => {

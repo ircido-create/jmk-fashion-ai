@@ -24,3 +24,22 @@ export async function fetchAll<T = any>(
   }
   return all;
 }
+
+/**
+ * Busca linhas filtrando por uma lista de ids, em lotes. Uma lista grande num só
+ * `.in()` vira um endereço enorme que o servidor recusa (400 acima de ~700 ids) —
+ * e quem ignorava o erro via a lista vazia (foi assim que parcelas pagas
+ * pareceram sem pagamento em Contas a Receber). Erro de qualquer lote é lançado.
+ */
+export async function fetchByIds<T = any>(
+  ids: string[],
+  build: (sb: typeof supabase, chunk: string[]) => any,
+  chunkSize = 200
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    all.push(...(await fetchAll<T>((sb) => build(sb, chunk))));
+  }
+  return all;
+}

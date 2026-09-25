@@ -129,10 +129,12 @@ export default function Sales() {
     const ids = rows.map((r) => r.id);
     let paidIds = new Set<string>();
     if (ids.length) {
-      const { data: pays } = await supabase
+      const { data: pays, error: paysErr } = await supabase
         .from("receivable_payments")
         .select("receivable_id")
         .in("receivable_id", ids);
+      // Sem saber quais estão pagas, a edição apagaria parcela paga como se fosse aberta.
+      if (paysErr) throw paysErr;
       paidIds = new Set((pays ?? []).map((p) => p.receivable_id as string));
     }
     const open: RecRow[] = [];
