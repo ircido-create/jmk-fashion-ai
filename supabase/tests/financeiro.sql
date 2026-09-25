@@ -132,14 +132,37 @@ BEGIN
   END IF;
   n := n + 1;
 
-  -- ------------------------- valor diferente → pendente com os valores
+  -- ---- valor diferente das parcelas: quita a mais antiga e reduz a próxima
+  -- (c1 em aberto: p1 100 jan, p2 100 fev, p3 80 mar)
   INSERT INTO public.payment_proofs (storage_path, source, customer_id, ai_is_payment_proof, ai_amount, ai_transaction_id)
-  VALUES ('t3', 'monica', c1, true, 55, 'E2E-TESTE-FIN-3') RETURNING id INTO p2;
+  VALUES ('t3', 'monica', c1, true, 130, 'E2E-TESTE-FIN-3') RETURNING id INTO p2;
   SELECT settlement_status, settlement_note INTO v_status, v_note FROM public.payment_proofs WHERE id = p2;
-  IF v_status <> 'pendente' OR v_note NOT LIKE '%100,00%' THEN
-    RAISE EXCEPTION 'FALHOU: valor diferente deveria ficar pendente listando 100,00 (% / %)', v_status, v_note;
+  IF v_status <> 'auto' THEN RAISE EXCEPTION 'FALHOU: 130 contra parcelas de 100 não deu baixa automática (% / %)', v_status, v_note; END IF;
+  IF (SELECT status FROM public.accounts_receivable WHERE id = r1) <> 'pago' THEN
+    RAISE EXCEPTION 'FALHOU: baixa automática não quitou a parcela mais antiga';
   END IF;
-  n := n + 1;
+  IF (SELECT amount FROM public.accounts_receivable WHERE id = r2) <> 70 THEN
+    RAISE EXCEPTION 'FALHOU: baixa automática não reduziu a segunda parcela para 70';
+  END IF;
+  IF (SELECT amount FROM public.accounts_receivable WHERE id = r3) <> 80 THEN
+    RAISE EXCEPTION 'FALHOU: baixa automática mexeu na parcela mais nova';
+  END IF;
+  IF (SELECT sum(amount_paid) FROM public.receivable_payments WHERE proof_id = p2) <> 130 THEN
+    RAISE EXCEPTION 'FALHOU: vínculos da baixa automática não somam 130';
+  END IF;
+  n := n + 5;
+
+  -- ---------- valor maior que todo o saldo → pendente, nada é baixado
+  INSERT INTO public.payment_proofs (storage_path, source, customer_id, ai_is_payment_proof, ai_amount, ai_transaction_id)
+  VALUES ('t4', 'monica', c1, true, 1000, 'E2E-TESTE-FIN-4') RETURNING id INTO p2;
+  SELECT settlement_status, settlement_note INTO v_status, v_note FROM public.payment_proofs WHERE id = p2;
+  IF v_status <> 'pendente' OR v_note NOT LIKE '%150,00%' THEN
+    RAISE EXCEPTION 'FALHOU: valor acima do saldo deveria ficar pendente citando 150,00 (% / %)', v_status, v_note;
+  END IF;
+  IF (SELECT amount FROM public.accounts_receivable WHERE id = r2) <> 70 THEN
+    RAISE EXCEPTION 'FALHOU: valor acima do saldo mexeu nas parcelas';
+  END IF;
+  n := n + 2;
 
   -- ------------------------------- admin descarta e reabre pendente
   PERFORM public.set_payment_proof_pending_status(p2, true);

@@ -16,7 +16,7 @@ describe("applyReceivablePayment", () => {
 
   it("manda tudo numa única chamada, com o saldo que a tela viu em cada parcela", async () => {
     rpc.mockResolvedValue({ data: { proof_id: "p1", settled: 1, reduced: 1, paid_total: 130 }, error: null });
-    const { actions } = reconcileManualPayment(parcelas, 130, ["a"]);
+    const { actions } = reconcileManualPayment(parcelas, 130);
 
     const out = await applyReceivablePayment({
       actions,
@@ -39,14 +39,14 @@ describe("applyReceivablePayment", () => {
 
   it("com comprovante existente, só manda o id dele", async () => {
     rpc.mockResolvedValue({ data: { proof_id: "p9", settled: 1, reduced: 0, paid_total: 100 }, error: null });
-    const { actions } = reconcileManualPayment(parcelas, 100, ["a"]);
+    const { actions } = reconcileManualPayment(parcelas, 100);
     await applyReceivablePayment({ actions, paidAtIso: "2026-09-20T15:00:00.000Z", proofId: "p9" });
     expect(rpc.mock.calls[0][1]).toMatchObject({ p_proof_id: "p9", p_proof: undefined });
   });
 
   it("erro do banco vira exceção com a mensagem dele (a tela mostra ao usuário)", async () => {
     rpc.mockResolvedValue({ data: null, error: { message: "A parcela 10/01/2026 já está pago. Recarregue a tela antes de dar baixa." } });
-    const { actions } = reconcileManualPayment(parcelas, 100, ["a"]);
+    const { actions } = reconcileManualPayment(parcelas, 100);
     await expect(applyReceivablePayment({ actions, paidAtIso: "2026-09-20T15:00:00.000Z" })).rejects.toThrow(/já está pago/);
   });
 });

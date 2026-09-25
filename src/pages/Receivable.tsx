@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
@@ -21,6 +21,7 @@ import type { Customer, Receivable } from "@/components/receivable/types";
 import BulkReconcileDialog from "@/components/receivable/BulkReconcileDialog";
 import ImportReceivablesDialog from "@/components/receivable/ImportReceivablesDialog";
 import ReceivableReportDialog from "@/components/receivable/ReceivableReportDialog";
+import PaymentPreview from "@/components/receivable/PaymentPreview";
 
 const schema = z.object({
   customer_id: z.string().uuid().nullable(),
@@ -146,6 +147,27 @@ export default function Receivable() {
     setPayOpen(true);
   };
 
+  // A baixa vai sempre para as parcelas mais antigas da cliente, mesmo que a
+  // clicada seja outra — o quadro "O que será feito" mostra quais.
+  const payPreview = useMemo(() => {
+    const amt = Number(payAmount);
+    if (!payOpen || !payTarget || !(amt > 0)) return null;
+    const customerReceivables = list.filter((r) =>
+      payTarget.customer_id
+        ? r.customer_id === payTarget.customer_id
+        : r.id === payTarget.id
+    );
+    const lite: ReceivableLite[] = customerReceivables.map((r) => ({
+      id: r.id,
+      customer_id: r.customer_id,
+      customer_name: r.customers?.name ?? payTarget.customers?.name ?? "",
+      amount: Number(r.amount),
+      due_date: r.due_date,
+      status: r.status,
+    }));
+    return reconcileManualPayment(lite, amt);
+  }, [payOpen, payTarget, payAmount, list]);
+
   const confirmPay = async () => {
     if (!payTarget) return;
     setPaySaving(true);
@@ -155,21 +177,8 @@ export default function Receivable() {
       if (!payDate) throw new Error("Informe a data do recebimento");
       const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
 
-      const customerReceivables = list.filter((r) =>
-        payTarget.customer_id
-          ? r.customer_id === payTarget.customer_id
-          : r.id === payTarget.id
-      );
-      const lite: ReceivableLite[] = customerReceivables.map((r) => ({
-        id: r.id,
-        customer_id: r.customer_id,
-        customer_name: r.customers?.name ?? payTarget.customers?.name ?? "",
-        amount: Number(r.amount),
-        due_date: r.due_date,
-        status: r.status,
-      }));
-      const result = reconcileManualPayment(lite, amt, [payTarget.id]);
-      if (result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
+      const result = payPreview;
+      if (!result || result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
 
       const proof = await prepareProof(payFile, `Baixa de ${payTarget.customers?.name ?? "—"}`, payTarget.customer_id);
       await applyReceivablePayment({ actions: result.actions, paidAtIso, proof });
@@ -451,6 +460,7 @@ export default function Receivable() {
                 />
                 {payFile && <div className="text-xs text-muted-foreground mt-1">{payFile.name}</div>}
               </div>
+              <PaymentPreview result={payPreview} />
             </div>
           )}
           <DialogFooter>

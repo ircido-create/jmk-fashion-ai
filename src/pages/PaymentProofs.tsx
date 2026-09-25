@@ -17,7 +17,6 @@ import { fetchAll } from "@/lib/fetchAll";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { parseAmount } from "@/lib/spreadsheet";
 import { useToast } from "@/hooks/use-toast";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/contexts/AuthContext";
 import { reconcileManualPayment, type ReceivableLite } from "@/lib/reconcile";
 import { applyReceivablePayment } from "@/lib/applyPayment";
@@ -114,7 +113,6 @@ export default function PaymentProofs() {
   const [settleAmount, setSettleAmount] = useState("");
   const [settleDate, setSettleDate] = useState("");
   const [settleOpenList, setSettleOpenList] = useState<OpenReceivable[]>([]);
-  const [settleSelected, setSettleSelected] = useState<string[]>([]);
   const [settleSaving, setSettleSaving] = useState(false);
   const [statusChangingId, setStatusChangingId] = useState<string | null>(null);
 
@@ -369,7 +367,6 @@ export default function PaymentProofs() {
 
   const loadOpenReceivables = async (customerId: string) => {
     setSettleOpenList([]);
-    setSettleSelected([]);
     if (!customerId) return;
     const { data, error } = await supabase
       .from("accounts_receivable")
@@ -395,7 +392,7 @@ export default function PaymentProofs() {
 
   const settlePreview = useMemo(() => {
     const amt = Number(settleAmount.replace(",", "."));
-    if (!settleTarget || !(amt > 0) || settleOpenList.length === 0 || settleSelected.length === 0) return null;
+    if (!settleTarget || !(amt > 0) || settleOpenList.length === 0) return null;
     const lite: ReceivableLite[] = settleOpenList.map((r) => ({
       id: r.id,
       customer_id: settleCustomerId,
@@ -404,8 +401,9 @@ export default function PaymentProofs() {
       due_date: r.due_date,
       status: r.status,
     }));
-    return reconcileManualPayment(lite, amt, settleSelected);
-  }, [settleTarget, settleAmount, settleOpenList, settleSelected, settleCustomerId]);
+    // Sempre das parcelas mais antigas para as mais novas, somando vendas diferentes.
+    return reconcileManualPayment(lite, amt);
+  }, [settleTarget, settleAmount, settleOpenList, settleCustomerId]);
 
   const confirmSettle = async () => {
     if (!settleTarget || !settlePreview || settlePreview.actions.length === 0) return;
@@ -858,7 +856,7 @@ export default function PaymentProofs() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Parcelas em aberto</Label>
+                <Label>Parcelas em aberto (a baixa começa pela mais antiga)</Label>
                 {!settleCustomerId ? (
                   <p className="text-xs text-muted-foreground">Selecione a cliente para ver as parcelas.</p>
                 ) : settleOpenList.length === 0 ? (
@@ -866,17 +864,13 @@ export default function PaymentProofs() {
                 ) : (
                   <div className="space-y-1 rounded-lg border border-border/50 p-2">
                     {settleOpenList.map((r) => (
-                      <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
-                        <Checkbox
-                          checked={settleSelected.includes(r.id)}
-                          onCheckedChange={(v) => setSettleSelected((prev) => v ? [...prev, r.id] : prev.filter((id) => id !== r.id))}
-                        />
+                      <div key={r.id} className="flex items-center gap-2 text-sm py-0.5">
                         <span className="flex-1 min-w-0 truncate">
                           {formatDate(r.due_date)}{r.description ? ` — ${r.description}` : ""}
                           {r.status === "vencido" && <span className="ml-1 text-xs text-destructive">vencida</span>}
                         </span>
                         <span className="font-medium">{currency(r.amount)}</span>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 )}

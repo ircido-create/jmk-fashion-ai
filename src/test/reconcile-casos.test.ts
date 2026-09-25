@@ -19,30 +19,44 @@ const pay = (over: Partial<PaymentRow> & { amount: number }): PaymentRow => ({
 const soma = (ns: number[]) => Math.round(ns.reduce((s, n) => s + n, 0) * 100) / 100;
 
 describe("reconcileManualPayment — baixa manual", () => {
-  it("quita a parcela selecionada antes das mais antigas não selecionadas", () => {
+  it("quita sempre a parcela mais antiga, mesmo que a tela tenha marcado outra", () => {
     const res = reconcileManualPayment(
-      [rec({ id: "jan", amount: 100, due_date: "2026-01-10" }), rec({ id: "mar", amount: 100, due_date: "2026-03-10" })],
+      [rec({ id: "mar", amount: 100, due_date: "2026-03-10" }), rec({ id: "jan", amount: 100, due_date: "2026-01-10" })],
       100,
-      ["mar"],
     );
-    expect(res.actions).toEqual([expect.objectContaining({ kind: "settle", receivable_id: "mar", amount_paid: 100 })]);
+    expect(res.actions).toEqual([expect.objectContaining({ kind: "settle", receivable_id: "jan", amount_paid: 100 })]);
   });
 
-  it("ignora parcelas pagas e canceladas, mesmo se selecionadas", () => {
+  it("soma parcelas de vendas diferentes pela data de vencimento (caso CONSTANCIA: PIX de 210)", () => {
+    const res = reconcileManualPayment(
+      [
+        rec({ id: "venda2-1", amount: 110, due_date: "2026-10-05" }),
+        rec({ id: "venda1-2", amount: 110, due_date: "2026-09-25" }),
+        rec({ id: "venda1-3", amount: 110, due_date: "2026-10-25" }),
+      ],
+      210,
+    );
+    expect(res.actions).toEqual([
+      expect.objectContaining({ kind: "settle", receivable_id: "venda1-2", amount_paid: 110 }),
+      expect.objectContaining({ kind: "reduce", receivable_id: "venda2-1", amount_paid: 100, new_amount: 10 }),
+    ]);
+    expect(res.leftovers).toHaveLength(0);
+  });
+
+  it("ignora parcelas pagas e canceladas", () => {
     const res = reconcileManualPayment(
       [
         rec({ id: "paga", amount: 100, due_date: "2026-01-10", status: "pago" }),
         rec({ id: "cancelada", amount: 100, due_date: "2026-02-10", status: "cancelado" }),
         rec({ id: "aberta", amount: 100, due_date: "2026-03-10", status: "vencido" }),
       ],
-      100,
-      ["paga", "cancelada"],
+      100
     );
     expect(res.actions.map((a) => a.receivable_id)).toEqual(["aberta"]);
   });
 
   it("valor menor que a parcela reduz o saldo e não quita", () => {
-    const res = reconcileManualPayment([rec({ id: "r", amount: 150, due_date: "2026-01-10" })], 40, ["r"]);
+    const res = reconcileManualPayment([rec({ id: "r", amount: 150, due_date: "2026-01-10" })], 40);
     expect(res.actions).toEqual([
       expect.objectContaining({ kind: "reduce", receivable_id: "r", amount_paid: 40, new_amount: 110, original_amount: 150 }),
     ]);
@@ -55,20 +69,20 @@ describe("reconcileManualPayment — baixa manual", () => {
       rec({ id: "b", amount: 33.33, due_date: "2026-02-10" }),
       rec({ id: "c", amount: 33.34, due_date: "2026-03-10" }),
     ];
-    const res = reconcileManualPayment(parcelas, 100, ["a"]);
+    const res = reconcileManualPayment(parcelas, 100);
     expect(res.actions.every((a) => a.kind === "settle")).toBe(true);
     expect(res.totals.paidSum).toBe(100);
     expect(res.leftovers).toHaveLength(0);
   });
 
   it("0,1 + 0,2 fecha a parcela de 0,30 (sem erro de ponto flutuante)", () => {
-    const res = reconcileManualPayment([rec({ id: "r", amount: 0.3, due_date: "2026-01-10" })], 0.1 + 0.2, ["r"]);
+    const res = reconcileManualPayment([rec({ id: "r", amount: 0.3, due_date: "2026-01-10" })], 0.1 + 0.2);
     expect(res.actions[0]).toMatchObject({ kind: "settle", amount_paid: 0.3 });
     expect(res.leftovers).toHaveLength(0);
   });
 
   it("sobra quando não há mais parcelas, com o valor exato", () => {
-    const res = reconcileManualPayment([rec({ id: "r", amount: 89.9, due_date: "2026-01-10" })], 100, ["r"]);
+    const res = reconcileManualPayment([rec({ id: "r", amount: 89.9, due_date: "2026-01-10" })], 100);
     expect(res.leftovers).toHaveLength(1);
     expect(res.leftovers[0].amount).toBe(10.1);
   });
@@ -80,7 +94,7 @@ describe("reconcileManualPayment — baixa manual", () => {
       rec({ id: "c", amount: 75.25, due_date: "2026-03-10" }),
     ];
     for (const valor of [0.01, 57.19, 57.2, 100, 177.69, 252.94, 300]) {
-      const res = reconcileManualPayment(parcelas, valor, ["a"]);
+      const res = reconcileManualPayment(parcelas, valor);
       const sobra = res.leftovers[0]?.amount ?? 0;
       expect(soma([res.totals.paidSum, sobra])).toBe(valor);
       // nenhuma parcela recebe mais do que devia
@@ -89,7 +103,7 @@ describe("reconcileManualPayment — baixa manual", () => {
   });
 
   it("original_amount é o saldo que a tela viu (a baixa no banco confere contra ele)", () => {
-    const res = reconcileManualPayment([rec({ id: "r", amount: 80, due_date: "2026-01-10" })], 80, ["r"]);
+    const res = reconcileManualPayment([rec({ id: "r", amount: 80, due_date: "2026-01-10" })], 80);
     expect(res.actions[0].original_amount).toBe(80);
   });
 });

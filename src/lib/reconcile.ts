@@ -242,22 +242,21 @@ export function reconcile(
 }
 
 /**
- * Baixa manual: aplica um valor recebido nas parcelas informadas, sempre na ordem:
- * 1) parcelas selecionadas, por vencimento; 2) próximas parcelas do mesmo cliente, por vencimento.
+ * Baixa manual ou por comprovante: aplica o valor recebido nas parcelas em aberto
+ * da cliente, SEMPRE da mais antiga para a mais nova (por vencimento), somando
+ * parcelas de vendas diferentes. Quita enquanto o valor cobre a parcela inteira;
+ * o que sobrar reduz a próxima. A seleção na tela só sugere o valor — antes as
+ * parcelas marcadas eram quitadas primeiro e uma mais antiga ficava em aberto.
  */
 export function reconcileManualPayment(
   receivables: ReceivableLite[],
-  amount: number,
-  selectedIds: string[]
+  amount: number
 ): ManualPaymentResult {
-  const selected = new Set(selectedIds);
-  const pendings = receivables.filter((r) => r.status !== "pago" && r.status !== "cancelado");
-  const sortByDueDate = (a: ReceivableLite, b: ReceivableLite) =>
-    a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : a.amount - b.amount;
-  const parcels = [
-    ...pendings.filter((r) => selected.has(r.id)).sort(sortByDueDate),
-    ...pendings.filter((r) => !selected.has(r.id)).sort(sortByDueDate),
-  ];
+  const parcels = receivables
+    .filter((r) => r.status !== "pago" && r.status !== "cancelado")
+    .sort((a, b) =>
+      a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : a.amount - b.amount
+    );
 
   const actions: ReconciliationAction[] = [];
   let pool = round2(amount);

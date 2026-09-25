@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { reconcileManualPayment, type ReceivableLite } from "@/lib/reconcile";
 import { applyReceivablePayment } from "@/lib/applyPayment";
+import PaymentPreview from "@/components/receivable/PaymentPreview";
 
 interface Customer {
   id: string; name: string; phone: string | null; email: string | null;
@@ -79,6 +80,21 @@ export default function CustomerDetail() {
     [pendingReceivables, selected]
   );
 
+  // Baixa sempre das parcelas mais antigas; a seleção só sugere o valor recebido.
+  const payPreview = useMemo(() => {
+    const received = Number(payAmount.replace(",", "."));
+    if (!payOpen || !isFinite(received) || received <= 0) return null;
+    const lite: ReceivableLite[] = pendingReceivables.map((r) => ({
+      id: r.id,
+      customer_id: id ?? null,
+      customer_name: customer?.name ?? "",
+      amount: Number(r.amount),
+      due_date: r.due_date,
+      status: r.status,
+    }));
+    return reconcileManualPayment(lite, received);
+  }, [payOpen, payAmount, pendingReceivables, id, customer?.name]);
+
   const totalDebt = useMemo(
     () => pendingReceivables.reduce((s, r) => s + Number(r.amount), 0),
     [pendingReceivables]
@@ -110,8 +126,6 @@ export default function CustomerDetail() {
   };
 
   const confirmPay = async () => {
-    const ids = Array.from(selected);
-    if (ids.length === 0) return;
     const received = Number(payAmount.replace(",", "."));
     if (!isFinite(received) || received <= 0) { toast.error("Informe um valor válido"); return; }
     if (!payDate) { toast.error("Informe a data do recebimento"); return; }
@@ -119,16 +133,8 @@ export default function CustomerDetail() {
     setPaying(true);
     try {
       const paidAtIso = new Date(`${payDate}T12:00:00`).toISOString();
-      const lite: ReceivableLite[] = pendingReceivables.map((r) => ({
-        id: r.id,
-        customer_id: id ?? null,
-        customer_name: customer?.name ?? "",
-        amount: Number(r.amount),
-        due_date: r.due_date,
-        status: r.status,
-      }));
-      const result = reconcileManualPayment(lite, received, ids);
-      if (result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
+      const result = payPreview;
+      if (!result || result.actions.length === 0) throw new Error("Nenhuma parcela pendente para baixar");
 
       // Antes o registro do pagamento era gravado depois, e uma falha ali era só
       // um console.warn: a parcela ficava paga sem rastro. Agora é tudo ou nada.
@@ -383,6 +389,7 @@ export default function CustomerDetail() {
                 );
               })()}
             </div>
+            <PaymentPreview result={payPreview} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayOpen(false)} disabled={paying}>Cancelar</Button>
