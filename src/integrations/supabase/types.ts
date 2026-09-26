@@ -186,6 +186,8 @@ export type Database = {
         Row: {
           address: string | null
           created_at: string
+          dunning_pause_note: string | null
+          dunning_paused: boolean
           email: string | null
           id: string
           name: string
@@ -198,6 +200,8 @@ export type Database = {
         Insert: {
           address?: string | null
           created_at?: string
+          dunning_pause_note?: string | null
+          dunning_paused?: boolean
           email?: string | null
           id?: string
           name: string
@@ -210,6 +214,8 @@ export type Database = {
         Update: {
           address?: string | null
           created_at?: string
+          dunning_pause_note?: string | null
+          dunning_paused?: boolean
           email?: string | null
           id?: string
           name?: string
@@ -218,6 +224,33 @@ export type Database = {
           phone?: string | null
           tax_id?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      customers_address_backup: {
+        Row: {
+          address: string
+          backed_up_at: string
+          customer_id: string
+          customer_name: string | null
+          id: number
+          reason: string
+        }
+        Insert: {
+          address: string
+          backed_up_at?: string
+          customer_id: string
+          customer_name?: string | null
+          id?: number
+          reason: string
+        }
+        Update: {
+          address?: string
+          backed_up_at?: string
+          customer_id?: string
+          customer_name?: string | null
+          id?: number
+          reason?: string
         }
         Relationships: []
       }
@@ -1320,6 +1353,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      address_looks_like_message: { Args: { p: string }; Returns: boolean }
       apply_receivable_payment: {
         Args: {
           p_actions: Json
