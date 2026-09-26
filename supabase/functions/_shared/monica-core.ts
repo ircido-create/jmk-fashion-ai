@@ -1179,15 +1179,21 @@ Me manda o comprovante quando pagar ${pixSign}"`
 
   // NAME_SAFETY — bloqueia invenção de nome
   const customerName = (ctx.customer?.name ?? "").trim();
+  // O apelido NÃO serve para chamar o cliente: ele guarda o nome de quem paga no
+  // extrato, o nome de um cadastro juntado ou até uma chave PIX. Usá-lo fez a
+  // Mônica chamar a MARIA ELAINE de "mariamouraferreirabezerra" e a LIA IRMA de
+  // "irmã Maria". Para se dirigir ao cliente, só o nome do cadastro.
   const customerNickname = (ctx.customer?.nickname ?? "").trim();
   const looksLikeRealName = customerName && !/^\+?\d/.test(customerName) && customerName !== "(sem nome)" && customerName !== "?";
   const nameSafetyBlock = looksLikeRealName
-    ? `→ Nome confirmado do cliente: "${customerNickname || customerName}". Pode usar este nome com moderação (1x a cada 3-4 mensagens, no máximo).`
+    ? `→ Nome confirmado do cliente: "${customerName}". Pode usar este nome com moderação (1x a cada 3-4 mensagens, no máximo).`
     : `→ ⚠️ NOME DO CLIENTE DESCONHECIDO. PROIBIDO inventar, adivinhar ou assumir o nome a partir de saudações, frases religiosas ou contexto. Se precisar se referir ao cliente, use APENAS: ${customerGender === "F" ? "'amiga' ou 'oi'" : customerGender === "M" ? "'amigo' ou 'oi'" : "'oi' (neutro, sem nome)"}.`;
 
   // Detecta saudação religiosa → instrui a IA a responder neutro, sem inventar nome
   const isReligious = isReligiousGreeting(userMsg);
-  const knownFirstName = (customerNickname || customerName || "").trim().split(/\s+/)[0] || "";
+  // Primeiro nome do cadastro, sem CAIXA ALTA ("MARIA ELAINE" → "Maria").
+  const rawFirstName = looksLikeRealName ? customerName.split(/\s+/)[0] : "";
+  const knownFirstName = rawFirstName ? rawFirstName.charAt(0).toLocaleUpperCase("pt-BR") + rawFirstName.slice(1).toLocaleLowerCase("pt-BR") : "";
   const religiousVocative = knownFirstName
     ? (customerGender === "M"
         ? `, irmão ${knownFirstName}`
@@ -1227,7 +1233,7 @@ ${religiousBlock}${unclearBlock}${pazRule}
 
 === CLIENTE ===
 ${ctx.customer
-  ? `Nome: ${ctx.customer.name ?? "(faltando)"}${ctx.customer.nickname ? ` | Apelido: ${ctx.customer.nickname}` : ""} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
+  ? `Nome: ${ctx.customer.name ?? "(faltando)"}${customerNickname ? ` | Apelido interno (nome de quem paga no extrato; NUNCA use para chamar o cliente): ${customerNickname}` : ""} | Gênero detectado: ${customerGender === "F" ? "Feminino" : customerGender === "M" ? "Masculino" : "Desconhecido"}`
   : "Cliente NÃO cadastrado."}
 NUNCA peça nome, endereço, e-mail ou CPF.
 
@@ -1329,7 +1335,7 @@ Você soa como uma atendente humana experiente, feminina, simpática, calma e pa
     ambiguous: ctx.focusedAmbiguous,
     mediaCaption: ctx.focusedMediaCaption?.slice(0, 80) ?? null,
     customerGender,
-    customerName: looksLikeRealName ? (customerNickname || customerName) : "(sem nome real)",
+    customerName: looksLikeRealName ? customerName : "(sem nome real)",
     isReligious,
   });
 
