@@ -76,7 +76,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
         ? `id:${cid}|${amtKey}|${r.due_date}`
         : `name:${(r.customer_name || "").trim().toLowerCase()}|${digitsOnly(r.tax_id)}|${amtKey}|${r.due_date}`;
 
-      const invalidReason = !cid && invalidCustomerName(r.customer_name) ? "Informe o nome da cliente" : undefined;
+      const invalidReason = invalidCustomerName(r.customer_name) ? "Informe o nome da cliente" : undefined;
       let dupReason: string | undefined;
       if (cid && existingKeys.has(`${cid}|${amtKey}|${r.due_date}`)) {
         dupReason = "já existe no sistema";
