@@ -10,7 +10,14 @@ import { findKey, parseAmount, parseDate, readFirstSheet } from "@/lib/spreadshe
 import type { Customer, Receivable } from "./types";
 
 type ImportRow = { customer_name: string; tax_id: string; description: string; amount: number; due_date: string };
-type PreviewRow = ImportRow & { skip?: boolean; dupReason?: string };
+type PreviewRow = ImportRow & { skip?: boolean; dupReason?: string; invalidReason?: string };
+
+// Mesma regra de nomes recusados pelo cadastro de clientes no banco.
+const invalidCustomerName = (name: string) => {
+  const value = name.trim().toLowerCase();
+  return !value || ["?", "-", ".", "sem nome", "(sem nome)", "cliente sem nome", "cliente", "desconhecido", "desconhecida"].includes(value)
+    || /^\+?[0-9\s().@-]+$/.test(value) || value.includes("@s.whatsapp.net") || value.includes("@g.us");
+};
 
 interface Props {
   open: boolean;
@@ -69,6 +76,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
         ? `id:${cid}|${amtKey}|${r.due_date}`
         : `name:${(r.customer_name || "").trim().toLowerCase()}|${digitsOnly(r.tax_id)}|${amtKey}|${r.due_date}`;
 
+      const invalidReason = invalidCustomerName(r.customer_name) ? "Informe o nome da cliente" : undefined;
       let dupReason: string | undefined;
       if (cid && existingKeys.has(`${cid}|${amtKey}|${r.due_date}`)) {
         dupReason = "já existe no sistema";
@@ -76,7 +84,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
         dupReason = "duplicado no arquivo";
       }
       seenInFile.add(matchKey);
-      return { ...r, skip: !!dupReason, dupReason };
+      return { ...r, skip: !!dupReason || !!invalidReason, dupReason, invalidReason };
     });
   };
 
@@ -191,6 +199,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
       const pendingNewByName = new Map<string, number[]>(); // nome.lower → índices
 
       importPreview.forEach((r, idx) => {
+        if (r.skip || r.invalidReason) return;
         const tax = digitsOnly(r.tax_id);
         const nameKey = (r.customer_name || "").trim().toLowerCase();
 
@@ -237,12 +246,12 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
 
       for (const [tax, idxs] of pendingNewByTax.entries()) {
         const sample = importPreview[idxs[0]];
-        newPayload.push({ name: (sample.customer_name || "Cliente sem nome").trim(), tax_id: tax });
+        newPayload.push({ name: sample.customer_name.trim(), tax_id: tax });
         newKeys.push({ kind: "tax", key: tax });
       }
       for (const [nameKey, idxs] of pendingNewByName.entries()) {
         const sample = importPreview[idxs[0]];
-        newPayload.push({ name: (sample.customer_name || "Cliente sem nome").trim(), tax_id: null });
+        newPayload.push({ name: sample.customer_name.trim(), tax_id: null });
         newKeys.push({ kind: "name", key: nameKey });
       }
 
@@ -267,7 +276,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
       // Filtra duplicatas (skip=true)
       const rows = importPreview
         .map((r, idx) => ({ r, idx }))
-        .filter(({ r }) => !r.skip)
+        .filter(({ r }) => !r.skip && !r.invalidReason)
         .map(({ r, idx }) => ({
           customer_id: planned[idx],
           description: r.description || null,
@@ -277,7 +286,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
 
       const skipped = importPreview.length - rows.length;
       if (rows.length === 0) {
-        toast.error("Todas as linhas foram identificadas como duplicadas");
+        toast.error("Nenhuma linha válida selecionada para importar");
         setImportSaving(false);
         return;
       }
@@ -292,7 +301,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
         skipped,
       };
       toast.success(
-        `${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)${stats.skipped > 0 ? ` • ${stats.skipped} duplicata(s) ignorada(s)` : ""}`
+        `${stats.total} conta(s) importadas • ${stats.created} cliente(s) novo(s) • ${stats.updated} atualizado(s)${stats.skipped > 0 ? ` • ${stats.skipped} linha(s) ignorada(s)` : ""}`
       );
       onOpenChange(false);
       onImported();
@@ -332,9 +341,10 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
             {importParsing && <div className="text-xs text-primary mt-1">Lendo arquivo...</div>}
           </div>
           {importPreview.length > 0 && (() => {
-            const dupCount = importPreview.filter((r) => r.skip).length;
-            const includedCount = importPreview.length - dupCount;
-            const includedSum = importPreview.filter((r) => !r.skip).reduce((a, b) => a + (b.amount || 0), 0);
+            const dupCount = importPreview.filter((r) => r.skip && r.dupReason && !r.invalidReason).length;
+            const invalidCount = importPreview.filter((r) => r.invalidReason).length;
+            const includedCount = importPreview.filter((r) => !r.skip && !r.invalidReason).length;
+            const includedSum = importPreview.filter((r) => !r.skip && !r.invalidReason).reduce((a, b) => a + (b.amount || 0), 0);
             return (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs px-1">
@@ -347,12 +357,13 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
                         {dupCount} duplicata(s) detectada(s)
                       </span>
                     )}
+                      {invalidCount > 0 && <span className="text-destructive">{invalidCount} sem nome válido</span>}
                   </div>
                   {dupCount > 0 && (
                     <button
                       type="button"
                       className="text-primary underline"
-                      onClick={() => setImportPreview((prev) => prev.map((r) => ({ ...r, skip: false })))}
+                      onClick={() => setImportPreview((prev) => prev.map((r) => r.invalidReason ? r : { ...r, skip: false }))}
                     >
                       Importar mesmo assim
                     </button>
@@ -375,7 +386,7 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
                       {importPreview.slice(0, 50).map((r, i) => {
                         const tax = digitsOnly(r.tax_id);
                         const byTax = tax ? customers.find((c) => digitsOnly(c.tax_id ?? "") === tax) : null;
-                        const byName = !byTax && r.customer_name
+                        const byName = !byTax && !invalidCustomerName(r.customer_name)
                           ? customers.find((c) => c.name.toLowerCase() === r.customer_name.toLowerCase())
                           : null;
                         const matched = byTax || byName;
@@ -384,17 +395,21 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
                             <td className="p-2 text-center">
                               <input
                                 type="checkbox"
-                                checked={!r.skip}
+                                checked={!r.skip && !r.invalidReason}
+                                disabled={!!r.invalidReason}
+                                aria-label={`Importar linha ${i + 1}`}
                                 onChange={(e) => {
                                   const checked = e.target.checked;
-                                  setImportPreview((prev) => prev.map((row, idx) => idx === i ? { ...row, skip: !checked } : row));
+                                  setImportPreview((prev) => prev.map((row, idx) => idx === i && !row.invalidReason ? { ...row, skip: !checked } : row));
                                 }}
                               />
                             </td>
                             <td className="p-2">{r.customer_name || "—"}</td>
                             <td className="p-2 font-mono text-[11px]">{tax ? formatTaxId(tax) : "—"}</td>
                             <td className="p-2">
-                              {r.dupReason ? (
+                              {r.invalidReason ? (
+                                <span className="text-destructive text-[11px]">{r.invalidReason}</span>
+                              ) : r.dupReason ? (
                                 <span className="text-amber-600 text-[11px]">⚠ {r.dupReason}</span>
                               ) : matched ? (
                                 <span className="text-success text-[11px]">✓ vinculado{byTax ? " (CPF/CNPJ)" : " (nome)"}</span>
@@ -424,10 +439,10 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={importSaving}>Cancelar</Button>
           <Button
             onClick={confirmImport}
-            disabled={importSaving || importPreview.filter((r) => !r.skip).length === 0}
+            disabled={importSaving || importPreview.filter((r) => !r.skip && !r.invalidReason).length === 0}
             className="bg-gradient-primary text-primary-foreground"
           >
-            {importSaving ? "Importando..." : `Importar ${importPreview.filter((r) => !r.skip).length}`}
+            {importSaving ? "Importando..." : `Importar ${importPreview.filter((r) => !r.skip && !r.invalidReason).length}`}
           </Button>
         </DialogFooter>
       </DialogContent>
