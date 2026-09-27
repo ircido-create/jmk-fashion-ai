@@ -21,7 +21,7 @@ import { todaySP } from "@/lib/tz";
 
 interface Customer { id: string; name: string; nickname: string | null; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
 interface OpenInstallment { customer_id: string | null; amount: number; due_date: string; status: string; }
-interface CustomerBalance { total: number; next: OpenInstallment; }
+interface CustomerBalance { total: number; next: OpenInstallment; nextDateTotal: number; }
 
 const displayDueDate = (date: string) => {
   const [year, month, day] = date.slice(0, 10).split("-");
@@ -113,8 +113,15 @@ export default function Customers() {
       for (const installment of installments) {
         if (!installment.customer_id) continue;
         const previous = summary.get(installment.customer_id);
-        if (previous) previous.total += Number(installment.amount ?? 0);
-        else summary.set(installment.customer_id, { total: Number(installment.amount ?? 0), next: installment });
+        const amount = Number(installment.amount ?? 0);
+        if (previous) {
+          previous.total += amount;
+          if (previous.next.due_date.slice(0, 10) === installment.due_date.slice(0, 10)) {
+            previous.nextDateTotal += amount;
+          }
+        } else {
+          summary.set(installment.customer_id, { total: amount, next: installment, nextDateTotal: amount });
+        }
       }
       setList(all);
       setBalances(summary);
@@ -326,7 +333,7 @@ export default function Customers() {
                       <>
                         <div className="font-semibold text-foreground">Saldo devedor: {fmtBRL(balance.total)}</div>
                         <div className={overdue ? "text-destructive font-medium" : "text-muted-foreground"}>
-                          {overdue ? "Vencida" : "Próxima parcela"}: {fmtBRL(Number(balance.next.amount))} · {displayDueDate(balance.next.due_date)}
+                          {overdue ? "Vencida" : "Próxima parcela"}: {fmtBRL(balance.nextDateTotal)} · {displayDueDate(balance.next.due_date)}
                         </div>
                       </>
                     ) : (
