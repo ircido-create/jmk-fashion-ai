@@ -16,8 +16,17 @@ import { usePagination } from "@/hooks/usePagination";
 import { digitsOnly, formatTaxId, isValidTaxIdLength } from "@/lib/taxId";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CustomerReconciliation from "@/components/customers/Reconciliation";
+import { fmtBRL } from "@/lib/utils";
+import { todaySP } from "@/lib/tz";
 
 interface Customer { id: string; name: string; nickname: string | null; phone: string | null; email: string | null; address: string | null; notes: string | null; tax_id: string | null; }
+interface OpenInstallment { customer_id: string | null; amount: number; due_date: string; status: string; }
+interface CustomerBalance { total: number; next: OpenInstallment; }
+
+const displayDueDate = (date: string) => {
+  const [year, month, day] = date.slice(0, 10).split("-");
+  return `${day}/${month}/${year}`;
+};
 
 const optional = (max: number, label: string) =>
   z
@@ -47,6 +56,8 @@ const schema = z.object({
 
 export default function Customers() {
   const [list, setList] = useState<Customer[]>([]);
+  const [balances, setBalances] = useState<Map<string, CustomerBalance> | null>(null);
+  const [balancesError, setBalancesError] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [search, setSearch] = useState("");
@@ -91,11 +102,26 @@ export default function Customers() {
 
   const load = async () => {
     try {
-      const all = await fetchAll<Customer>((sb) =>
-        sb.from("customers").select("*").order("name")
-      );
+      const [all, installments] = await Promise.all([
+        fetchAll<Customer>((sb) => sb.from("customers").select("*").order("name")),
+        fetchAll<OpenInstallment>((sb) => sb.from("accounts_receivable")
+          .select("customer_id, amount, due_date, status")
+          .in("status", ["pendente", "vencido"])
+          .order("due_date", { ascending: true })),
+      ]);
+      const summary = new Map<string, CustomerBalance>();
+      for (const installment of installments) {
+        if (!installment.customer_id) continue;
+        const previous = summary.get(installment.customer_id);
+        if (previous) previous.total += Number(installment.amount ?? 0);
+        else summary.set(installment.customer_id, { total: Number(installment.amount ?? 0), next: installment });
+      }
       setList(all);
+      setBalances(summary);
+      setBalancesError(false);
     } catch (e: any) {
+      setBalances(null);
+      setBalancesError(true);
       toast.error(e.message);
     }
   };
@@ -277,13 +303,16 @@ export default function Customers() {
             </div>
 
             <div className="space-y-2">
-              {paged.map((c) => (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur hover:bg-white/60 dark:hover:bg-white/10 transition-all">
+              {paged.map((c) => {
+                const balance = balances?.get(c.id);
+                const overdue = balance ? balance.next.due_date.slice(0, 10) < todaySP() : false;
+                return (
+                <div key={c.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 rounded-xl bg-white/40 dark:bg-white/5 backdrop-blur hover:bg-white/60 dark:hover:bg-white/10 transition-all">
                   <Link to={`/clientes/${c.id}`} className="min-w-0 flex-1 group">
                     <div className="font-medium truncate flex items-center gap-1 group-hover:text-primary transition-colors">
                       {c.name}
                       {c.nickname && (
-                        <span className="text-xs text-muted-foreground font-normal">({c.nickname})</span>
+                        <span className="text-xs text-muted-foreground font-normal truncate">({c.nickname})</span>
                       )}
                       <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -292,12 +321,24 @@ export default function Customers() {
                     </div>
                     {c.address && <div className="text-xs text-muted-foreground truncate mt-0.5">📍 {c.address}</div>}
                   </Link>
-                  <div className="flex gap-1">
+                  <div className="order-3 sm:order-none w-full sm:w-auto sm:min-w-48 text-xs sm:text-right leading-5" aria-label={`Saldo devedor de ${c.name}`}>
+                    {balance ? (
+                      <>
+                        <div className="font-semibold text-foreground">Saldo devedor: {fmtBRL(balance.total)}</div>
+                        <div className={overdue ? "text-destructive font-medium" : "text-muted-foreground"}>
+                          {overdue ? "Vencida" : "Próxima parcela"}: {fmtBRL(Number(balance.next.amount))} · {displayDueDate(balance.next.due_date)}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">{balancesError ? "Saldo indisponível" : balances ? "Sem saldo devedor" : "Carregando saldo…"}</span>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
                     <Button size="icon" variant="ghost" onClick={() => { setEditing(c); setOpen(true); }} aria-label="Editar"><Pencil className="h-4 w-4" /></Button>
                     <Button size="icon" variant="ghost" onClick={() => remove(c.id)} aria-label="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                   </div>
                 </div>
-              ))}
+              ); })}
               {filtered.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground text-sm">Nenhum cliente</div>
               )}
