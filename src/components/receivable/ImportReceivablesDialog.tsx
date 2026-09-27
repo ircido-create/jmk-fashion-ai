@@ -439,10 +439,10 @@ export default function ImportReceivablesDialog({ open, onOpenChange, list, cust
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={importSaving}>Cancelar</Button>
           <Button
             onClick={confirmImport}
-            disabled={importSaving || includedCount === 0}
+            disabled={importSaving || importPreview.filter((r) => !r.skip && !r.invalidReason).length === 0}
             className="bg-gradient-primary text-primary-foreground"
           >
-            {importSaving ? "Importando..." : `Importar ${includedCount}`}
+            {importSaving ? "Importando..." : `Importar ${importPreview.filter((r) => !r.skip && !r.invalidReason).length}`}
           </Button>
         </DialogFooter>
       </DialogContent>
