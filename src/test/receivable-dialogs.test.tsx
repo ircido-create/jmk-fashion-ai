@@ -98,6 +98,23 @@ describe("ImportReceivablesDialog (importar)", () => {
     await waitFor(() => expect(onImported).toHaveBeenCalled());
     expect(insert).toHaveBeenCalledWith([{ customer_id: "c1", description: null, amount: 120, due_date: "2026-10-10" }]);
   });
+
+  it("ignora linha sem nome e importa as linhas válidas", async () => {
+    insert.mockReturnValue(Promise.resolve({ error: null }));
+    const onImported = vi.fn();
+    render(<ImportReceivablesDialog open onOpenChange={vi.fn()} list={[]} customers={customers} onImported={onImported} />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [csv("Cliente,CPF,Valor,Vencimento\n,,80,10/10/2026\nMaria da Silva,12345678900,120,10/11/2026\n")] },
+    });
+
+    expect(await screen.findByText("Informe o nome da cliente")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Importar linha 1" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Importar 1" }));
+
+    await waitFor(() => expect(onImported).toHaveBeenCalled());
+    expect(insert).toHaveBeenCalledWith([{ customer_id: "c1", description: null, amount: 120, due_date: "2026-11-10" }]);
+  });
 });
 
 describe("ReceivableReportDialog (relatório)", () => {
