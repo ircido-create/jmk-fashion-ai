@@ -53,6 +53,11 @@ export default function WhatsApp() {
   const [lastInboundAt, setLastInboundAt] = useState<string | null>(null);
   const [avgDelayMin, setAvgDelayMin] = useState<number | null>(null);
   const [ultimaCobranca, setUltimaCobranca] = useState<any>(null);
+  // Falhas de envio da Mônica nas últimas 24h (whatsapp_send_failures) e o último
+  // envio que deu certo. Em 26–27/09 ela ficou ~24h sem conseguir responder e
+  // nada nesta tela mostrava — só o recebimento era monitorado.
+  const [falhasEnvio, setFalhasEnvio] = useState<{ total: number; ultima: any | null }>({ total: 0, ultima: null });
+  const [ultimoEnvioAt, setUltimoEnvioAt] = useState<string | null>(null);
 
   // 'executando' sem fim significa rodada interrompida no meio; falha individual de
   // envio tambem merece destaque, senao a cobranca some em silencio como antes.
@@ -65,7 +70,8 @@ export default function WhatsApp() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: c }, { data: a }, { data: bl }, { data: lm }, { data: delays }, { data: run }] =
+    const desde24h = new Date(Date.now() - 24 * 3_600_000).toISOString();
+    const [{ data: c }, { data: a }, { data: bl }, { data: lm }, { data: delays }, { data: run }, falhas, { data: envio }] =
       await Promise.all([
         supabase.from("whatsapp_config").select("*").maybeSingle(),
         supabase.from("ai_settings").select("*").maybeSingle(),
@@ -76,12 +82,18 @@ export default function WhatsApp() {
           .not("sent_at", "is", null).order("created_at", { ascending: false }).limit(20),
         supabase.from("dunning_runs").select("*")
           .order("started_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("whatsapp_send_failures").select("created_at, endpoint, destino, http_status, detalhe", { count: "exact" })
+          .gte("created_at", desde24h).order("created_at", { ascending: false }).limit(1),
+        supabase.from("whatsapp_messages").select("created_at").eq("direction", "outbound")
+          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
     setBlocked((bl ?? []) as BlockedContact[]);
     setLastInboundAt((lm as any)?.created_at ?? null);
     setUltimaCobranca(run ?? null);
+    setFalhasEnvio({ total: falhas.count ?? 0, ultima: falhas.data?.[0] ?? null });
+    setUltimoEnvioAt((envio as any)?.created_at ?? null);
     const rows = (delays ?? []) as { created_at: string; sent_at: string }[];
     setAvgDelayMin(
       rows.length
@@ -282,6 +294,33 @@ export default function WhatsApp() {
                 ? `Nenhuma mensagem recebida há ${Math.floor(hoursSinceInbound!)}h (última em ${new Date(lastInboundAt).toLocaleString("pt-BR")}).`
                 : "Nenhuma mensagem recebida até agora."}{" "}
               Clique em <strong>Verificar conexão</strong> abaixo para diagnosticar.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {falhasEnvio.total > 0 && (
+        <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 backdrop-blur p-4 flex gap-3 items-start">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-destructive">
+              {falhasEnvio.total} {falhasEnvio.total === 1 ? "resposta da Mônica não foi enviada" : "respostas da Mônica não foram enviadas"} nas últimas 24h
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {falhasEnvio.ultima && (
+                <>
+                  Última falha em {new Date(falhasEnvio.ultima.created_at).toLocaleString("pt-BR")}
+                  {" — "}
+                  {falhasEnvio.ultima.http_status
+                    ? `BubbleWhats respondeu HTTP ${falhasEnvio.ultima.http_status}`
+                    : "BubbleWhats não respondeu (tempo esgotado ou erro de rede)"}
+                  {falhasEnvio.ultima.detalhe ? `: ${String(falhasEnvio.ultima.detalhe).slice(0, 160)}` : ""}.{" "}
+                </>
+              )}
+              {ultimoEnvioAt
+                ? `Último envio que deu certo: ${new Date(ultimoEnvioAt).toLocaleString("pt-BR")}. `
+                : ""}
+              Confira o aparelho no painel do BubbleWhats e o celular da loja (ligado, com internet e WhatsApp aberto). As clientes que escreveram nesse período ficaram sem resposta.
             </p>
           </div>
         </div>

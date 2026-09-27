@@ -1348,6 +1348,36 @@ export type Database = {
           },
         ]
       }
+      whatsapp_send_failures: {
+        Row: {
+          created_at: string
+          destino: string | null
+          detalhe: string | null
+          endpoint: string | null
+          http_status: number | null
+          id: string
+          origem: string
+        }
+        Insert: {
+          created_at?: string
+          destino?: string | null
+          detalhe?: string | null
+          endpoint?: string | null
+          http_status?: number | null
+          id?: string
+          origem: string
+        }
+        Update: {
+          created_at?: string
+          destino?: string | null
+          detalhe?: string | null
+          endpoint?: string | null
+          http_status?: number | null
+          id?: string
+          origem?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

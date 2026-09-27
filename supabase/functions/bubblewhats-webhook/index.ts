@@ -80,15 +80,48 @@ function cleanJid(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+/**
+ * Grava a falha de envio em whatsapp_send_failures (a tela WhatsApp avisa).
+ * Antes ia só para o log da função, que some em poucas horas: em 26–27/09 a
+ * Mônica ficou ~24h sem conseguir responder e nada no painel mostrava.
+ * Nunca lança — registrar a falha não pode derrubar o atendimento.
+ */
+async function registrarFalhaEnvio(endpoint: string, destino: unknown, status: number, detalhe: string) {
+  try {
+    await supabase.from("whatsapp_send_failures").insert({
+      origem: "monica",
+      endpoint,
+      destino: typeof destino === "string" ? destino.slice(0, 120) : null,
+      http_status: status,
+      detalhe: detalhe.slice(0, 500),
+    });
+  } catch (e) {
+    console.error("falha ao registrar falha de envio:", e);
+  }
+}
+
 async function bwPost(path: string, body: unknown): Promise<{ ok: boolean; status: number; text: string }> {
-  const res = await fetch(`${BW_BASE}${path}`, {
-    method: "POST",
-    headers: { Authorization: BW_TOKEN, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) console.error(`BubbleWhats ${path} ${res.status}: ${text.slice(0, 300)}`);
-  return { ok: res.ok, status: res.status, text };
+  const destino = (body as { jid?: unknown } | null)?.jid;
+  try {
+    const res = await fetch(`${BW_BASE}${path}`, {
+      method: "POST",
+      headers: { Authorization: BW_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      // Sem limite, um envio pendurado segurava a resposta até o fim da função.
+      signal: AbortSignal.timeout(9000),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      console.error(`BubbleWhats ${path} ${res.status}: ${text.slice(0, 300)}`);
+      if (path !== "/config") await registrarFalhaEnvio(path, destino, res.status, text);
+    }
+    return { ok: res.ok, status: res.status, text };
+  } catch (e) {
+    const detalhe = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    console.error(`BubbleWhats ${path} erro:`, detalhe);
+    if (path !== "/config") await registrarFalhaEnvio(path, destino, 0, detalhe);
+    return { ok: false, status: 0, text: detalhe };
+  }
 }
 
 async function ensureGroupWebhookConfig() {
@@ -179,10 +212,12 @@ async function sendImage(to: string, imageUrl: string, caption: string) {
     }
     console.error(`BubbleWhats /send-image ${res.status}: ${text.slice(0, 300)}`);
     if (res.status !== 502 && res.status !== 503 && res.status !== 504) {
+      await registrarFalhaEnvio("/send-image", to, res.status, text);
       return { ok: false, status: res.status, text };
     }
     await new Promise((r) => setTimeout(r, 800 * (i + 1)));
   }
+  await registrarFalhaEnvio("/send-image", to, 502, "BubbleWhats indisponível após 3 tentativas");
   return { ok: false, status: 502, text: "bubblewhats unavailable" };
 }
 
@@ -508,7 +543,7 @@ Deno.serve(async (req) => {
           }
         }
         console.log("[chk] ficha sending reply");
-        await withTimeout(sendText(conversationKey, fichaReply), 10000, "ficha:sendText");
+        const envioFast = await withTimeout(sendText(conversationKey, fichaReply), 10000, "ficha:sendText");
         // Log de conversa (best-effort) — nunca bloqueia a resposta
         try {
           const convFast = await withTimeout(
@@ -516,9 +551,10 @@ Deno.serve(async (req) => {
             5000, "ficha:getOrCreateConversation",
           );
           if (convFast) {
+            // A resposta só entra na conversa se saiu de fato (falha fica em whatsapp_send_failures).
             await supabase.from("whatsapp_messages").insert([
               { conversation_id: convFast.id, direction: "inbound", content: text },
-              { conversation_id: convFast.id, direction: "outbound", content: fichaReply },
+              ...(envioFast.ok ? [{ conversation_id: convFast.id, direction: "outbound", content: fichaReply }] : []),
             ]);
             await supabase.rpc("bump_conversation_unread", { conv_id: convFast.id });
           }
@@ -559,16 +595,17 @@ Deno.serve(async (req) => {
             : `${prefix}Vou verificar a chave PIX com a equipe e já te retorno, tá? 💕`;
 
           console.log("[chk] pix sending reply");
-          await withTimeout(sendText(conversationKey, pixReply), 10000, "pix:sendText");
+          const envioPix = await withTimeout(sendText(conversationKey, pixReply), 10000, "pix:sendText");
           try {
             const convPix = await withTimeout(
               getOrCreateConversation(conversationKey, displayName || null),
               5000, "pix:getOrCreateConversation",
             );
             if (convPix) {
+              // A resposta só entra na conversa se saiu de fato (falha fica em whatsapp_send_failures).
               await supabase.from("whatsapp_messages").insert([
                 { conversation_id: convPix.id, direction: "inbound", content: text },
-                { conversation_id: convPix.id, direction: "outbound", content: pixReply },
+                ...(envioPix.ok ? [{ conversation_id: convPix.id, direction: "outbound", content: pixReply }] : []),
               ]);
               await supabase.rpc("bump_conversation_unread", { conv_id: convPix.id });
             }
@@ -743,12 +780,14 @@ Deno.serve(async (req) => {
     // Se for comprovante de pagamento, responde SEMPRE com "Deus abençoe 🙏" e não chama a IA.
     if (proofResult?.is_payment_proof && !humanHandoff) {
       const fixedReply = "Recebi seu comprovante, muito obrigada! Deus abençoe 🙏";
-      await sendText(conversationKey, fixedReply);
-      await supabase.from("whatsapp_messages").insert({
-        conversation_id: conv.id,
-        direction: "outbound",
-        content: fixedReply,
-      });
+      const envioComprovante = await sendText(conversationKey, fixedReply);
+      if (envioComprovante.ok) {
+        await supabase.from("whatsapp_messages").insert({
+          conversation_id: conv.id,
+          direction: "outbound",
+          content: fixedReply,
+        });
+      }
       await supabase.rpc("bump_conversation_unread", { conv_id: conv.id });
       return new Response(JSON.stringify({ ok: true, paymentProof: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -878,12 +917,14 @@ Deno.serve(async (req) => {
 
     if (!audioSent) {
       if (clientSentAudio) console.error("[audio] fallback para texto — TTS/envio de voz indisponível");
-      await sendText(conversationKey, finalReply);
-      await supabase.from("whatsapp_messages").insert({
-        conversation_id: conv.id,
-        direction: "outbound",
-        content: finalReply,
-      });
+      const envioResposta = await sendText(conversationKey, finalReply);
+      if (envioResposta.ok) {
+        await supabase.from("whatsapp_messages").insert({
+          conversation_id: conv.id,
+          direction: "outbound",
+          content: finalReply,
+        });
+      }
     }
 
 
