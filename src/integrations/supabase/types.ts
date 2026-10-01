@@ -1456,6 +1456,7 @@ export type Database = {
         Args: { p_drop: string; p_keep: string }
         Returns: Json
       }
+      relatorio_baixas_dia: { Args: { p_dia: string }; Returns: Json }
       resolve_customer_by_phone: { Args: { p_phone: string }; Returns: string }
       resolve_payment_proof_customer: {
         Args: { p_whatsapp_message_id: string }
