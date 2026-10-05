@@ -53,7 +53,8 @@ describe("SaleItemsDialog (alterar / excluir item da venda)", () => {
 
     expect(screen.getByText("Alterar Saia Gabi (M) de 2 para 1?")).toBeInTheDocument();
     expect(screen.getByText(/1 peça\(s\) voltam ao estoque/)).toBeInTheDocument();
-    expect(screen.getByText(/dividida igualmente entre as 2 parcela/)).toBeInTheDocument();
+    // saldo 300 - 100 = 200, redividido em 2 parcelas de R$ 100
+    expect(screen.getByText(/redividido igualmente em\s*2 parcela\(s\) de R\$\s*100,00/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());

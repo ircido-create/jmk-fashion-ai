@@ -20,7 +20,7 @@ type Pendente = { itemId: string; nome: string; de: number; para: number; difere
 /**
  * Alterar a quantidade de um item da venda ou excluir o item. A regra fica no
  * banco (alterar_item_venda): estoque, total e parcelas em aberto mudam juntos;
- * a diferença de valor é dividida igualmente entre as parcelas em aberto.
+ * o novo saldo em aberto da venda é redividido igualmente entre as parcelas em aberto.
  */
 export default function SaleItemsDialog({
   sale,
@@ -89,6 +89,9 @@ export default function SaleItemsDialog({
   };
 
   const totalNovo = pendente ? Number(sale.total) + pendente.diferenca : null;
+  // Prévia da redivisão: novo saldo em aberto ÷ parcelas em aberto (centavos na última).
+  const novoAberto = pendente && parcelas ? Math.round((parcelas.aberto + pendente.diferenca) * 100) / 100 : null;
+  const valorParcela = novoAberto != null && parcelas && parcelas.n > 0 ? Math.floor((novoAberto / parcelas.n) * 100) / 100 : null;
   const fiado = ["fiado", "misto"].includes(sale.payment_method ?? "");
 
   return (
@@ -169,12 +172,18 @@ export default function SaleItemsDialog({
                   : `${pendente.para - pendente.de} peça(s) saem do estoque`}
               </li>
               {parcelas && parcelas.n > 0 ? (
-                <li>
-                  A diferença é dividida igualmente entre as {parcelas.n} parcela(s) em aberto
-                  {pendente.diferenca < 0 && -pendente.diferenca > parcelas.aberto && (
-                    <span className="text-destructive"> — maior que o saldo em aberto ({fmtBRL(parcelas.aberto)}): o sistema vai recusar</span>
-                  )}
-                </li>
+                pendente.diferenca < 0 && -pendente.diferenca > parcelas.aberto ? (
+                  <li className="text-destructive">
+                    A diferença é maior que o saldo em aberto ({fmtBRL(parcelas.aberto)}): o sistema vai recusar
+                  </li>
+                ) : novoAberto === 0 ? (
+                  <li>O saldo em aberto zera: as parcelas em aberto saem</li>
+                ) : (
+                  <li>
+                    Saldo em aberto: {fmtBRL(parcelas.aberto)} → <b>{fmtBRL(novoAberto ?? 0)}</b>, redividido igualmente em{" "}
+                    {parcelas.n} parcela(s) de {fmtBRL(valorParcela ?? 0)}, mantendo as datas
+                  </li>
+                )
               ) : fiado && pendente.diferenca > 0 ? (
                 <li>Sem parcela em aberto: o sistema cria uma parcela nova para daqui a 30 dias</li>
               ) : (
