@@ -10,12 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Loader2, Search, Printer, CreditCard, X } from "lucide-react";
+import { Plus, Trash2, Loader2, Search, Printer, CreditCard, X, Pencil } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useCustomerDebt } from "@/hooks/useCustomerDebt";
 import { printReceipt } from "@/lib/receipt";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import SaleItemsDialog from "@/components/sales/SaleItemsDialog";
 
 interface Variant { id: string; size: string | null; color: string | null; quantity: number; }
 interface Product {
@@ -167,6 +168,9 @@ export default function Sales() {
   };
 
   // Excluir venda (estorna estoque)
+  // Alterar quantidade / excluir item (regra no banco: alterar_item_venda)
+  const [itemsSale, setItemsSale] = useState<SaleRow | null>(null);
+
   const [delSale, setDelSale] = useState<SaleRow | null>(null);
   const [delOpenRecs, setDelOpenRecs] = useState<RecRow[]>([]);
   const [delPaidRecs, setDelPaidRecs] = useState<RecRow[]>([]);
@@ -709,6 +713,9 @@ export default function Sales() {
                   >
                     <Printer className="h-3.5 w-3.5 mr-1" /> Reimprimir cupom
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => setItemsSale(s)}>
+                    <Pencil className="h-3.5 w-3.5 mr-1" /> Alterar itens
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => openPayEdit(s)}>
                     <CreditCard className="h-3.5 w-3.5 mr-1" /> Forma de pagamento
                   </Button>
@@ -883,6 +890,8 @@ export default function Sales() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SaleItemsDialog sale={itemsSale} onClose={() => setItemsSale(null)} onChanged={load} />
 
       <Dialog open={!!delSale} onOpenChange={(o) => !o && !deleting && setDelSale(null)}>
         <DialogContent className="glass-card border-border max-w-md">

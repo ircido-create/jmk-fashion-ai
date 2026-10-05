@@ -1384,6 +1384,10 @@ export type Database = {
     }
     Functions: {
       address_looks_like_message: { Args: { p: string }; Returns: boolean }
+      alterar_item_venda: {
+        Args: { p_item_id: string; p_nova_quantidade: number }
+        Returns: Json
+      }
       apply_receivable_payment: {
         Args: {
           p_actions: Json
