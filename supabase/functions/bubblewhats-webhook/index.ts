@@ -55,7 +55,7 @@ async function webhookAutorizado(req: Request): Promise<boolean> {
 }
 
 // Timeout defensivo — nunca deixa o worker travado esperando uma promise pendurada.
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(p: PromiseLike<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((_, reject) =>
