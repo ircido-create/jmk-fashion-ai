@@ -280,7 +280,7 @@ async function analyzeAndSavePaymentProof(opts: {
   bytes: Uint8Array; mime: string; mediaPath: string;
   conversationId: string; customerId: string | null;
   whatsappMessageId: string | null; fileSize: number;
-}): Promise<{ is_payment_proof: boolean; amount: number | null; summary: string | null } | null> {
+}): Promise<{ is_payment_proof: boolean; amount: number | null; summary: string | null; proof_id?: string | null } | null> {
   if (!LOVABLE_API_KEY) { console.warn("LOVABLE_API_KEY ausente — pulando análise"); return null; }
   const b64 = toBase64(opts.bytes);
   const dataUrl = `data:${opts.mime};base64,${b64}`;
@@ -322,10 +322,11 @@ async function analyzeAndSavePaymentProof(opts: {
 
   // Só salvamos na tabela payment_proofs quando a IA identifica como comprovante válido.
   // Fotos aleatórias, memes, prints etc. são ignorados para não poluir a lista.
+  let proofId: string | null = null;
   if (!parsed.is_payment_proof) {
     console.log("Ignorado (não é comprovante):", (parsed.summary ?? "").slice(0, 120));
   } else {
-    const { error } = await supabase.from("payment_proofs").insert({
+    const { data: inserted, error } = await supabase.from("payment_proofs").insert({
       storage_path: opts.mediaPath,
       bucket: "whatsapp-media",
       original_filename: opts.mediaPath.split("/").pop() ?? null,
@@ -341,19 +342,63 @@ async function analyzeAndSavePaymentProof(opts: {
       ai_transaction_id: parsed.transaction_id ?? null,
       ai_summary: parsed.summary ?? null,
       description: parsed.summary ?? null,
-    });
+    }).select("id").single();
     if (error) console.error("payment_proofs insert err:", error);
-    else console.log("Comprovante salvo:", parsed.amount);
+    else { proofId = inserted?.id ?? null; console.log("Comprovante salvo:", parsed.amount); }
   }
 
   return {
     is_payment_proof: !!parsed.is_payment_proof,
     amount: parsed.amount ?? null,
     summary: parsed.summary ?? null,
+    proof_id: proofId,
   };
 }
 
 
+
+/**
+ * Resposta ao comprovante. A baixa automática (trigger auto_settle_payment_proof)
+ * roda dentro do insert; se ela marcou o comprovante como repetido, a cliente
+ * precisa saber — antes ouvia "Recebi seu comprovante" e achava que estava pago
+ * (caso LUCILA, 05/10/2026: reenviou a imagem do PIX de 04/09 e o de outubro
+ * ficou sem baixa).
+ */
+async function respostaComprovante(proofId: string | null): Promise<string> {
+  const padrao = "Recebi seu comprovante, muito obrigada! Deus abençoe 🙏";
+  if (!proofId) return padrao;
+  try {
+    const { data: pr } = await supabase
+      .from("payment_proofs")
+      .select("settlement_note, ai_transaction_id")
+      .eq("id", proofId)
+      .maybeSingle();
+    const nota = String(pr?.settlement_note ?? "");
+    if (!/repetido/i.test(nota)) return padrao;
+
+    let quando = "";
+    if (pr?.ai_transaction_id) {
+      const { data: original } = await supabase
+        .from("payment_proofs")
+        .select("payment_date, created_at")
+        .neq("id", proofId)
+        .ilike("ai_transaction_id", pr.ai_transaction_id.replace(/\s/g, ""))
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const d = original?.payment_date ?? original?.created_at;
+      if (d) {
+        const dt = new Date(new Date(d).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+        quando = ` (${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")})`;
+      }
+    }
+    return `Recebi! Mas esse comprovante é de um pagamento que já foi lançado antes${quando}. ` +
+      "Se você fez um pagamento novo, me manda o comprovante dele, por favor 🙏";
+  } catch (e) {
+    console.error("respostaComprovante err:", e);
+    return padrao;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -760,7 +805,7 @@ Deno.serve(async (req) => {
 
     // ---- ANÁLISE DE COMPROVANTE (imagem/PDF) via Lovable AI ----
     // Executa SÍNCRONO para poder curto-circuitar a resposta caso seja comprovante.
-    let proofResult: { is_payment_proof: boolean; amount: number | null; summary: string | null } | null = null;
+    let proofResult: { is_payment_proof: boolean; amount: number | null; summary: string | null; proof_id?: string | null } | null = null;
     if (mediaBytes && mediaPath && (mediaKind === "image" || mediaKind === "document") && !isGroup) {
       try {
         proofResult = await analyzeAndSavePaymentProof({
@@ -779,7 +824,7 @@ Deno.serve(async (req) => {
 
     // Se for comprovante de pagamento, responde SEMPRE com "Deus abençoe 🙏" e não chama a IA.
     if (proofResult?.is_payment_proof && !humanHandoff) {
-      const fixedReply = "Recebi seu comprovante, muito obrigada! Deus abençoe 🙏";
+      const fixedReply = await respostaComprovante(proofResult.proof_id ?? null);
       const envioComprovante = await sendText(conversationKey, fixedReply);
       if (envioComprovante.ok) {
         await supabase.from("whatsapp_messages").insert({
