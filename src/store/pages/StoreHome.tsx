@@ -8,8 +8,8 @@ import { displayName, type StoreProduct } from "../types";
 
 type Sort = "novidades" | "menor" | "maior";
 
-// A vitrine mostra só as peças mais novas; o resto do catálogo continua no
-// banco (link direto do produto e provador seguem funcionando).
+// Cada vista (Tudo ou uma categoria) mostra só as peças mais novas; o resto do
+// catálogo continua no banco (link direto do produto e provador seguem funcionando).
 const VITRINE_MAX = 10;
 
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -21,24 +21,23 @@ export default function StoreHome() {
   const tipo = isGarmentType(tipoParam) ? tipoParam : null;
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("novidades");
-  // o servidor já devolve das mais novas para as mais antigas
-  const vitrine = useMemo(() => catalog.slice(0, VITRINE_MAX), [catalog]);
 
   const counts = useMemo(() => {
     const c = new Map<GarmentType, number>();
-    for (const p of vitrine) if (p.garment_type) c.set(p.garment_type, (c.get(p.garment_type) ?? 0) + 1);
+    for (const p of catalog) if (p.garment_type) c.set(p.garment_type, (c.get(p.garment_type) ?? 0) + 1);
     return c;
-  }, [vitrine]);
+  }, [catalog]);
 
   const list = useMemo(() => {
     const term = normalize(q.trim());
-    const filtered = vitrine.filter(
-      (p) => (!tipo || p.garment_type === tipo) && (!term || normalize(p.name).includes(term)),
-    );
+    // o servidor já devolve das mais novas para as mais antigas
+    const filtered = catalog
+      .filter((p) => (!tipo || p.garment_type === tipo) && (!term || normalize(p.name).includes(term)))
+      .slice(0, VITRINE_MAX);
     if (sort === "menor") return [...filtered].sort((a, b) => a.price - b.price);
     if (sort === "maior") return [...filtered].sort((a, b) => b.price - a.price);
-    return filtered; // o servidor já devolve das mais novas para as mais antigas
-  }, [vitrine, tipo, q, sort]);
+    return filtered;
+  }, [catalog, tipo, q, sort]);
 
   const setTipo = (t: GarmentType | null) => {
     const next = new URLSearchParams(params);
@@ -51,7 +50,7 @@ export default function StoreHome() {
 
   return (
     <>
-      {showHero && <Hero catalog={vitrine} />}
+      {showHero && <Hero catalog={catalog} />}
 
       <section id="colecao" className="mx-auto max-w-7xl scroll-mt-24 px-4 pt-12 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -75,7 +74,7 @@ export default function StoreHome() {
             </button>
             {GARMENT_TYPES.filter((t) => (counts.get(t) ?? 0) > 0).map((t) => (
               <button key={t} type="button" className="s-chip" data-active={tipo === t} onClick={() => setTipo(t)}>
-                {GARMENT_PLURAL[t]} <span className="s-chip-count">{counts.get(t)}</span>
+                {GARMENT_PLURAL[t]} <span className="s-chip-count">{Math.min(counts.get(t) ?? 0, VITRINE_MAX)}</span>
               </button>
             ))}
           </div>
