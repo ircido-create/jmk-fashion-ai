@@ -276,12 +276,44 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+/**
+ * Grava o resultado de cada leitura de imagem/PDF em whatsapp_media_analysis
+ * (caso LETICIA, 05/10/2026: comprovante legível não reconhecido e sem como saber
+ * por quê). Nunca lança — o registro não pode atrapalhar o atendimento.
+ */
+async function registrarLeitura(
+  opts: { mediaPath: string; mime: string; conversationId: string; customerId: string | null; whatsappMessageId: string | null },
+  resultado: "comprovante" | "nao_comprovante" | "erro",
+  extra: { valor?: number | null; resumo?: string | null; detalhe?: string | null; proofId?: string | null } = {},
+) {
+  try {
+    await supabase.from("whatsapp_media_analysis").insert({
+      whatsapp_message_id: opts.whatsappMessageId,
+      conversation_id: opts.conversationId,
+      customer_id: opts.customerId,
+      media_path: opts.mediaPath,
+      mime_type: opts.mime,
+      resultado,
+      valor: extra.valor ?? null,
+      resumo: extra.resumo ? String(extra.resumo).slice(0, 500) : null,
+      detalhe: extra.detalhe ? String(extra.detalhe).slice(0, 500) : null,
+      proof_id: extra.proofId ?? null,
+    });
+  } catch (e) {
+    console.error("registrarLeitura err:", e);
+  }
+}
+
 async function analyzeAndSavePaymentProof(opts: {
   bytes: Uint8Array; mime: string; mediaPath: string;
   conversationId: string; customerId: string | null;
   whatsappMessageId: string | null; fileSize: number;
 }): Promise<{ is_payment_proof: boolean; amount: number | null; summary: string | null; proof_id?: string | null } | null> {
-  if (!LOVABLE_API_KEY) { console.warn("LOVABLE_API_KEY ausente — pulando análise"); return null; }
+  if (!LOVABLE_API_KEY) {
+    console.warn("LOVABLE_API_KEY ausente — pulando análise");
+    await registrarLeitura(opts, "erro", { detalhe: "LOVABLE_API_KEY ausente" });
+    return null;
+  }
   const b64 = toBase64(opts.bytes);
   const dataUrl = `data:${opts.mime};base64,${b64}`;
   const isPdf = opts.mime.toLowerCase().includes("pdf");
@@ -314,17 +346,27 @@ async function analyzeAndSavePaymentProof(opts: {
       response_format: { type: "json_object" },
     }),
   });
-  if (!res.ok) { console.error("AI proof analysis error:", res.status, (await res.text()).slice(0, 300)); return null; }
+  if (!res.ok) {
+    const corpo = (await res.text()).slice(0, 300);
+    console.error("AI proof analysis error:", res.status, corpo);
+    await registrarLeitura(opts, "erro", { detalhe: `IA HTTP ${res.status}: ${corpo}` });
+    return null;
+  }
   const j = await res.json();
   const raw = j?.choices?.[0]?.message?.content ?? "{}";
   let parsed: any = {};
-  try { parsed = JSON.parse(raw); } catch { console.warn("AI proof raw not JSON:", raw.slice(0, 200)); return null; }
+  try { parsed = JSON.parse(raw); } catch {
+    console.warn("AI proof raw not JSON:", raw.slice(0, 200));
+    await registrarLeitura(opts, "erro", { detalhe: `resposta da IA não é JSON: ${raw.slice(0, 300)}` });
+    return null;
+  }
 
   // Só salvamos na tabela payment_proofs quando a IA identifica como comprovante válido.
   // Fotos aleatórias, memes, prints etc. são ignorados para não poluir a lista.
   let proofId: string | null = null;
   if (!parsed.is_payment_proof) {
     console.log("Ignorado (não é comprovante):", (parsed.summary ?? "").slice(0, 120));
+    await registrarLeitura(opts, "nao_comprovante", { valor: parsed.amount ?? null, resumo: parsed.summary ?? null });
   } else {
     const { data: inserted, error } = await supabase.from("payment_proofs").insert({
       storage_path: opts.mediaPath,
@@ -343,8 +385,14 @@ async function analyzeAndSavePaymentProof(opts: {
       ai_summary: parsed.summary ?? null,
       description: parsed.summary ?? null,
     }).select("id").single();
-    if (error) console.error("payment_proofs insert err:", error);
-    else { proofId = inserted?.id ?? null; console.log("Comprovante salvo:", parsed.amount); }
+    if (error) {
+      console.error("payment_proofs insert err:", error);
+      await registrarLeitura(opts, "erro", { valor: parsed.amount ?? null, resumo: parsed.summary ?? null, detalhe: `falha ao gravar comprovante: ${error.message}` });
+    } else {
+      proofId = inserted?.id ?? null;
+      console.log("Comprovante salvo:", parsed.amount);
+      await registrarLeitura(opts, "comprovante", { valor: parsed.amount ?? null, resumo: parsed.summary ?? null, proofId });
+    }
   }
 
   return {
@@ -819,6 +867,11 @@ Deno.serve(async (req) => {
         });
       } catch (e) {
         console.error("analyzeAndSavePaymentProof err:", e);
+        await registrarLeitura(
+          { mediaPath, mime: mimetype!, conversationId: conv.id, customerId: (conv as any).customer_id ?? null, whatsappMessageId: insertedMsg?.id ?? null },
+          "erro",
+          { detalhe: e instanceof Error ? `${e.name}: ${e.message}` : String(e) },
+        );
       }
     }
 
