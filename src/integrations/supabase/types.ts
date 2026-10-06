@@ -1292,6 +1292,51 @@ export type Database = {
           },
         ]
       }
+      whatsapp_media_analysis: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          customer_id: string | null
+          detalhe: string | null
+          id: string
+          media_path: string | null
+          mime_type: string | null
+          proof_id: string | null
+          resultado: string
+          resumo: string | null
+          valor: number | null
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          detalhe?: string | null
+          id?: string
+          media_path?: string | null
+          mime_type?: string | null
+          proof_id?: string | null
+          resultado: string
+          resumo?: string | null
+          valor?: number | null
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          detalhe?: string | null
+          id?: string
+          media_path?: string | null
+          mime_type?: string | null
+          proof_id?: string | null
+          resultado?: string
+          resumo?: string | null
+          valor?: number | null
+          whatsapp_message_id?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           content: string
