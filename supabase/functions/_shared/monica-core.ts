@@ -1038,10 +1038,13 @@ export async function buildContext(phone: string, userMsg: string, history: any[
   // Busca ampla por qualquer variante contida no campo (tolera espaços, +, hífen)
   // e depois filtra em memória comparando apenas dígitos.
   const orExpr = variantsArr.map((v) => `phone.ilike.%${v}%`).join(",");
-  const { data: rawRows } = await supabase
+  const { data: rawRows, error: custErr } = await supabase
     .from("customers")
     .select("id, name, nickname, address, email, phone")
     .or(orExpr);
+  // Sem ler o cadastro/as parcelas, a Mônica não fala da conta (fica em silêncio
+  // e a mensagem fica em Conversas para a equipe). Caso SHIRLEY, 22/09/2026.
+  if (custErr) throw new Error(`buildContext:customers ${custErr.message}`);
   const matchedCustomers = (rawRows ?? []).filter((c: any) => {
     const d = (c.phone ?? "").replace(/\D/g, "");
     if (!d) return false;
@@ -1054,11 +1057,12 @@ export async function buildContext(phone: string, userMsg: string, history: any[
   // Se houver duplicatas, prefere o cadastro que possui dívidas em aberto.
   let debts: any[] = [];
   if (allIds.length > 0) {
-    const { data } = await supabase
+    const { data, error: debtsErr } = await supabase
       .from("accounts_receivable")
       .select("description, amount, due_date, status, customer_id")
       .in("customer_id", allIds)
       .neq("status", "pago");
+    if (debtsErr) throw new Error(`buildContext:receivables ${debtsErr.message}`);
     debts = (data ?? []).map((d: any) => ({ ...d, due_date: formatDateBR(d.due_date) }));
     if (debts.length > 0) {
       const preferredId = debts[0].customer_id;

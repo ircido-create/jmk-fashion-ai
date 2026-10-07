@@ -579,7 +579,11 @@ Deno.serve(async (req) => {
       ].join("|"),
       "i",
     );
-    if (!humanHandoff && text && !isGroup && senderNumber && fichaRegex.test(fichaText)) {
+    // Caso SHIRLEY (22/09/2026): "3x de 220 todo dia 15… Seria fora das minhas contas"
+    // é negociação de compra, não pedido de extrato. Proposta de parcelamento
+    // ("3x", "4x de") ou "fora das contas" não dispara a ficha.
+    const naoEhPedidoDeFicha = /\b\d+\s*x\b|\bfora\s+d[ao]s?\b/.test(fichaText);
+    if (!humanHandoff && text && !isGroup && senderNumber && fichaRegex.test(fichaText) && !naoEhPedidoDeFicha) {
 
       console.log("[chk] ficha fast-path start");
       try {
@@ -589,10 +593,12 @@ Deno.serve(async (req) => {
         else if (digits.length >= 10) variants.add("55" + digits);
         const variantsArr = Array.from(variants).filter(Boolean);
         const orExpr = variantsArr.map((v) => `phone.ilike.%${v}%`).join(",");
-        const { data: custsRaw } = await withTimeout(
+        const { data: custsRaw, error: custsErr } = await withTimeout(
           supabase.from("customers").select("id, name, phone").or(orExpr),
           5000, "ficha:customers",
         );
+        // Sem ler o banco não dá para afirmar nada sobre a conta: cai no fluxo normal.
+        if (custsErr) throw new Error(`ficha:customers ${custsErr.message}`);
         const custs = (custsRaw ?? []).filter((c: any) => {
           const d = (c.phone ?? "").replace(/\D/g, "");
           if (!d) return false;
@@ -603,7 +609,7 @@ Deno.serve(async (req) => {
         if (custIds.length === 0) {
           fichaReply = "Não localizei seu cadastro aqui 💕 Me diga seu nome completo por favor?";
         } else {
-          const { data: recs } = await withTimeout(
+          const { data: recs, error: recsErr } = await withTimeout(
             supabase
               .from("accounts_receivable")
               .select("description, amount, due_date, status")
@@ -612,7 +618,10 @@ Deno.serve(async (req) => {
               .order("due_date", { ascending: true }),
             7000, "ficha:receivables",
           );
-          if (!recs || recs.length === 0) {
+          // Caso SHIRLEY (22/09/2026): com a leitura falhando, `recs` vinha null e a
+          // Mônica disse "nenhuma parcela em aberto" para quem devia. Erro nunca vira "nada a pagar".
+          if (recsErr || !recs) throw new Error(`ficha:receivables ${recsErr?.message ?? "sem dados"}`);
+          if (recs.length === 0) {
             fichaReply = `Boa notícia, ${custs![0].name.split(" ")[0]}! Você não tem nenhuma parcela em aberto 💕 Deus abençoe 🙏`;
           } else {
             const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
