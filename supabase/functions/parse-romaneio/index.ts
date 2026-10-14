@@ -154,9 +154,11 @@ Deno.serve(async (req) => {
 
     // Ordem: flash primeiro (rápido) e pro como fallback com prompt reforçado.
     // Mantemos no máximo 2 tentativas para caber no limite de 150s.
-    const attempts: Array<{ model: string; reinforce: boolean }> = [
-      { model: "google/gemini-2.5-flash", reinforce: true },
-      { model: "google/gemini-2.5-pro", reinforce: true },
+    // A família 2.5 se aposenta em 20/10/2026; `legacy` só é usado se o gateway
+    // recusar o nome novo (400/404), o que responde na hora e não gasta o tempo.
+    const attempts: Array<{ model: string; legacy: string; reinforce: boolean }> = [
+      { model: "google/gemini-3.8-flash", legacy: "google/gemini-2.5-flash", reinforce: true },
+      { model: "google/gemini-3.1-pro-preview", legacy: "google/gemini-2.5-pro", reinforce: true },
     ];
 
     let extracted: any = null;
@@ -167,6 +169,10 @@ Deno.serve(async (req) => {
       let aiResp: Response;
       try {
         aiResp = await callAI(a.model, a.reinforce);
+        if (aiResp.status === 400 || aiResp.status === 404) {
+          console.warn(`${a.model} recusado (${aiResp.status}): ${(await aiResp.text()).slice(0, 200)} — usando ${a.legacy}`);
+          aiResp = await callAI(a.legacy, a.reinforce);
+        }
       } catch (e) {
         const isTimeout = (e as Error).name === "TimeoutError";
         lastErr = "fetch: " + (isTimeout ? "timeout 65s" : (e as Error).message);

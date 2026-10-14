@@ -74,11 +74,13 @@ Deno.serve(async (req) => {
       content.push({ type: "image_url", image_url: { url: p } });
     }
 
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // A família 2.5 se aposenta em 20/10/2026; o 2.5 Pro fica só como reserva
+    // se o gateway recusar o nome novo (400/404).
+    const associate = (model: string) => fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model,
         messages: [
           { role: "system", content: SYSTEM },
           { role: "user", content },
@@ -87,6 +89,11 @@ Deno.serve(async (req) => {
         tool_choice: { type: "function", function: { name: "associate_photos" } },
       }),
     });
+    let resp = await associate("google/gemini-3.1-pro-preview");
+    if (resp.status === 400 || resp.status === 404) {
+      console.warn("gemini-3.1-pro-preview recusado", resp.status, (await resp.text()).slice(0, 200));
+      resp = await associate("google/gemini-2.5-pro");
+    }
 
     if (!resp.ok) {
       const t = await resp.text();

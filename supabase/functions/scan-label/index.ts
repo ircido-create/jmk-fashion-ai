@@ -61,14 +61,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // A família 2.5 se aposenta em 20/10/2026; o 2.5 Flash fica só como reserva
+    // se o gateway recusar o nome novo (400/404).
+    const readLabel = (model: string) => fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
@@ -82,6 +84,12 @@ Deno.serve(async (req) => {
         response_format: { type: "json_object" },
       }),
     });
+
+    let aiResp = await readLabel("google/gemini-3.8-flash");
+    if (aiResp.status === 400 || aiResp.status === 404) {
+      console.warn("gemini-3.8-flash recusado", aiResp.status, (await aiResp.text()).slice(0, 200));
+      aiResp = await readLabel("google/gemini-2.5-flash");
+    }
 
     if (!aiResp.ok) {
       const txt = await aiResp.text();

@@ -161,7 +161,9 @@ async function aiExtractPass(file_base64: string, filename: string, exclude: any
     ? "Extraia TODOS os lançamentos a receber deste PDF (todas as páginas). Inclua total_count e grand_total."
     : `Já extraí ${exclude.length} lançamentos. Continue do ponto onde parou. NÃO repita. Últimos extraídos:\n${exclude.slice(-8).map((e: any) => `- ${e.customer_name} | R$ ${e.amount} | ${e.due_date}`).join("\n")}\n\nRetorne APENAS os RESTANTES no mesmo formato JSON.`;
 
-  const models = ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "google/gemini-2.5-pro"];
+  // A família 2.5 se aposenta em 20/10/2026. Um nome recusado (400/404) cai no `break`
+  // abaixo e passa para o próximo; o 2.5 Flash no fim é a reserva caso todos os novos sejam recusados.
+  const models = ["google/gemini-3.8-flash", "google/gemini-3.1-flash-lite", "google/gemini-3.1-pro-preview", "google/gemini-2.5-flash"];
   let lastErr = "";
 
   for (const model of models) {
