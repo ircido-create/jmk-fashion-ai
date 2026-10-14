@@ -1446,6 +1446,10 @@ export type Database = {
         Args: { conv_id: string }
         Returns: undefined
       }
+      cliente_avisou_pagamento: {
+        Args: { p_customer_id: string; p_horas?: number; p_ref?: string }
+        Returns: boolean
+      }
       close_stale_dunning_runs: { Args: never; Returns: number }
       create_sale: {
         Args: {
