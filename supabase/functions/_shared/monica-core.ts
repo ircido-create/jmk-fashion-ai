@@ -84,19 +84,30 @@ export async function saveInboundMedia(
   }
 }
 
+// Modelos da Lovable AI usados pela Mônica. A família Gemini 2.5 se aposenta em
+// 20/10/2026 e o GPT-4o Mini TTS em 06/01/2027. Os antigos ficam como reserva: se o
+// gateway recusar o nome novo (400/404), a chamada é refeita com o antigo.
+export const MONICA_MODEL = "google/gemini-3.8-flash";
+export const MONICA_MODEL_LEGACY = "google/gemini-2.5-flash";
+export const MONICA_MODEL_LITE = "google/gemini-3.1-flash-lite";
+export const MONICA_MODEL_LITE_LEGACY = "google/gemini-2.5-flash-lite";
+const MONICA_TTS_MODEL = "google/gemini-3.1-flash-tts-preview";
+const MONICA_TTS_MODEL_LEGACY = "openai/gpt-4o-mini-tts";
+export const isModelRejected = (status: number) => status === 400 || status === 404;
+
 // Transcreve áudio usando Lovable AI (Gemini multimodal)
 export async function transcribeAudio(base64: string, mimeType: string): Promise<string | null> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return null;
-  try {
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const transcribeWith = (model: string) =>
+    fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model,
         messages: [
           {
             role: "user",
@@ -114,6 +125,12 @@ export async function transcribeAudio(base64: string, mimeType: string): Promise
         ],
       }),
     });
+  try {
+    let resp = await transcribeWith(MONICA_MODEL);
+    if (isModelRejected(resp.status)) {
+      console.warn(`transcribe: ${MONICA_MODEL} recusado (${resp.status}): ${await resp.text()} — usando ${MONICA_MODEL_LEGACY}`);
+      resp = await transcribeWith(MONICA_MODEL_LEGACY);
+    }
     if (!resp.ok) {
       console.error("transcribe error:", resp.status, await resp.text());
       return null;
@@ -235,20 +252,30 @@ async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8
 async function callLovableTts(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) return null;
-  try {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
+  const speak = (model: string, voice: string) =>
+    fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini-tts",
+        model,
         input: text,
-        voice: "shimmer",
+        voice,
         response_format: "mp3",
         speed: 0.97,
         instructions:
           "Fale em português do Brasil com voz feminina adulta, natural e humana. Tom calmo, cordial e acolhedor; entonação conversacional e amigável. Pronúncia clara, ritmo natural sem pressa, com pequenas pausas naturais entre as frases. Demonstre empatia e simpatia, nunca soe robótica, apressada ou fria.",
       }),
     });
+  try {
+    // a nota de voz do WhatsApp só é enviada em MP3; se o modelo Gemini devolver
+    // outro formato (WAV/PCM), descarta e usa o antigo enquanto ele existir
+    let res = await speak(MONICA_TTS_MODEL, "Kore");
+    const tipo = (res.headers.get("content-type") || "").toLowerCase();
+    if (!res.ok || !tipo.includes("mpeg")) {
+      const detalhe = res.ok ? `formato ${tipo || "desconhecido"}` : `${res.status}: ${await res.text().catch(() => "")}`;
+      console.warn(`Lovable TTS: ${MONICA_TTS_MODEL} não serviu (${detalhe}) — usando ${MONICA_TTS_MODEL_LEGACY}`);
+      res = await speak(MONICA_TTS_MODEL_LEGACY, "shimmer");
+    }
     if (!res.ok) {
       console.error("Lovable TTS error:", res.status, await res.text().catch(() => ""));
       return null;
@@ -1412,12 +1439,17 @@ Você soa como uma atendente humana experiente, feminina, simpática, calma e pa
     }
   };
 
-  let resp = await callModel("google/gemini-2.5-flash");
+  let resp = await callModel(MONICA_MODEL);
+  if (isModelRejected(resp.status)) {
+    console.warn(`[MONICA] ${MONICA_MODEL} recusado (${resp.status}): ${await resp.text()} — usando ${MONICA_MODEL_LEGACY}`);
+    resp = await callModel(MONICA_MODEL_LEGACY);
+  }
 
   // Fallback para modelo mais barato em caso de 402 (créditos esgotados)
   if (resp.status === 402) {
-    console.warn("[MONICA] 402 no modelo principal, tentando fallback gemini-2.5-flash-lite");
-    const fallback = await callModel("google/gemini-2.5-flash-lite");
+    console.warn(`[MONICA] 402 no modelo principal, tentando fallback ${MONICA_MODEL_LITE}`);
+    let fallback = await callModel(MONICA_MODEL_LITE);
+    if (isModelRejected(fallback.status)) fallback = await callModel(MONICA_MODEL_LITE_LEGACY);
     if (fallback.ok) {
       resp = fallback;
     } else {
