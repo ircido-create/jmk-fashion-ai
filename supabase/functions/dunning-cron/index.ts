@@ -159,7 +159,8 @@ Deno.serve(async (req) => {
       .rpc('get_overdue_receivables_to_dunning', {
         p_today: today,
         p_limit: 60,
-        p_max_dias_vencido: 180
+        // Sem corte por idade da divida: a loja cobra todos os vencidos.
+        p_max_dias_vencido: 36500
       });
 
     // O erro desta chamada era descartado. Se a RPC não existir no banco, overdue
@@ -198,15 +199,9 @@ Deno.serve(async (req) => {
         const phone = String(cust?.phone || "").replace(/\D/g, "");
         if (!phone) return;
 
-        // Regra Anti-Spam: não envia se o título venceu há muito tempo
-        // (evita spam de dívidas legadas). Só se aplica à cobrança.
-        if (tipo === "cobranca") {
-          const daysOverdue = Math.floor((new Date(today).getTime() - new Date(r.due_date).getTime()) / 86400000);
-          if (daysOverdue > 180) {
-            skippedOld++;
-            return;
-          }
-        }
+        // O corte de 180 dias saiu a pedido da loja: dívida antiga continua
+        // sendo cobrada. skippedOld fica em zero, mantido no relatório para não
+        // mudar o formato da resposta que o painel lê.
 
         // Não envia se já houve mensagem para ESTE título HOJE
         const { count } = await supabase
