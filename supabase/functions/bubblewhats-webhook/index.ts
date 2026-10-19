@@ -1011,15 +1011,21 @@ Deno.serve(async (req) => {
       /(me\s+)?(manda|envia|responde|fala)\s+(em|por|de)?\s*(a[uú]dio|voz)/.test(low);
     let audioSent = false;
     if (clientSentAudio || clientAskedForAudio) {
-      // duas tentativas: TTS é obrigatório quando a entrada foi em áudio
-      for (let attempt = 1; attempt <= 2 && !audioSent; attempt++) {
+      // Uma tentativa só. A segunda repetia a mesma chamada ao mesmo provedor e,
+      // quando a voz estava fora do ar, só consumia o tempo da função — que então
+      // era cortada antes de mandar o texto e a cliente não recebia nada (foram
+      // 193 áudios sem resposta entre 12 e 19/10/2026). Melhor responder por
+      // escrito do que ficar calada.
+      try {
         const voice = await synthesizeVoice(finalReply);
         if (voice) {
           audioSent = await sendVoiceNote(conversationKey, voice.bytes, voice.mime);
           if (audioSent) await logOutboundMedia(conv.id, conversationKey, voice.bytes, voice.mime, "audio", finalReply);
         }
-        if (!audioSent) console.warn(`[audio] tentativa ${attempt} de resposta em áudio falhou`);
+      } catch (e) {
+        console.error("[audio] erro ao gerar ou enviar a nota de voz:", e);
       }
+      if (!audioSent) console.warn("[audio] resposta em áudio falhou");
     }
 
     if (!audioSent) {

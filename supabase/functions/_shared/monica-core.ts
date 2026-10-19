@@ -91,8 +91,13 @@ export const MONICA_MODEL = "google/gemini-3.8-flash";
 export const MONICA_MODEL_LEGACY = "google/gemini-2.5-flash";
 export const MONICA_MODEL_LITE = "google/gemini-3.1-flash-lite";
 export const MONICA_MODEL_LITE_LEGACY = "google/gemini-2.5-flash-lite";
-const MONICA_TTS_MODEL = "google/gemini-3.1-flash-tts-preview";
-const MONICA_TTS_MODEL_LEGACY = "openai/gpt-4o-mini-tts";
+// Voz: /v1/audio/speech repassa o corpo (formato OpenAI) ao provedor. Os modelos
+// Gemini recusam esse corpo — "Unknown name input / voice / speed / instructions",
+// 400 — e, mesmo quando respondem, devolvem PCM/WAV, enquanto a nota de voz do
+// WhatsApp só é aceita em MP3. Por isso o único que serve aqui é o da OpenAI.
+// Ele está marcado como obsoleto e para de responder em 06/01/2027: até lá é
+// preciso trocá-lo por outro modelo que devolva MP3 por este mesmo endpoint.
+const MONICA_TTS_MODEL = "openai/gpt-4o-mini-tts";
 export const isModelRejected = (status: number) => status === 400 || status === 404;
 
 // Transcreve áudio usando Lovable AI (Gemini multimodal)
@@ -207,15 +212,29 @@ function preprocessForTts(input: string): string {
   return t;
 }
 
+// Problema de chave (400 invalid_api_key, 401, 402 do plano) não melhora na
+// segunda tentativa — é a mesma chave. Marca para pular o outro modelo e ir
+// direto para a via do Lovable, em vez de gastar o tempo da função. Passados
+// 10 minutos volta a tentar: a chave pode ter sido corrigida nos Secrets.
+let elevenChaveRuimAte = 0;
+const elevenChaveRuim = () => Date.now() < elevenChaveRuimAte;
+
+// Teto de tempo para cada chamada de voz: a resposta ao WhatsApp não pode ficar
+// esperando o provedor indefinidamente, senão a função é cortada antes de enviar
+// qualquer coisa e a cliente fica sem resposta nenhuma.
+const TTS_TIMEOUT_MS = 15_000;
+
 async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
   if (!apiKey) return null;
+  if (elevenChaveRuim()) return null;
   const voiceId = await getActiveVoiceId();
   // MP3 44.1kHz/128kbps — melhor qualidade que opus para voz humana realista no WhatsApp.
   const res = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
       headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
@@ -242,6 +261,10 @@ async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8
   if (!res.ok) {
     const body = await res.text();
     console.error(`ElevenLabs TTS [${modelId}] error:`, res.status, body);
+    if (res.status === 401 || res.status === 402 || /api_key|authentication/i.test(body)) {
+      elevenChaveRuimAte = Date.now() + 10 * 60_000;
+      console.error("[tts] chave do ElevenLabs recusada — conferir ELEVENLABS_API_KEY (o valor começa com sk_)");
+    }
     return null;
   }
   const buf = await res.arrayBuffer();
@@ -252,32 +275,29 @@ async function callEleven(text: string, modelId: string): Promise<{ bytes: Uint8
 async function callLovableTts(text: string): Promise<{ bytes: Uint8Array; mime: string } | null> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) return null;
-  const speak = (model: string, voice: string) =>
-    fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/speech", {
       method: "POST",
+      signal: AbortSignal.timeout(TTS_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model,
+        model: MONICA_TTS_MODEL,
         input: text,
-        voice,
+        voice: "shimmer",
         response_format: "mp3",
         speed: 0.97,
         instructions:
           "Fale em português do Brasil com voz feminina adulta, natural e humana. Tom calmo, cordial e acolhedor; entonação conversacional e amigável. Pronúncia clara, ritmo natural sem pressa, com pequenas pausas naturais entre as frases. Demonstre empatia e simpatia, nunca soe robótica, apressada ou fria.",
       }),
     });
-  try {
-    // a nota de voz do WhatsApp só é enviada em MP3; se o modelo Gemini devolver
-    // outro formato (WAV/PCM), descarta e usa o antigo enquanto ele existir
-    let res = await speak(MONICA_TTS_MODEL, "Kore");
-    const tipo = (res.headers.get("content-type") || "").toLowerCase();
-    if (!res.ok || !tipo.includes("mpeg")) {
-      const detalhe = res.ok ? `formato ${tipo || "desconhecido"}` : `${res.status}: ${await res.text().catch(() => "")}`;
-      console.warn(`Lovable TTS: ${MONICA_TTS_MODEL} não serviu (${detalhe}) — usando ${MONICA_TTS_MODEL_LEGACY}`);
-      res = await speak(MONICA_TTS_MODEL_LEGACY, "shimmer");
-    }
     if (!res.ok) {
       console.error("Lovable TTS error:", res.status, await res.text().catch(() => ""));
+      return null;
+    }
+    // A nota de voz do WhatsApp só é aceita em MP3.
+    const tipo = (res.headers.get("content-type") || "").toLowerCase();
+    if (!tipo.includes("mpeg")) {
+      console.error(`Lovable TTS: formato ${tipo || "desconhecido"} em vez de MP3 — descartado`);
       return null;
     }
     const buf = await res.arrayBuffer();
@@ -305,7 +325,8 @@ export async function synthesizeVoice(text: string): Promise<{ bytes: Uint8Array
       // Tenta primeiro o modelo primário (multilingual_v2 — melhor qualidade humana).
       // Fallback: turbo_v2_5 (mais rápido, ainda excelente).
       result = await callEleven(safeText, ELEVEN_MODEL_PRIMARY);
-      if (!result) {
+      // Só vale repetir com o outro modelo se o problema não for a chave.
+      if (!result && !elevenChaveRuim()) {
         console.warn(`[tts] Fallback para ${ELEVEN_MODEL_FALLBACK}`);
         result = await callEleven(safeText, ELEVEN_MODEL_FALLBACK);
       }
