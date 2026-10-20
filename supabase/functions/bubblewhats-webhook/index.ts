@@ -793,8 +793,20 @@ Deno.serve(async (req) => {
 
     if (mediaUrl && mimetype) {
       try {
-        const res = await fetch(mediaUrl);
-        if (res.ok) {
+        // Três tentativas: o arquivo às vezes ainda não está no servidor do
+        // aparelho quando o webhook chega. Antes era uma tentativa só e, pior,
+        // uma resposta de erro não gerava log nenhum — em 19/10/2026 dois áudios
+        // ficaram sem resposta e só deu para descobrir baixando a URL na mão.
+        let res: Response | null = null;
+        for (let tentativa = 1; tentativa <= 3; tentativa++) {
+          if (tentativa > 1) await new Promise((r) => setTimeout(r, tentativa === 2 ? 800 : 2000));
+          res = await fetch(mediaUrl, { signal: AbortSignal.timeout(10_000) });
+          if (res.ok) break;
+          console.error(
+            `[media] tentativa ${tentativa} falhou: HTTP ${res.status} em ${mediaUrl} — ${(await res.text().catch(() => "")).slice(0, 200)}`,
+          );
+        }
+        if (res && res.ok) {
           mediaBytes = new Uint8Array(await res.arrayBuffer());
           mediaKind = classifyKind(mimetype);
           mediaPath = await saveInboundMedia(mediaBytes, mimetype, conversationKey.replace(/[^\w.-]/g, "_"));
@@ -810,10 +822,17 @@ Deno.serve(async (req) => {
             const b64 = btoa(bin);
             const t = await transcribeAudio(b64, mimetype);
             if (t) { text = t; console.log("áudio transcrito:", t.slice(0, 120)); }
+            else console.error("[media] áudio baixado mas não transcrito — a cliente não vai receber resposta");
           }
         }
       } catch (e) {
         console.error("media download err:", e);
+      }
+      // Sem o arquivo, a mensagem ficava gravada como texto vazio e sumia da
+      // tela de conversas. Pelo menos registra que veio uma mídia.
+      if (!mediaKind) {
+        mediaKind = classifyKind(mimetype);
+        console.error(`[media] mídia (${mimetype}) não pôde ser baixada de ${mediaUrl}`);
       }
     }
 
