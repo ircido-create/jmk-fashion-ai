@@ -22,13 +22,14 @@ import { ReceiptDialog } from "./pos/ReceiptDialog";
 import { VariantPickerDialog } from "./pos/VariantPickerDialog";
 import { AvulsoDialog } from "./pos/AvulsoDialog";
 import { clearDraft, loadDraft, saveDraft, type SaleDraft } from "./pos/saleDraft";
-import { carteiraBase, dueDates, installmentAmounts, installmentsDiff } from "./pos/installments";
+import { carteiraBase, dueDates, installmentAmounts, installmentsDiff, isValidDueDate } from "./pos/installments";
 import { InstallmentsEditor } from "./pos/InstallmentsEditor";
 import { ProductGrid } from "./pos/ProductGrid";
 import { CustomerPicker } from "./pos/CustomerPicker";
 import { CartPanel } from "./pos/CartPanel";
 import { NewCustomerDialog } from "./pos/NewCustomerDialog";
 import { ResumeDraftDialog } from "./pos/ResumeDraftDialog";
+import { DebtAgreementDialog } from "./pos/DebtAgreementDialog";
 
 
 
@@ -75,6 +76,12 @@ export default function POS() {
   const [paymentFrequency, setPaymentFrequency] = useState<"mensal" | "quinzenal">("mensal");
   const [manualInstallments, setManualInstallments] = useState<string[]>([]);
   const [isAdjustingInstallments, setIsAdjustingInstallments] = useState(false);
+
+  // Acordo com a dívida antiga: quando a cliente já deve e a compra vai para a
+  // carteira, o operador decide se junta tudo num parcelamento novo.
+  const [mergeDebt, setMergeDebt] = useState(false);
+  const [debtAsked, setDebtAsked] = useState(false);
+  const [debtDialogOpen, setDebtDialogOpen] = useState(false);
 
   const splitApi = usePaymentSplit(total);
   const {
@@ -275,15 +282,30 @@ export default function POS() {
     setPaymentFrequency("mensal");
     setManualInstallments([]);
     setIsAdjustingInstallments(false);
+    setMergeDebt(false);
+    setDebtAsked(false);
+    setDebtDialogOpen(false);
     const d = new Date();
     d.setDate(d.getDate() + 30);
     setFirstDueDate(d.toISOString().slice(0, 10));
   };
 
+  // Trocou de cliente: a decisão sobre a dívida era da anterior.
+  useEffect(() => {
+    setMergeDebt(false);
+    setDebtAsked(false);
+    setDebtDialogOpen(false);
+  }, [customerId]);
+
+  // Dívida que entra no acordo — só vale enquanto a compra gerar parcelas.
+  const dividaSomada = mergeDebt ? Math.max(0, customerDebt ?? 0) : 0;
+  /** O que será parcelado: a compra e, no acordo, a dívida antiga junto. */
+  const valorCarteira = total + dividaSomada;
+
   // O que vai para contas a receber e em quantas parcelas (pos/installments.ts).
   const carteira = useMemo(
-    () => carteiraBase({ splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments }),
-    [splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments],
+    () => carteiraBase({ splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments, dividaSomada }),
+    [splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments, dividaSomada],
   );
   const generatedInstallments = useMemo(
     () => installmentAmounts(carteira, manualInstallments, isAdjustingInstallments).map((amount, index) => ({ index, amount })),
@@ -358,6 +380,20 @@ export default function POS() {
           ? Math.max(1, splitFiadoInstallments)
           : 1;
 
+    const geraCarteira = willCreateReceivables || splitFiadoAmount > 0;
+
+    // O campo de data aceita 31/11 e o banco recusa; melhor avisar aqui do que
+    // deixar a venda morrer com "invalid input syntax for type date".
+    if (geraCarteira && !isValidDueDate(firstDueDate)) {
+      toast.error("Vencimento da 1ª parcela inválido. Confira o dia — novembro, por exemplo, não tem 31.");
+      return;
+    }
+
+    // Cliente com dívida: pergunta uma vez se junta tudo num acordo novo.
+    if (geraCarteira && !debtAsked && (customerDebt ?? 0) > 0.009) {
+      setDebtDialogOpen(true);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -395,9 +431,10 @@ export default function POS() {
             amount: inst.amount,
             due_date: dues[i],
             description:
-              generatedInstallments.length === 1
+              (generatedInstallments.length === 1
                 ? `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} — ${cart.length} item(ns)`
-                : `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} (${i + 1}/${generatedInstallments.length}) — ${cart.length} item(ns)`,
+                : `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} (${i + 1}/${generatedInstallments.length}) — ${cart.length} item(ns)`)
+              + (mergeDebt ? " — acordo com dívida anterior" : ""),
             status: "pendente",
           });
         }
@@ -407,11 +444,14 @@ export default function POS() {
       const splitNote = splitMode
         ? "Misto: " + splits.map((s) => `${PAYMENT_LABELS[s.method]} ${fmtBRL(s.amount)}`).join(" + ")
         : "";
+      const acordoNote = mergeDebt
+        ? `Acordo: dívida anterior de ${fmtBRL(dividaSomada)} somada a esta compra (total parcelado ${fmtBRL(valorCarteira)})`
+        : "";
       const discountNote =
         discountAmount > 0
           ? `Desconto: ${fmtBRL(discountAmount)}${discountType === "percent" ? ` (${discountValue}%)` : ""} sobre ${fmtBRL(subtotal)}`
           : "";
-      const finalNotes = [notes, discountNote, splitNote].filter(Boolean).join(" | ") || null;
+      const finalNotes = [notes, acordoNote, discountNote, splitNote].filter(Boolean).join(" | ") || null;
 
       // 2) Itens — revalida variant_id contra o banco (pode ter mudado após consolidações)
       const variantIds = Array.from(new Set(cart.map((it) => it.variantId).filter(Boolean))) as string[];
@@ -443,7 +483,9 @@ export default function POS() {
 
       // 3) Grava tudo numa transação só: parcelas, venda, vínculo, itens e baixa
       // de estoque. Ou grava inteiro, ou não grava nada — sem estado intermediário.
-      const { data: saleId, error: saleErr } = await supabase.rpc("create_sale", {
+      // Com acordo, a mesma transação encerra as parcelas antigas: a dívida não
+      // pode ficar contada duas vezes nem sumir se a segunda chamada falhar.
+      const argsVenda = {
         p_customer_id: customerId,
         p_total: total,
         p_payment_method: effectiveMethod,
@@ -459,7 +501,10 @@ export default function POS() {
           unit_cost: it.unitCost,
         })),
         p_receivables: records,
-      });
+      };
+      const { data: saleId, error: saleErr } = mergeDebt
+        ? await supabase.rpc("create_sale_renegociando", argsVenda)
+        : await supabase.rpc("create_sale", argsVenda);
       if (saleErr) throw saleErr;
       const sale = { id: saleId as string };
 
@@ -806,8 +851,8 @@ export default function POS() {
                             {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
                               <SelectItem key={n} value={String(n)}>
                                 {n === 1
-                                  ? `À vista — ${fmtBRL(total)}`
-                                  : `${n}x de ${fmtBRL(total / n)} (mensal)`}
+                                  ? `À vista — ${fmtBRL(valorCarteira)}`
+                                  : `${n}x de ${fmtBRL(valorCarteira / n)} (mensal)`}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -834,8 +879,8 @@ export default function POS() {
                       amounts={generatedInstallments.map((g) => g.amount)}
                       dues={previewDues}
                       diff={manualDiff}
-                      totalLabel="Total Venda"
-                      totalAmount={total}
+                      totalLabel={mergeDebt ? "Total do acordo" : "Total Venda"}
+                      totalAmount={valorCarteira}
                       onToggleAdjust={toggleAdjust}
                       onChangeManual={setManualInstallments}
                     />
@@ -853,10 +898,29 @@ export default function POS() {
                     </p>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {installments === 1
-                      ? `Será criada 1 conta a receber vencendo em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")} na carteira do cliente.`
-                      : `Serão criadas ${installments} contas a receber ${paymentFrequency === "quinzenal" ? "quinzenais" : "mensais"} na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
+                    {!isValidDueDate(firstDueDate)
+                      ? "Informe um vencimento válido para a 1ª parcela."
+                      : installments === 1
+                        ? `Será criada 1 conta a receber de ${fmtBRL(valorCarteira)} vencendo em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")} na carteira do cliente.`
+                        : `Serão criadas ${installments} contas a receber ${paymentFrequency === "quinzenal" ? "quinzenais" : "mensais"} na carteira do cliente (1ª em ${new Date(firstDueDate + "T00:00:00").toLocaleDateString("pt-BR")}).`}
                   </p>
+                  {mergeDebt && (
+                    <div className="rounded-xl border border-primary/40 bg-primary/5 p-3 text-xs space-y-1">
+                      <p className="font-medium text-foreground">
+                        Acordo novo: dívida de {fmtBRL(dividaSomada)} + compra de {fmtBRL(total)} = {fmtBRL(valorCarteira)}
+                      </p>
+                      <p className="text-muted-foreground">
+                        As parcelas antigas em aberto serão encerradas ao finalizar esta venda.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => { setMergeDebt(false); setManualInstallments([]); setIsAdjustingInstallments(false); }}
+                        className="underline text-muted-foreground hover:text-foreground"
+                      >
+                        Desfazer o acordo e manter a dívida separada
+                      </button>
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
               )}
@@ -933,6 +997,26 @@ export default function POS() {
         onResume={resumeDraft}
         onDiscard={discardDraft}
         onPostpone={() => setPendingDraft(null)}
+      />
+
+      <DebtAgreementDialog
+        open={debtDialogOpen}
+        customerName={selectedCustomer?.name ?? "A cliente"}
+        debt={Math.max(0, customerDebt ?? 0)}
+        saleTotal={total}
+        onMerge={() => {
+          setMergeDebt(true);
+          setDebtAsked(true);
+          setDebtDialogOpen(false);
+          setManualInstallments([]);
+          setIsAdjustingInstallments(false);
+          toast.info("Parcelas recalculadas com a dívida. Confira antes de finalizar.");
+        }}
+        onKeep={() => {
+          setMergeDebt(false);
+          setDebtAsked(true);
+          setDebtDialogOpen(false);
+        }}
       />
 
       <NewCustomerDialog

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { carteiraBase, dueDates, installmentAmounts, installmentsDiff, splitEvenly, type CarteiraInput } from "@/pages/pos/installments";
+import { carteiraBase, dueDates, installmentAmounts, installmentsDiff, isValidDueDate, splitEvenly, type CarteiraInput } from "@/pages/pos/installments";
 
 const base: CarteiraInput = {
   splitMode: false,
@@ -119,5 +119,43 @@ describe("dueDates — vencimentos", () => {
 
   it("uma parcela: só a data escolhida", () => {
     expect(dueDates("2026-09-30", 1, "mensal")).toEqual(["2026-09-30"]);
+  });
+});
+
+describe("acordo com a dívida antiga", () => {
+  it("soma a dívida ao valor parcelado na carteira", () => {
+    expect(carteiraBase({ ...base, dividaSomada: 450 })).toEqual({ amount: 750, parts: 3 });
+  });
+
+  it("soma também na parte da carteira do pagamento misto", () => {
+    const r = carteiraBase({
+      ...base,
+      splitMode: true,
+      splits: [{ method: "pix", amount: 100 }, { method: "fiado", amount: 200 }],
+      splitFiadoInstallments: 2,
+      dividaSomada: 100,
+    });
+    expect(r).toEqual({ amount: 300, parts: 2 });
+  });
+
+  it("não cria parcelamento só por causa da dívida quando a venda é à vista", () => {
+    expect(carteiraBase({ ...base, paymentMethod: "pix", dividaSomada: 450 })).toBeNull();
+  });
+});
+
+describe("isValidDueDate", () => {
+  it("recusa dia que não existe no mês", () => {
+    expect(isValidDueDate("2026-11-31")).toBe(false);
+    expect(isValidDueDate("2027-02-30")).toBe(false);
+  });
+
+  it("aceita datas reais, inclusive 29/02 em ano bissexto", () => {
+    expect(isValidDueDate("2026-11-30")).toBe(true);
+    expect(isValidDueDate("2028-02-29")).toBe(true);
+  });
+
+  it("recusa texto vazio ou incompleto", () => {
+    expect(isValidDueDate("")).toBe(false);
+    expect(isValidDueDate("2026-11")).toBe(false);
   });
 });

@@ -1463,6 +1463,18 @@ export type Database = {
         }
         Returns: string
       }
+      create_sale_renegociando: {
+        Args: {
+          p_customer_id: string
+          p_installments: number
+          p_items: Json
+          p_notes: string
+          p_payment_method: string
+          p_receivables?: Json
+          p_total: number
+        }
+        Returns: string
+      }
       decrement_variant_stock: {
         Args: { qty: number; variant_id: string }
         Returns: number

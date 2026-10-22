@@ -15,6 +15,11 @@ export interface CarteiraInput {
   installments: number;
   splits: { method: PaymentMethod; amount: number }[];
   splitFiadoInstallments: number;
+  /**
+   * Dívida antiga que a cliente aceitou juntar a esta compra. Entra no valor a
+   * parcelar; as parcelas antigas são encerradas na mesma gravação da venda.
+   */
+  dividaSomada?: number;
 }
 
 /**
@@ -22,16 +27,33 @@ export interface CarteiraInput {
  * - carteira (fiado), ou crédito com "gerar contas a receber": o total, em `installments`;
  * - pagamento misto com parte na carteira: só essa parte, em `splitFiadoInstallments`;
  * - qualquer outro caso: nada (null).
+ *
+ * Quando há acordo com a dívida antiga, ela soma ao valor — e só nesses casos,
+ * porque compra paga à vista não vira parcela e não teria onde somar.
  */
 export function carteiraBase(i: CarteiraInput): { amount: number; parts: number } | null {
+  const divida = Math.max(0, i.dividaSomada ?? 0);
   const isFiado = !i.splitMode && i.paymentMethod === "fiado";
   const isCredit = !i.splitMode && i.paymentMethod === "credito";
   if (isFiado || (isCredit && i.generateReceivables)) {
-    return { amount: i.total, parts: Math.max(1, i.installments) };
+    return { amount: round2(i.total + divida), parts: Math.max(1, i.installments) };
   }
   const splitFiado = i.splitMode ? i.splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0;
-  if (splitFiado > 0) return { amount: splitFiado, parts: Math.max(1, i.splitFiadoInstallments) };
+  if (splitFiado > 0) return { amount: round2(splitFiado + divida), parts: Math.max(1, i.splitFiadoInstallments) };
   return null;
+}
+
+/**
+ * Data de vencimento utilizável? Protege contra o que o campo de data aceita e
+ * o banco recusa — 31/11, por exemplo, chegava como "NaN-NaN-NaN" e a venda
+ * morria com "invalid input syntax for type date" depois de tudo pronto.
+ */
+export function isValidDueDate(iso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const [y, m, d] = iso.split("-").map(Number);
+  if (m < 1 || m > 12 || d < 1) return false;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return d <= lastDay;
 }
 
 /** Divide em partes iguais; a última absorve os centavos para a soma bater exatamente. */
