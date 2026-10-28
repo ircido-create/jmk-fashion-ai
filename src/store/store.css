@@ -46,6 +46,21 @@ html:has(.store-root) body {
   line-height: 1.05;
 }
 
+/*
+ * Numero grande sai na Manrope, e nao na display.
+ *
+ * A Cormorant Garamond numera em estilo antigo: o "1" tem a altura das
+ * minusculas e o "5" desce abaixo da linha. Em texto corre bem, mas num
+ * percentual ou num preco grande a leitura trava.
+ */
+.store-scope .s-number {
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1;
+}
+
 .store-scope .s-eyebrow {
   font-size: 11px;
   font-weight: 600;

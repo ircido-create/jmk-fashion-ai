@@ -49,9 +49,9 @@ export function BlackFridayHero() {
           </h2>
           <p className="mt-4 text-sm uppercase tracking-[0.3em] s-muted">Ofertas imperdíveis</p>
 
-          <div className="mt-6 flex flex-wrap items-end gap-x-4 gap-y-2">
-            <span className="s-display text-6xl leading-none s-gold sm:text-7xl">10% a 50%</span>
-            <span className="s-display text-3xl leading-none sm:text-4xl">OFF</span>
+          <div className="mt-6 flex flex-wrap items-baseline gap-x-3 gap-y-2">
+            <span className="s-number text-5xl s-gold sm:text-6xl">10% a 50%</span>
+            <span className="s-number text-3xl tracking-[0.06em] sm:text-4xl">OFF</span>
           </div>
           <p className="mt-2 text-sm uppercase tracking-[0.2em] s-muted">em peças selecionadas</p>
 
