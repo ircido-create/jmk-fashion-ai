@@ -22,6 +22,8 @@ interface Product {
   sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
   image_url?: string | null;
+  /** Galeria da peça, em ordem; a primeira é a capa (espelha image_url). */
+  images?: string[] | null;
   garment_type?: string | null;
   /** Aparece na loja virtual (jmkmodas.com.br/loja). */
   store_visible?: boolean;
@@ -45,6 +47,8 @@ export default function Inventory() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   const [importOpen, setImportOpen] = useState(false);
@@ -264,7 +268,7 @@ export default function Inventory() {
   useEffect(() => { load(); }, []);
 
 
-  const openNew = () => { setEditing(null); setVariants([]); setOpen(true); };
+  const openNew = () => { setEditing(null); setVariants([]); setPhotos([]); setOpen(true); };
 
   const handleReprocessPhotos = async () => {
     if (reprocessing) return;
@@ -286,8 +290,37 @@ export default function Inventory() {
   const openEdit = (p: Product) => {
     setEditing(p);
     setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity, image_url: v.image_url ?? null })) ?? []);
+    // Produto antigo pode ter só a foto de capa: ela abre a galeria.
+    setPhotos(p.images?.length ? [...p.images] : p.image_url ? [p.image_url] : []);
     setOpen(true);
   };
+
+  /** Sobe as fotos escolhidas e acrescenta à galeria, na ordem da seleção. */
+  const uploadProductPhotos = async (files: File[]) => {
+    const livres = Math.max(0, 8 - photos.length);
+    if (livres === 0) { toast.error("Máximo de 8 fotos por peça"); return; }
+    setUploadingPhotos(true);
+    const novas: string[] = [];
+    for (const file of files.slice(0, livres)) {
+      if (!file.type.startsWith("image/")) { toast.error(`${file.name}: não é imagem`); continue; }
+      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name}: maior que 5MB`); continue; }
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("product-images").upload(path, file, { upsert: false });
+      if (upErr) { toast.error("Falha no upload: " + upErr.message); continue; }
+      novas.push(supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl);
+    }
+    if (novas.length) {
+      setPhotos((prev) => [...prev, ...novas]);
+      toast.success(novas.length === 1 ? "Foto adicionada" : `${novas.length} fotos adicionadas`);
+    }
+    if (files.length > livres) toast.info(`Só couberam ${livres}: o limite é 8 fotos por peça.`);
+    setUploadingPhotos(false);
+  };
+
+  const removePhoto = (i: number) => setPhotos((prev) => prev.filter((_, j) => j !== i));
+  /** A capa é a primeira: escolher outra foto só a traz para a frente. */
+  const makeCover = (i: number) => setPhotos((prev) => [prev[i], ...prev.filter((_, j) => j !== i)]);
 
   const uploadVariantImage = async (i: number, file: File) => {
     if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem"); return; }
@@ -325,6 +358,9 @@ export default function Inventory() {
       garment_type: parsed.data.garment_type || null,
       // Checkbox fora do schema: o navegador manda "on" marcado e nada desmarcado.
       store_visible: f.get("store_visible") === "on",
+      images: photos,
+      // A capa continua em image_url: PDV, cupom e WhatsApp leem esse campo.
+      image_url: photos[0] ?? null,
       price: parsed.data.price,
       cost: parsed.data.cost,
       low_stock_threshold: parsed.data.low_stock_threshold,
@@ -551,6 +587,71 @@ export default function Inventory() {
               <div><Label>Custo (R$)</Label><Input name="cost" type="number" step="0.01" defaultValue={editing?.cost ?? 0} className="glass-input" /></div>
             </div>
             <div><Label>Descrição</Label><Textarea name="description" defaultValue={editing?.description ?? ""} className="glass-input" rows={2} /></div>
+
+            {/* Galeria da peça: a primeira foto é a capa e vai para o PDV e a loja. */}
+            <div className="border-t border-border pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label>Fotos da peça</Label>
+                <label className="inline-flex items-center gap-1 text-sm text-primary cursor-pointer hover:opacity-80">
+                  {uploadingPhotos ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                  {uploadingPhotos ? "Enviando..." : "Adicionar fotos"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    disabled={uploadingPhotos}
+                    onChange={(e) => {
+                      const fs = Array.from(e.target.files ?? []);
+                      e.target.value = "";
+                      if (fs.length) uploadProductPhotos(fs);
+                    }}
+                  />
+                </label>
+              </div>
+              {photos.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nenhuma foto ainda. Dá para escolher várias de uma vez — a primeira vira a capa.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {photos.map((url, i) => (
+                    <div key={url + i} className="relative">
+                      <img
+                        src={url}
+                        alt={i === 0 ? "Capa" : `Foto ${i + 1}`}
+                        className={`h-20 w-20 rounded-xl object-cover border ${i === 0 ? "border-primary" : "border-border"}`}
+                      />
+                      {i === 0 ? (
+                        <span className="absolute bottom-0 inset-x-0 text-[10px] text-center bg-primary/80 text-primary-foreground rounded-b-xl">
+                          Capa
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => makeCover(i)}
+                          className="absolute bottom-0 inset-x-0 text-[10px] bg-black/60 text-white rounded-b-xl hover:bg-black/80"
+                        >
+                          Usar como capa
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(i)}
+                        aria-label={`Remover foto ${i + 1}`}
+                        className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-xs leading-none"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Até 8 fotos, 5MB cada. A capa aparece no PDV e na vitrine; as demais ficam na página
+                da peça na loja.
+              </p>
+            </div>
 
             {/* Peça nova nasce fora da vitrine: a loja escolhe uma a uma o que vende on-line. */}
             <label className="flex items-start gap-2 text-sm cursor-pointer rounded-xl bg-white/30 dark:bg-white/5 p-3">

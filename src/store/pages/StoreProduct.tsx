@@ -79,7 +79,7 @@ export default function StoreProduct() {
     );
   }
 
-  const images = uniq([product.image_url, ...product.variants.map((v) => v.image_url)].filter(Boolean) as string[]);
+  const images = uniq([product.image_url, ...product.images, ...product.variants.map((v) => v.image_url)].filter(Boolean) as string[]);
   const shownImg = activeImg ?? product.image_url;
   const name = displayName(product.name);
 

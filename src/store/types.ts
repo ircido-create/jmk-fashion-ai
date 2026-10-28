@@ -15,6 +15,8 @@ export interface StoreProduct {
   description: string | null;
   price: number;
   image_url: string;
+  /** Galeria da peça; a capa (image_url) é a primeira. */
+  images: string[];
   garment_type: GarmentType | null;
   created_at: string;
   variants: StoreVariant[];

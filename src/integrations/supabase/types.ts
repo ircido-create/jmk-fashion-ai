@@ -659,6 +659,7 @@ export type Database = {
           garment_type: string | null
           id: string
           image_url: string | null
+          images: string[]
           is_draft: boolean
           low_stock_threshold: number
           name: string
@@ -677,6 +678,7 @@ export type Database = {
           garment_type?: string | null
           id?: string
           image_url?: string | null
+          images?: string[]
           is_draft?: boolean
           low_stock_threshold?: number
           name: string
@@ -695,6 +697,7 @@ export type Database = {
           garment_type?: string | null
           id?: string
           image_url?: string | null
+          images?: string[]
           is_draft?: boolean
           low_stock_threshold?: number
           name?: string
@@ -1543,6 +1546,7 @@ export type Database = {
           garment_type: string
           id: string
           image_url: string
+          images: string[]
           name: string
           price: number
           variants: Json
