@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -345,14 +346,17 @@ export default function StoreOrders() {
 
 /** O que a loja mostra para o público: WhatsApp de contato, endereço de retirada e aviso de entrega. */
 function StoreSettingsCard() {
-  const [form, setForm] = useState({ whatsapp: "", pickup_address: "", delivery_note: "" });
+  const [form, setForm] = useState({
+    whatsapp: "", pickup_address: "", delivery_note: "",
+    order_alert_whatsapp: "", order_confirm_customer: true,
+  });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     supabase
       .from("store_settings")
-      .select("whatsapp, pickup_address, delivery_note")
+      .select("whatsapp, pickup_address, delivery_note, order_alert_whatsapp, order_confirm_customer")
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -360,6 +364,8 @@ function StoreSettingsCard() {
             whatsapp: data.whatsapp ?? "",
             pickup_address: data.pickup_address ?? "",
             delivery_note: data.delivery_note ?? "",
+            order_alert_whatsapp: data.order_alert_whatsapp ?? "",
+            order_confirm_customer: data.order_confirm_customer ?? true,
           });
         }
         setLoaded(true);
@@ -373,6 +379,18 @@ function StoreSettingsCard() {
       toast.error("WhatsApp inválido: use DDD + número");
       return;
     }
+    // Grupo entra pelo JID inteiro (termina em @g.us); número vira DDI + DDD.
+    const alertRaw = form.order_alert_whatsapp.trim();
+    const alertDigits = alertRaw.replace(/\D/g, "");
+    const alerta = alertRaw.endsWith("@g.us")
+      ? alertRaw
+      : alertDigits.length === 10 || alertDigits.length === 11
+        ? `55${alertDigits}`
+        : alertDigits;
+    if (alerta && !alerta.endsWith("@g.us") && (alerta.length < 12 || alerta.length > 13)) {
+      toast.error("Número do aviso inválido: use DDD + número");
+      return;
+    }
     setSaving(true);
     const { error } = await supabase
       .from("store_settings")
@@ -380,13 +398,15 @@ function StoreSettingsCard() {
         whatsapp: whatsapp || null,
         pickup_address: form.pickup_address.trim() || null,
         delivery_note: form.delivery_note.trim() || null,
+        order_alert_whatsapp: alerta || null,
+        order_confirm_customer: form.order_confirm_customer,
         updated_at: new Date().toISOString(),
       })
       .eq("id", true);
     setSaving(false);
     if (error) toast.error(error.message);
     else {
-      setForm((f) => ({ ...f, whatsapp }));
+      setForm((f) => ({ ...f, whatsapp, order_alert_whatsapp: alerta }));
       toast.success("Configurações da loja salvas");
     }
   };
@@ -427,6 +447,36 @@ function StoreSettingsCard() {
               rows={2}
             />
           </div>
+          <div className="md:col-span-2 border-t pt-4">
+            <h4 className="font-medium text-sm">Aviso de pedido novo</h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Quando a cliente fecha a sacola, o pedido chega no WhatsApp. Em branco, vai para o WhatsApp da loja
+              acima; pode ser outro número da equipe ou um grupo (cole o JID terminado em @g.us).
+            </p>
+          </div>
+          <div>
+            <Label>Mandar o aviso para</Label>
+            <Input
+              value={form.order_alert_whatsapp}
+              onChange={(e) => setForm((f) => ({ ...f, order_alert_whatsapp: e.target.value }))}
+              placeholder="WhatsApp da loja"
+              className="glass-input mt-1"
+            />
+          </div>
+          <div className="flex items-start gap-3 pt-7">
+            <Switch
+              id="confirm-cliente"
+              checked={form.order_confirm_customer}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, order_confirm_customer: v }))}
+            />
+            <Label htmlFor="confirm-cliente" className="leading-snug">
+              Confirmar o pedido para a cliente
+              <span className="block text-xs font-normal text-muted-foreground">
+                Ela recebe o código, as peças e o total assim que o pedido entra.
+              </span>
+            </Label>
+          </div>
+
           <div className="md:col-span-2 flex justify-end">
             <Button onClick={save} disabled={saving} className="rounded-xl bg-gradient-primary text-primary-foreground">
               {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}

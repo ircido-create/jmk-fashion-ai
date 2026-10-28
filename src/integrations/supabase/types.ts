@@ -1096,6 +1096,8 @@ export type Database = {
         Row: {
           delivery_note: string | null
           id: boolean
+          order_alert_whatsapp: string | null
+          order_confirm_customer: boolean
           pickup_address: string | null
           updated_at: string
           whatsapp: string | null
@@ -1103,6 +1105,8 @@ export type Database = {
         Insert: {
           delivery_note?: string | null
           id?: boolean
+          order_alert_whatsapp?: string | null
+          order_confirm_customer?: boolean
           pickup_address?: string | null
           updated_at?: string
           whatsapp?: string | null
@@ -1110,6 +1114,8 @@ export type Database = {
         Update: {
           delivery_note?: string | null
           id?: boolean
+          order_alert_whatsapp?: string | null
+          order_confirm_customer?: boolean
           pickup_address?: string | null
           updated_at?: string
           whatsapp?: string | null
