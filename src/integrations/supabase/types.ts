@@ -664,6 +664,7 @@ export type Database = {
           name: string
           price: number
           sku: string | null
+          store_visible: boolean
           supplier: string | null
           updated_at: string
         }
@@ -681,6 +682,7 @@ export type Database = {
           name: string
           price?: number
           sku?: string | null
+          store_visible?: boolean
           supplier?: string | null
           updated_at?: string
         }
@@ -698,6 +700,7 @@ export type Database = {
           name?: string
           price?: number
           sku?: string | null
+          store_visible?: boolean
           supplier?: string | null
           updated_at?: string
         }
