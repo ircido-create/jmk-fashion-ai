@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Search, ImageIcon, Check } from "lucide-react";
+import { Loader2, Search, ImageIcon, Check, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -44,6 +44,7 @@ export default function SupplierImageSearch({
   const [images, setImages] = useState<ImageCandidate[]>([]);
   const [domainOverride, setDomainOverride] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const search = async () => {
     if (!productName) {
@@ -72,6 +73,46 @@ export default function SupplierImageSearch({
       toast.error("Falha na busca: " + (e?.message || "erro"));
     } finally {
       setSearching(false);
+    }
+  };
+
+  /**
+   * Foto escolhida no computador. Nem toda peça está no site do fornecedor —
+   * muita coisa é foto tirada na loja mesmo. Sobe direto para o nosso storage
+   * e faz o mesmo vínculo que a busca faria.
+   */
+  const uploadLocal = async (file: File) => {
+    if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem"); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande (máx 5MB)"); return; }
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("product-images").upload(path, file, { upsert: false });
+      if (upErr) throw upErr;
+      const url = supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
+
+      // Peça ou variação já gravada: o vínculo vai agora. Variação nova (sem id)
+      // fica só no formulário e é gravada junto com o produto.
+      if (variantId) {
+        const { error } = await supabase.from("product_variants").update({ image_url: url }).eq("id", variantId);
+        if (error) throw error;
+      }
+      if (productId) {
+        const { error } = await supabase.from("products").update({ image_url: url }).eq("id", productId);
+        if (error) throw error;
+        if (applyToAllVariants) {
+          await supabase.from("product_variants").update({ image_url: url })
+            .eq("product_id", productId).is("image_url", null);
+        }
+      }
+      toast.success("Foto enviada");
+      onSaved?.(url);
+      onOpenChange(false);
+    } catch (e: any) {
+      toast.error("Falha ao enviar: " + (e?.message || "erro"));
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -127,10 +168,27 @@ export default function SupplierImageSearch({
                 className="glass-input"
               />
             </div>
-            <div className="flex items-end">
-              <Button onClick={search} disabled={searching} className="rounded-xl">
+            <div className="flex items-end gap-2">
+              <Button onClick={search} disabled={searching || uploading} className="rounded-xl">
                 {searching ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Search className="h-4 w-4 mr-1" />}
                 Buscar
+              </Button>
+              <Button asChild variant="outline" className="rounded-xl" disabled={uploading}>
+                <label className="cursor-pointer">
+                  {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+                  {uploading ? "Enviando..." : "Do computador"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) uploadLocal(file);
+                    }}
+                  />
+                </label>
               </Button>
             </div>
           </div>
@@ -187,7 +245,10 @@ export default function SupplierImageSearch({
           {!searching && images.length === 0 && !message && (
             <div className="text-center py-12 text-muted-foreground">
               <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <div className="text-sm">Clique em Buscar para procurar imagens no site do fornecedor</div>
+              <div className="text-sm">
+                Clique em Buscar para procurar no site do fornecedor — ou use "Do computador" para
+                enviar uma foto sua.
+              </div>
             </div>
           )}
         </div>
