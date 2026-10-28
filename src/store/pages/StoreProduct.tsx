@@ -44,6 +44,11 @@ export default function StoreProduct() {
 
   const variant = product?.variants.find((v) => key(v.color) === color && key(v.size) === size) ?? null;
   const needsVariant = (product?.variants.length ?? 0) > 0;
+  // Peca com uma cor so (ou um tamanho so) tambem mostra a opcao: antes o seletor
+  // sumia quando nao havia o que escolher, e a cliente fechava a sacola sem nunca
+  // ver que tamanho estava comprando.
+  const hasColors = colors.some(Boolean);
+  const hasSizes = sizes.some(Boolean);
   const maxQty = variant ? Math.min(variant.quantity, MAX_QTY_PER_LINE) : needsVariant ? 0 : MAX_QTY_PER_LINE;
 
   useEffect(() => {
@@ -153,7 +158,7 @@ export default function StoreProduct() {
           <p className="mt-5 text-3xl font-semibold tabular-nums s-gold">{fmtBRL(product.price)}</p>
           {product.description && <p className="mt-6 leading-relaxed s-muted">{product.description}</p>}
 
-          {colors.length > 1 && (
+          {hasColors && (
             <fieldset className="mt-8">
               <legend className="s-label">Cor</legend>
               <div className="flex flex-wrap gap-2">
@@ -166,7 +171,7 @@ export default function StoreProduct() {
             </fieldset>
           )}
 
-          {needsVariant && (colors.length <= 1 || color !== "") && sizes.length > 1 && (
+          {hasSizes && (
             <fieldset className="mt-6">
               <legend className="s-label">Tamanho</legend>
               <div className="flex flex-wrap gap-2">
