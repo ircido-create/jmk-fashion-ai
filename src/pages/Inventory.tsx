@@ -480,8 +480,8 @@ export default function Inventory() {
                     {p.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{p.category}</span>}
                     {isGarmentType(p.garment_type) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground">{GARMENT_LABEL[p.garment_type].split(" (")[0]}</span>}
                     {p.supplier && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground">{p.supplier}</span>}
-                    {p.store_visible === false && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Fora da loja</span>
+                    {p.store_visible === true && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary">Na loja</span>
                     )}
                     {isLow(p) && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground inline-flex items-center gap-1">
@@ -552,19 +552,19 @@ export default function Inventory() {
             </div>
             <div><Label>Descrição</Label><Textarea name="description" defaultValue={editing?.description ?? ""} className="glass-input" rows={2} /></div>
 
-            {/* Peça nova já nasce na vitrine; desmarcar tira da loja sem mexer no PDV. */}
+            {/* Peça nova nasce fora da vitrine: a loja escolhe uma a uma o que vende on-line. */}
             <label className="flex items-start gap-2 text-sm cursor-pointer rounded-xl bg-white/30 dark:bg-white/5 p-3">
               <input
                 type="checkbox"
                 name="store_visible"
-                defaultChecked={editing ? editing.store_visible !== false : true}
+                defaultChecked={editing?.store_visible === true}
                 className="h-4 w-4 mt-0.5"
               />
               <span>
                 Mostrar na loja virtual
                 <span className="block text-xs text-muted-foreground">
-                  Aparece em jmkmodas.com.br/loja quando tiver foto, preço e estoque. Desmarcado, a
-                  peça continua normal no PDV e some da vitrine.
+                  Marque para vender esta peça em jmkmodas.com.br/loja — ela aparece quando tiver
+                  foto, preço e estoque. Desmarcada, continua normal no PDV.
                 </span>
               </span>
             </label>
