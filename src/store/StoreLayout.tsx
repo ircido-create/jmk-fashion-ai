@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { LayoutDashboard, Loader2, LogIn, MessageCircle, ShoppingBag, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { StoreProvider, useStore } from "./StoreContext";
+import { BlackFridayStrip } from "./components/BlackFriday";
 import { onlyDigits } from "./types";
 import "./store.css";
 
@@ -53,6 +54,8 @@ function StoreShell() {
       >
         Pular para o conteúdo
       </a>
+
+      <BlackFridayStrip />
 
       <header className="sticky top-0 z-40 s-glass">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">

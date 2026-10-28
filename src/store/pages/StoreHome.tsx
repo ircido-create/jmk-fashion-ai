@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, RefreshCw, Search, Sparkles } from "lucide-react";
 import { GARMENT_PLURAL, GARMENT_TYPES, isGarmentType, regionOf, type GarmentType } from "@/lib/garments";
 import { useStore } from "../StoreContext";
+import { BlackFridayHero } from "../components/BlackFriday";
 import { ProductCard, ProductCardSkeleton } from "../components/ProductCard";
 import { displayName, type StoreProduct } from "../types";
 
@@ -50,6 +51,7 @@ export default function StoreHome() {
 
   return (
     <>
+      <BlackFridayHero />
       {showHero && <Hero catalog={catalog} />}
 
       <section id="colecao" className="mx-auto max-w-7xl scroll-mt-24 px-4 pt-12 sm:px-6">
