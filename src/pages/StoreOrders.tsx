@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  CheckCircle2, ExternalLink, Loader2, MessageCircle, PackageCheck, RefreshCw, Save, Store, Truck, XCircle,
+  CheckCircle2, Copy, CreditCard, ExternalLink, Link2, Loader2, MessageCircle, PackageCheck, RefreshCw, Save, Store, Truck, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -44,6 +44,27 @@ interface Order {
   store_order_items: OrderItem[];
 }
 
+interface Charge {
+  id: string;
+  order_id: string;
+  status: string;
+  link_url: string | null;
+  link_expires_at: string | null;
+  paid_at: string | null;
+  paid_cents: number | null;
+  last_error: string | null;
+}
+
+const CHARGE_LABEL: Record<string, string> = {
+  rascunho: "Link não gerado",
+  aguardando: "Aguardando pagamento",
+  pago: "Pago no link",
+  estornado: "Estornado",
+  cancelado: "Cancelado",
+  expirado: "Link expirado",
+  falhou: "Falha ao gerar o link",
+};
+
 const STATUS_TABS: { v: Status; label: string }[] = [
   { v: "novo", label: "Novos" },
   { v: "confirmado", label: "Confirmados" },
@@ -84,6 +105,8 @@ export default function StoreOrders() {
   const [open, setOpen] = useState<Order | null>(null);
   const [payment, setPayment] = useState("pix");
   const [acting, setActing] = useState(false);
+  const [charges, setCharges] = useState<Record<string, Charge>>({});
+  const [charging, setCharging] = useState(false);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -95,6 +118,15 @@ export default function StoreOrders() {
       .limit(300);
     if (error) toast.error("Falha ao carregar os pedidos: " + error.message);
     else setOrders((data ?? []) as unknown as Order[]);
+
+    const { data: cobrancas } = await supabase
+      .from("payment_charges")
+      .select("id, order_id, status, link_url, link_expires_at, paid_at, paid_cents, last_error")
+      .order("created_at", { ascending: false })
+      .limit(300);
+    if (cobrancas) {
+      setCharges(Object.fromEntries((cobrancas as Charge[]).map((c) => [c.order_id, c])));
+    }
     setLoading(false);
   }, []);
 
@@ -116,6 +148,39 @@ export default function StoreOrders() {
   }, [orders]);
 
   const list = orders.filter((o) => o.status === tab);
+
+  const charge = open ? charges[open.id] : undefined;
+
+  /**
+   * Gera (ou reaproveita) o link na InfinitePay e manda para a cliente. Quem
+   * fala com a InfinitePay é a função do servidor: a chave nunca passa por aqui.
+   */
+  const gerarLink = async (enviar: boolean) => {
+    if (!open) return;
+    setCharging(true);
+    const { data, error } = await supabase.functions.invoke("infinitepay-create-link", {
+      body: { order_id: open.id, enviar_whatsapp: enviar },
+    });
+    setCharging(false);
+    if (error) {
+      toast.error("Não foi possível gerar o link. " + (error.message ?? ""));
+      return;
+    }
+    const r = data as { link?: string; whatsapp?: boolean; ja_pago?: boolean };
+    if (r?.ja_pago) toast.info("Este pedido já está pago.");
+    else if (enviar) toast.success(r?.whatsapp ? "Link enviado no WhatsApp" : "Link gerado (o WhatsApp falhou)");
+    else toast.success("Link gerado");
+    load();
+  };
+
+  const copiarLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado");
+    } catch {
+      toast.error("Não consegui copiar — o link está na tela para você selecionar.");
+    }
+  };
 
   const act = async (status: Status) => {
     if (!open) return;
@@ -288,6 +353,47 @@ export default function StoreOrders() {
                   </div>
                 )}
 
+                <div className="rounded-xl border border-border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium flex items-center gap-1.5">
+                      <CreditCard className="h-4 w-4" /> Pagamento online
+                    </span>
+                    <span className={`text-xs font-semibold ${charge?.status === "pago" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                      {charge ? CHARGE_LABEL[charge.status] ?? charge.status : "Link não gerado"}
+                    </span>
+                  </div>
+
+                  {charge?.status === "pago" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Pago {charge.paid_cents ? fmtBRL(charge.paid_cents / 100) : ""}
+                      {charge.paid_at ? ` em ${format(new Date(charge.paid_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}` : ""}
+                      {" "}— confirmado pela InfinitePay.
+                    </p>
+                  ) : (
+                    <>
+                      {charge?.link_url && (
+                        <p className="break-all text-xs text-muted-foreground">{charge.link_url}</p>
+                      )}
+                      {charge?.last_error && (
+                        <p className="text-xs text-destructive">{charge.last_error}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" className="rounded-xl" disabled={charging}
+                                onClick={() => gerarLink(true)}>
+                          {charging ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
+                          {charge?.link_url ? "Reenviar no WhatsApp" : "Gerar link e enviar"}
+                        </Button>
+                        {charge?.link_url && (
+                          <Button size="sm" variant="outline" className="rounded-xl"
+                                  onClick={() => copiarLink(charge.link_url!)}>
+                            <Copy className="h-4 w-4 mr-1" /> Copiar link
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
                 <Button asChild variant="outline" className="w-full rounded-xl">
                   <a href={whatsappLink(open)} target="_blank" rel="noreferrer">
                     <MessageCircle className="h-4 w-4 mr-1" /> Chamar no WhatsApp
@@ -349,6 +455,7 @@ function StoreSettingsCard() {
   const [form, setForm] = useState({
     whatsapp: "", pickup_address: "", delivery_note: "",
     order_alert_whatsapp: "", order_confirm_customer: true,
+    payment_link_enabled: false, payment_link_hours: 72,
   });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -356,7 +463,7 @@ function StoreSettingsCard() {
   useEffect(() => {
     supabase
       .from("store_settings")
-      .select("whatsapp, pickup_address, delivery_note, order_alert_whatsapp, order_confirm_customer")
+      .select("whatsapp, pickup_address, delivery_note, order_alert_whatsapp, order_confirm_customer, payment_link_enabled, payment_link_hours")
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -366,6 +473,8 @@ function StoreSettingsCard() {
             delivery_note: data.delivery_note ?? "",
             order_alert_whatsapp: data.order_alert_whatsapp ?? "",
             order_confirm_customer: data.order_confirm_customer ?? true,
+            payment_link_enabled: data.payment_link_enabled ?? false,
+            payment_link_hours: data.payment_link_hours ?? 72,
           });
         }
         setLoaded(true);
@@ -400,6 +509,8 @@ function StoreSettingsCard() {
         delivery_note: form.delivery_note.trim() || null,
         order_alert_whatsapp: alerta || null,
         order_confirm_customer: form.order_confirm_customer,
+        payment_link_enabled: form.payment_link_enabled,
+        payment_link_hours: Math.min(720, Math.max(1, Number(form.payment_link_hours) || 72)),
         updated_at: new Date().toISOString(),
       })
       .eq("id", true);
@@ -475,6 +586,40 @@ function StoreSettingsCard() {
                 Ela recebe o código, as peças e o total assim que o pedido entra.
               </span>
             </Label>
+          </div>
+
+          <div className="md:col-span-2 border-t pt-4">
+            <h4 className="font-medium text-sm">Pagamento online (InfinitePay)</h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Com isto ligado, cada pedido novo recebe um link de Pix ou cartão junto com a confirmação no
+              WhatsApp, e a baixa acontece sozinha quando a cliente paga. Precisa das chaves da InfinitePay
+              cadastradas — sem elas, deixe desligado.
+            </p>
+          </div>
+          <div className="flex items-start gap-3">
+            <Switch
+              id="pagamento-online"
+              checked={form.payment_link_enabled}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, payment_link_enabled: v }))}
+            />
+            <Label htmlFor="pagamento-online" className="leading-snug">
+              Mandar link de pagamento
+              <span className="block text-xs font-normal text-muted-foreground">
+                Desligado, o pedido segue combinado pelo WhatsApp, como sempre foi.
+              </span>
+            </Label>
+          </div>
+          <div>
+            <Label htmlFor="validade-link">O link vale por (horas)</Label>
+            <Input
+              id="validade-link"
+              type="number"
+              min={1}
+              max={720}
+              value={form.payment_link_hours}
+              onChange={(e) => setForm((f) => ({ ...f, payment_link_hours: Number(e.target.value) }))}
+              className="glass-input mt-1"
+            />
           </div>
 
           <div className="md:col-span-2 flex justify-end">

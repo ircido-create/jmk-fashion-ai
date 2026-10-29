@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowRight, Check, MessageCircle } from "lucide-react";
+import { ArrowRight, Check, CreditCard, MessageCircle } from "lucide-react";
 import { fmtBRL } from "@/lib/utils";
 import { useStore } from "../StoreContext";
+import { fetchOrderPayment, type OrderPayment } from "../api";
 import { displayName, onlyDigits, variantLabel, type OrderSnapshot } from "../types";
 
 function readSnapshot(code?: string): OrderSnapshot | null {
@@ -24,6 +25,26 @@ export default function StoreOrderDone() {
   const { code } = useParams();
   const { settings } = useStore();
   const snap = useMemo(() => readSnapshot(code), [code]);
+
+  // O link de pagamento é criado logo depois do pedido, fora desta tela: ela
+  // consulta, e volta a consultar algumas vezes enquanto ainda não chegou.
+  const [pagamento, setPagamento] = useState<OrderPayment | null>(null);
+  useEffect(() => {
+    if (!code) return;
+    let vivo = true;
+    let tentativas = 0;
+    const consultar = async () => {
+      const p = await fetchOrderPayment(code);
+      if (!vivo) return;
+      if (p) setPagamento(p);
+      tentativas += 1;
+      if (!p?.link_url && p?.status !== "pago" && tentativas < 6) {
+        setTimeout(consultar, 2500);
+      }
+    };
+    consultar();
+    return () => { vivo = false; };
+  }, [code]);
 
   const whatsapp = settings?.whatsapp ? onlyDigits(settings.whatsapp) : "";
   const message = useMemo(() => {
@@ -77,6 +98,22 @@ export default function StoreOrderDone() {
           </div>
         </div>
       )}
+
+      {pagamento?.status === "pago" ? (
+        <p className="s-card mt-8 px-6 py-5 text-sm s-gold">
+          <Check className="mr-2 inline h-4 w-4" /> Pagamento confirmado. Já estamos separando suas peças.
+        </p>
+      ) : pagamento?.link_url ? (
+        <div className="s-card mt-8 px-6 py-6">
+          <p className="s-eyebrow">Pagamento</p>
+          <p className="mt-2 text-sm s-muted">
+            Você pode pagar agora por Pix ou cartão. Se preferir, combine com a loja pelo WhatsApp.
+          </p>
+          <a href={pagamento.link_url} target="_blank" rel="noreferrer" className="s-btn s-btn-gold mt-5 w-full">
+            <CreditCard /> Pagar agora
+          </a>
+        </div>
+      ) : null}
 
       <div className="mt-10 flex flex-wrap justify-center gap-3">
         {whatsapp && (

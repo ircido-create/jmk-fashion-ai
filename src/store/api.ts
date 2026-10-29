@@ -59,6 +59,24 @@ export async function placeOrder(order: OrderInput, lines: CartLine[]) {
   return { code: r.code, total: Number(r.total) };
 }
 
+export interface OrderPayment {
+  status: "rascunho" | "aguardando" | "pago" | "estornado" | "cancelado" | "expirado" | "falhou";
+  link_url: string | null;
+  expira_em: string | null;
+  valor_centavos: number;
+}
+
+/**
+ * Situação do pagamento do pedido, pelo código que a cliente acabou de receber.
+ * A função do banco devolve só link e situação — nada de nome, telefone ou
+ * endereço, que é o motivo de esta tela nunca ter consultado o banco antes.
+ */
+export async function fetchOrderPayment(code: string): Promise<OrderPayment | null> {
+  const { data, error } = await supabase.rpc("store_order_payment", { p_code: code });
+  if (error) return null;
+  return (data as unknown as OrderPayment) ?? null;
+}
+
 /** Chama o provador. Os erros da função já vêm escritos para a cliente. */
 export async function tryOn(photo: string, productIds: string[]): Promise<string> {
   const { data, error } = await supabase.functions.invoke("store-try-on", {

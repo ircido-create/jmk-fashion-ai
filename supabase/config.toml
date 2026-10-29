@@ -8,3 +8,8 @@ verify_jwt = false
 
 [functions.relatorio-baixas]
 verify_jwt = false
+
+# Chamada pela InfinitePay: sem JWT. A autorização é a chave na URL
+# (?k=) e, principalmente, a confirmação em /payment_check.
+[functions.infinitepay-webhook]
+verify_jwt = false

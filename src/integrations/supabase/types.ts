@@ -479,6 +479,47 @@ export type Database = {
           },
         ]
       }
+      payment_charges: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          customer_id: string | null
+          description: string
+          id: string
+          last_error: string | null
+          link_expires_at: string | null
+          link_url: string | null
+          order_id: string
+          order_nsu: string
+          paid_at: string | null
+          paid_cents: number | null
+          provider: string
+          provider_slug: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      payment_transactions: {
+        Row: {
+          amount_cents: number | null
+          charge_id: string
+          created_at: string
+          id: string
+          installments: number | null
+          paid_amount_cents: number | null
+          payment_method: string | null
+          provider: string
+          provider_payload: Json | null
+          status: string
+          transaction_nsu: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       pre_sale_items: {
         Row: {
           code: string | null
@@ -1098,6 +1139,8 @@ export type Database = {
           id: boolean
           order_alert_whatsapp: string | null
           order_confirm_customer: boolean
+          payment_link_enabled: boolean
+          payment_link_hours: number
           pickup_address: string | null
           updated_at: string
           whatsapp: string | null
@@ -1107,6 +1150,8 @@ export type Database = {
           id?: boolean
           order_alert_whatsapp?: string | null
           order_confirm_customer?: boolean
+          payment_link_enabled?: boolean
+          payment_link_hours?: number
           pickup_address?: string | null
           updated_at?: string
           whatsapp?: string | null
@@ -1116,6 +1161,8 @@ export type Database = {
           id?: boolean
           order_alert_whatsapp?: string | null
           order_confirm_customer?: boolean
+          payment_link_enabled?: boolean
+          payment_link_hours?: number
           pickup_address?: string | null
           updated_at?: string
           whatsapp?: string | null
@@ -1557,6 +1604,14 @@ export type Database = {
           price: number
           variants: Json
         }[]
+      }
+      store_charge_open: {
+        Args: { p_order_id: string }
+        Returns: Json
+      }
+      store_order_payment: {
+        Args: { p_code: string }
+        Returns: Json
       }
       store_place_order: {
         Args: { p_items: Json; p_order: Json }
