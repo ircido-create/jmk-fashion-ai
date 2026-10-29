@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
 
 /** Avisa a cliente e a loja de que o pagamento entrou. */
 async function avisarPagamento(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient<any, "public", any>,
   orderId: string,
   centavos: number,
 ) {
