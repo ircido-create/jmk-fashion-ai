@@ -3,8 +3,8 @@
 -- Roda no editor SQL e DESFAZ TUDO no fim (o RAISE EXCEPTION final derruba a
 -- transação inteira). Nenhum pedido, cliente, venda ou mensagem sobra.
 --
--- session_replication_role = replica desliga os gatilhos durante o teste: sem
--- isso o pedido de mentira dispararia o aviso de WhatsApp de verdade.
+-- O gatilho do aviso fica desligado durante o teste: sem isso o pedido de
+-- mentira dispararia uma mensagem de WhatsApp de verdade. O rollback religa.
 --
 -- O que está sendo provado:
 --   1. abrir a cobrança duas vezes não cria duas cobranças;
@@ -24,7 +24,7 @@ DECLARE
   v_sale   uuid;
   v_falhas text := '';
 BEGIN
-  SET LOCAL session_replication_role = replica;
+  ALTER TABLE store_orders DISABLE TRIGGER trg_store_order_notify;
 
   INSERT INTO store_orders (code, status, customer_name, customer_phone, delivery_method, total)
   VALUES ('TST999', 'novo', 'CLIENTE DE TESTE', '5511999999999', 'retirada', 150.00)
