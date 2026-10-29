@@ -389,6 +389,78 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_charges: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          customer_id: string | null
+          description: string
+          id: string
+          last_error: string | null
+          link_expires_at: string | null
+          link_url: string | null
+          order_id: string
+          order_nsu: string
+          paid_at: string | null
+          paid_cents: number | null
+          provider: string
+          provider_slug: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          customer_id?: string | null
+          description: string
+          id?: string
+          last_error?: string | null
+          link_expires_at?: string | null
+          link_url?: string | null
+          order_id: string
+          order_nsu: string
+          paid_at?: string | null
+          paid_cents?: number | null
+          provider?: string
+          provider_slug?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          customer_id?: string | null
+          description?: string
+          id?: string
+          last_error?: string | null
+          link_expires_at?: string | null
+          link_url?: string | null
+          order_id?: string
+          order_nsu?: string
+          paid_at?: string | null
+          paid_cents?: number | null
+          provider?: string
+          provider_slug?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_charges_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_charges_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "store_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_proofs: {
         Row: {
           ai_amount: number | null
@@ -479,29 +551,6 @@ export type Database = {
           },
         ]
       }
-      payment_charges: {
-        Row: {
-          amount_cents: number
-          created_at: string
-          customer_id: string | null
-          description: string
-          id: string
-          last_error: string | null
-          link_expires_at: string | null
-          link_url: string | null
-          order_id: string
-          order_nsu: string
-          paid_at: string | null
-          paid_cents: number | null
-          provider: string
-          provider_slug: string | null
-          status: string
-          updated_at: string
-        }
-        Insert: never
-        Update: never
-        Relationships: []
-      }
       payment_transactions: {
         Row: {
           amount_cents: number | null
@@ -516,8 +565,76 @@ export type Database = {
           status: string
           transaction_nsu: string
         }
-        Insert: never
-        Update: never
+        Insert: {
+          amount_cents?: number | null
+          charge_id: string
+          created_at?: string
+          id?: string
+          installments?: number | null
+          paid_amount_cents?: number | null
+          payment_method?: string | null
+          provider?: string
+          provider_payload?: Json | null
+          status: string
+          transaction_nsu: string
+        }
+        Update: {
+          amount_cents?: number | null
+          charge_id?: string
+          created_at?: string
+          id?: string
+          installments?: number | null
+          paid_amount_cents?: number | null
+          payment_method?: string | null
+          provider?: string
+          provider_payload?: Json | null
+          status?: string
+          transaction_nsu?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_transactions_charge_id_fkey"
+            columns: ["charge_id"]
+            isOneToOne: false
+            referencedRelation: "payment_charges"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_webhook_events: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          event_key: string
+          event_type: string | null
+          id: string
+          payload: Json
+          processed_at: string | null
+          processing_status: string
+          provider: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          event_key: string
+          event_type?: string | null
+          id?: string
+          payload: Json
+          processed_at?: string | null
+          processing_status?: string
+          provider?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          event_key?: string
+          event_type?: string | null
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          processing_status?: string
+          provider?: string
+        }
         Relationships: []
       }
       pre_sale_items: {
@@ -1002,6 +1119,41 @@ export type Database = {
           target_key?: string
         }
         Relationships: []
+      }
+      store_order_alerts: {
+        Row: {
+          created_at: string
+          destino: string
+          id: number
+          kind: string
+          order_id: string
+          request_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          destino: string
+          id?: number
+          kind: string
+          order_id: string
+          request_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          destino?: string
+          id?: number
+          kind?: string
+          order_id?: string
+          request_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_order_alerts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "store_orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       store_order_items: {
         Row: {
@@ -1607,12 +1759,54 @@ export type Database = {
       }
       store_charge_open: {
         Args: { p_order_id: string }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          customer_id: string | null
+          description: string
+          id: string
+          last_error: string | null
+          link_expires_at: string | null
+          link_url: string | null
+          order_id: string
+          order_nsu: string
+          paid_at: string | null
+          paid_cents: number | null
+          provider: string
+          provider_slug: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "payment_charges"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      store_charge_set_link: {
+        Args: {
+          p_charge_id: string
+          p_error?: string
+          p_expires?: string
+          p_slug?: string
+          p_url: string
+        }
+        Returns: undefined
+      }
+      store_charge_settle: {
+        Args: {
+          p_charge_id: string
+          p_installments?: number
+          p_method?: string
+          p_paid_cents: number
+          p_payload?: Json
+          p_status: string
+          p_transaction_nsu: string
+        }
         Returns: Json
       }
-      store_order_payment: {
-        Args: { p_code: string }
-        Returns: Json
-      }
+      store_order_payment: { Args: { p_code: string }; Returns: Json }
       store_place_order: {
         Args: { p_items: Json; p_order: Json }
         Returns: Json
