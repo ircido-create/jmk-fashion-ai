@@ -8,7 +8,7 @@
 //
 // A URL ainda carrega ?k=<store_payment_secret> para filtrar ruído antes de
 // gastar uma consulta, mas isso é um filtro, não a prova.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getSecret, secretsMatch } from "../_shared/secrets.ts";
 
 const corsHeaders = {
