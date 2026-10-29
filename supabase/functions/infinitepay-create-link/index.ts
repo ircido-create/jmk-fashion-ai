@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
 
     const { data: order } = await admin
       .from("store_orders")
-      .select("code, customer_name, customer_phone, customer_email, total")
+      .select("code, customer_name, customer_phone, customer_email, total, delivery_method")
       .eq("id", order_id)
       .maybeSingle();
     if (!order) return json({ error: "Pedido não encontrado" }, 404);
@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
           p_url: null,
           p_error: "InfinitePay não configurada (INFINITEPAY_API_KEY / INFINITEPAY_HANDLE)",
         });
+        if (enviar_whatsapp) await confirmarSemLink(admin, order, order_id);
         return json({ error: "InfinitePay não configurada" }, 503);
       }
 
@@ -158,6 +159,7 @@ Deno.serve(async (req) => {
           p_url: null,
           p_error: detalhe,
         });
+        if (enviar_whatsapp) await confirmarSemLink(admin, order, order_id);
         return json({ error: "Não foi possível gerar o link agora.", detalhe }, 502);
       }
 
@@ -177,6 +179,7 @@ Deno.serve(async (req) => {
         const detalhe = `Resposta sem URL: ${texto.slice(0, 300)}`;
         console.error("[infinitepay]", detalhe);
         await admin.rpc("store_charge_set_link", { p_charge_id: charge.id, p_url: null, p_error: detalhe });
+        if (enviar_whatsapp) await confirmarSemLink(admin, order, order_id);
         return json({ error: "A InfinitePay não devolveu o link.", detalhe }, 502);
       }
 
@@ -199,6 +202,7 @@ Deno.serve(async (req) => {
         telefone: String(order.customer_phone ?? ""),
         valor: charge.amount_cents,
         link,
+        entrega: order.delivery_method,
       });
     }
 
@@ -210,9 +214,33 @@ Deno.serve(async (req) => {
   }
 });
 
+/**
+ * A InfinitePay falhou, mas o pedido existe e as peças saíram do estoque: a
+ * cliente não pode ficar sem notícia. Recebe a confirmação de sempre, e a loja
+ * combina o pagamento como fazia antes.
+ */
+async function confirmarSemLink(
+  admin: ReturnType<typeof createClient>,
+  order: { code: string; customer_name: string; customer_phone: string; delivery_method?: string },
+  orderId: string,
+): Promise<boolean> {
+  return await mandarWhatsApp(admin, {
+    order_id: orderId,
+    code: order.code,
+    nome: String(order.customer_name ?? ""),
+    telefone: String(order.customer_phone ?? ""),
+    valor: 0,
+    link: null,
+    entrega: order.delivery_method ?? "retirada",
+  });
+}
+
 async function mandarWhatsApp(
   admin: ReturnType<typeof createClient>,
-  p: { order_id: string; code: string; nome: string; telefone: string; valor: number; link: string },
+  p: {
+    order_id: string; code: string; nome: string; telefone: string;
+    valor: number; link: string | null; entrega?: string;
+  },
 ): Promise<boolean> {
   const device = await getSecret("BUBBLEWHATS_DEVICE_ID", "bubblewhats_device_id");
   const token = await getSecret("BUBBLEWHATS_TOKEN", "bubblewhats_token");
@@ -249,7 +277,7 @@ async function mandarWhatsApp(
     }
     await admin.from("store_order_alerts").insert({
       order_id: p.order_id,
-      kind: "link-pagamento",
+      kind: p.link ? "link-pagamento" : "cliente",
       destino: jid,
     });
     return true;
