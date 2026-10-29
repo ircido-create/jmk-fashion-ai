@@ -8,7 +8,7 @@
 //
 // A URL ainda carrega ?k=<store_payment_secret> para filtrar ruído antes de
 // gastar uma consulta, mas isso é um filtro, não a prova.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getSecret, secretsMatch } from "../_shared/secrets.ts";
 
 const corsHeaders = {
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
 
 /** Avisa a cliente e a loja de que o pagamento entrou. */
 async function avisarPagamento(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient<any, "public", any>,
   orderId: string,
   centavos: number,
 ) {
