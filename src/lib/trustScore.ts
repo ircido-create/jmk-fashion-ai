@@ -5,7 +5,7 @@ export interface ReceivableLike {
   id: string;
   amount: number | string;
   due_date: string; // YYYY-MM-DD
-  status: "pendente" | "pago" | "atrasado" | string;
+  status: "pendente" | "pago" | "vencido" | "cancelado" | string;
   paid_at: string | null;
 }
 
@@ -59,10 +59,19 @@ export function calculateTrust(receivables: ReceivableLike[]): TrustReport {
   let worstOverdueDays = 0;
   let totalOverdueAmount = 0;
   let totalLateDays = 0;
+  let contadas = 0;
 
   const now = today();
 
   for (const r of receivables) {
+    // Parcela cancelada não é dívida nem histórico de pagamento: some de uma
+    // renegociação, de uma devolução ou de um acerto, e o valor dela já está
+    // em outro lugar. Antes caía no "ainda em aberto" junto com as pendentes,
+    // e aparecia na tela do cliente como vencida — cobrando duas vezes o mesmo
+    // dinheiro e derrubando a nota de quem não devia nada.
+    if (r.status === "cancelado") continue;
+    contadas++;
+
     const due = new Date(r.due_date + "T00:00:00");
     const amount = Number(r.amount) || 0;
 
@@ -113,7 +122,7 @@ export function calculateTrust(receivables: ReceivableLike[]): TrustReport {
     score,
     level,
     label,
-    totalCount: receivables.length,
+    totalCount: contadas,
     paidOnTime,
     paidLate,
     openOverdue,
