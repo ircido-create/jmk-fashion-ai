@@ -71,3 +71,23 @@ describe("Nota de confiança do cliente", () => {
     expect(r.score).toBeGreaterThanOrEqual(90);
   });
 });
+
+describe("Data da parcela na tela", () => {
+  it("data pura não volta um dia por causa do fuso", async () => {
+    const { fmtDate } = await import("@/lib/utils");
+    // Caso CIDA ARLETE: parcela de 20/11/2026 aparecia como 19/11.
+    expect(fmtDate("2026-11-20")).toBe("20/11/2026");
+    expect(fmtDate("2027-01-20")).toBe("20/01/2027");
+    expect(fmtDate("2026-01-01")).toBe("01/01/2026");
+  });
+
+  it("data com hora continua sendo respeitada", async () => {
+    const { fmtDate } = await import("@/lib/utils");
+    expect(fmtDate("2026-11-20T15:30:00-03:00")).toBe("20/11/2026");
+  });
+
+  it("sem data, mostra um traço", async () => {
+    const { fmtDate } = await import("@/lib/utils");
+    expect(fmtDate(null)).toBe("—");
+  });
+});

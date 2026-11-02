@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
-import { fmtBRL } from "@/lib/utils";
+import { fmtBRL, fmtDate } from "@/lib/utils";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -46,7 +46,6 @@ interface CartItem {
   maxQty: number;
 }
 
-const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 type PaySimple = "pix" | "dinheiro" | "credito" | "debito" | "link" | "fiado";

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { fmtBRL } from "@/lib/utils";
+import { fmtBRL, fmtDate } from "@/lib/utils";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Mail, MapPin, Phone, ShoppingBag, TrendingDown, TrendingUp, IdCard, Wallet, CheckCircle2 } from "lucide-react";
@@ -35,7 +35,6 @@ interface Receivable {
   receivable_payments?: { amount_paid: number }[];
 }
 
-const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -292,7 +291,7 @@ export default function CustomerDetail() {
 
             <div className="space-y-2">
               {pendingReceivables.map((r) => {
-                const overdue = new Date(r.due_date) < new Date(new Date().toDateString());
+                const overdue = new Date(`${r.due_date}T12:00:00`) < new Date(new Date().toDateString());
                 return (
                   <label
                     key={r.id}
