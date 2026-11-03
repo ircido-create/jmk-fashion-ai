@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { salvarPdf } from "@/lib/savePdf";
 import * as XLSX from "xlsx";
 
 // ---------- tipos ----------
@@ -422,7 +423,7 @@ export default function ReceivableReports() {
     doc.text(`Total original: ${brl(kpis.totalOriginal)}`, 14, y);
     doc.text(`Recebido: ${brl(kpis.totalPago)}`, 80, y);
     doc.text(`Saldo em aberto: ${brl(kpis.totalAberto)}`, 150, y);
-    doc.save(`contas-a-receber-analitico-${Date.now()}.pdf`);
+    salvarPdf(doc, `contas-a-receber-analitico-${Date.now()}.pdf`);
   }
 
   function exportSyntheticExcel() {

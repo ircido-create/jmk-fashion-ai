@@ -20,6 +20,7 @@ import {
 import { Download, FileSpreadsheet, Printer, Search, User as UserIcon, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { salvarPdf } from "@/lib/savePdf";
 import * as XLSX from "xlsx";
 
 type Customer = {
@@ -357,7 +358,7 @@ export default function Reports() {
       },
     });
 
-    doc.save(`relatorio-${selected.name.replace(/\s+/g, "_")}.pdf`);
+    salvarPdf(doc, `relatorio-${selected.name.replace(/\s+/g, "_")}.pdf`);
   }
 
   function exportExcel() {

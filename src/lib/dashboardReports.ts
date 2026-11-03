@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { salvarPdf } from "@/lib/savePdf";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { fetchAll } from "@/lib/fetchAll";
@@ -115,7 +116,7 @@ export function emitReportPdf({ title, subtitle, head, body, total, filename, su
   doc.setFont("helvetica", "bold");
   doc.text(`Total: ${brl(total)}  •  ${body.length} registro(s)`, 14, finalY);
 
-  doc.save(filename);
+  salvarPdf(doc, filename);
 }
 
 /** Agrupa registros por cliente somando os valores (ordem alfabética). */

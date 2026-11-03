@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { salvarPdf } from "@/lib/savePdf";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -105,7 +106,7 @@ export function exportReceivablePdf(rows: ReceivableRow[], filterLabel: string) 
   doc.setFont("helvetica", "bold");
   doc.text(`Total geral: ${fmtBRL(total)}`, 14, y + 2);
 
-  doc.save(`contas-a-receber-${Date.now()}.pdf`);
+  salvarPdf(doc, `contas-a-receber-${Date.now()}.pdf`);
 }
 
 export function exportPayablePdf(rows: PayableRow[], filterLabel: string) {
@@ -160,5 +161,5 @@ export function exportPayablePdf(rows: PayableRow[], filterLabel: string) {
   doc.setFont("helvetica", "bold");
   doc.text(`Total geral: ${fmtBRL(total)}`, 14, y + 2);
 
-  doc.save(`contas-a-pagar-${Date.now()}.pdf`);
+  salvarPdf(doc, `contas-a-pagar-${Date.now()}.pdf`);
 }
