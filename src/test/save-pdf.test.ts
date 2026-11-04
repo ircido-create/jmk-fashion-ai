@@ -16,9 +16,7 @@ const docFalso = (blob?: unknown) =>
 beforeEach(() => {
   toastSuccess.mockReset();
   toastError.mockReset();
-  // @ts-expect-error jsdom não implementa
   URL.createObjectURL = vi.fn(() => "blob:fake");
-  // @ts-expect-error jsdom não implementa
   URL.revokeObjectURL = vi.fn();
 });
 
