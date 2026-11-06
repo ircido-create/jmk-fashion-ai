@@ -14,6 +14,8 @@ export interface StoreProduct {
   name: string;
   description: string | null;
   price: number;
+  /** Preco "de", antes do desconto. Nulo quando nao ha oferta. */
+  compare_at_price: number | null;
   image_url: string;
   /** Galeria da peça; a capa (image_url) é a primeira. */
   images: string[];
@@ -88,3 +90,16 @@ export const displayName = (name: string) =>
   name.toLocaleLowerCase("pt-BR").replace(/(^|[\s(/-])(\p{L})/gu, (_, sep, ch) => sep + ch.toLocaleUpperCase("pt-BR"));
 
 export const onlyDigits = (s: string) => s.replace(/\D/g, "");
+
+/**
+ * A oferta de uma peca: o preco "de" e quanto economiza.
+ *
+ * So e oferta quando o "de" e maior que o preco cobrado — o banco ja devolve
+ * nulo nos outros casos, e a conferencia se repete aqui porque a vitrine nao
+ * pode anunciar desconto que nao existe.
+ */
+export const offerOf = (p: { price: number; compare_at_price: number | null }) => {
+  const de = p.compare_at_price;
+  if (de == null || de <= p.price) return null;
+  return { de, off: Math.round(((de - p.price) / de) * 100) };
+};

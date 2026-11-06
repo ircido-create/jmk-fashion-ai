@@ -17,6 +17,7 @@ export async function fetchCatalog(): Promise<StoreProduct[]> {
     name: p.name,
     description: p.description,
     price: Number(p.price),
+    compare_at_price: p.compare_at_price == null ? null : Number(p.compare_at_price),
     image_url: p.image_url,
     images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
     garment_type: isGarmentType(p.garment_type) ? p.garment_type : null,

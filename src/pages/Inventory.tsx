@@ -21,6 +21,8 @@ interface Product {
   id: string; name: string; description: string | null; category: string | null;
   sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
+  /** Preço "de" da loja virtual: aparece riscado ao lado do preço de venda. */
+  compare_at_price?: number | null;
   image_url?: string | null;
   /** Galeria da peça, em ordem; a primeira é a capa (espelha image_url). */
   images?: string[] | null;
@@ -39,6 +41,7 @@ const schema = z.object({
   description: z.string().trim().max(500).optional().or(z.literal("")),
   price: z.number().nonnegative(),
   cost: z.number().nonnegative(),
+  compare_at_price: z.number().nonnegative().nullable(),
   low_stock_threshold: z.number().int().nonnegative(),
 });
 
@@ -346,9 +349,20 @@ export default function Inventory() {
       description: f.get("description"),
       price: Number(f.get("price")),
       cost: Number(f.get("cost")),
+      // Campo vazio é "sem oferta", não zero.
+      compare_at_price: String(f.get("compare_at_price") ?? "").trim() === ""
+        ? null
+        : Number(f.get("compare_at_price")),
       low_stock_threshold: Number(f.get("low_stock_threshold") || 5),
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
+    // Anunciar "de" menor que o "por" é propaganda enganosa: a loja não mostra
+    // e o cadastro também não aceita, para ninguém achar que gravou.
+    const precoDe = parsed.data.compare_at_price;
+    if (precoDe !== null && precoDe > 0 && precoDe <= parsed.data.price) {
+      toast.error('O preço "De" precisa ser maior que o preço de venda.');
+      return;
+    }
     const payload = {
       name: parsed.data.name,
       sku: parsed.data.sku || null,
@@ -362,6 +376,7 @@ export default function Inventory() {
       // A capa continua em image_url: PDV, cupom e WhatsApp leem esse campo.
       image_url: photos[0] ?? null,
       price: parsed.data.price,
+      compare_at_price: precoDe && precoDe > 0 ? precoDe : null,
       cost: parsed.data.cost,
       low_stock_threshold: parsed.data.low_stock_threshold,
     };
@@ -526,6 +541,9 @@ export default function Inventory() {
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
+                    {p.compare_at_price != null && Number(p.compare_at_price) > Number(p.price) && (
+                      <span className="line-through mr-1">R$ {Number(p.compare_at_price).toFixed(2)}</span>
+                    )}
                     R$ {Number(p.price).toFixed(2)} • {totalQty(p)} em estoque
                   </div>
                   {p.product_variants && p.product_variants.length > 0 && (
@@ -582,10 +600,26 @@ export default function Inventory() {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div><Label>Preço (R$)</Label><Input name="price" type="number" step="0.01" defaultValue={editing?.price ?? 0} required className="glass-input" /></div>
+              <div>
+                <Label>De (R$)</Label>
+                <Input
+                  name="compare_at_price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="sem oferta"
+                  defaultValue={editing?.compare_at_price ?? ""}
+                  className="glass-input"
+                />
+              </div>
               <div><Label>Custo (R$)</Label><Input name="cost" type="number" step="0.01" defaultValue={editing?.cost ?? 0} className="glass-input" /></div>
             </div>
+            <p className="-mt-1 text-xs text-muted-foreground">
+              O preço <strong>De</strong> é o valor antigo, que aparece riscado na loja virtual
+              (&quot;De R$ 280,00 por R$ 196,00&quot;). Deixe em branco quando a peça não estiver em oferta.
+            </p>
             <div><Label>Descrição</Label><Textarea name="description" defaultValue={editing?.description ?? ""} className="glass-input" rows={2} /></div>
 
             {/* Galeria da peça: a primeira foto é a capa e vai para o PDV e a loja. */}

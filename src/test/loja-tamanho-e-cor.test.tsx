@@ -24,16 +24,18 @@ const variante = (over: Partial<StoreVariant> = {}): StoreVariant => ({
   id: "v1", size: null, color: null, quantity: 3, image_url: null, ...over,
 });
 
-const peca = (variants: StoreVariant[]): StoreProduct => ({
+const peca = (variants: StoreVariant[], over: Partial<StoreProduct> = {}): StoreProduct => ({
   id: "p1",
   name: "VESTIDO TUBO ELAINE",
   description: null,
   price: 150,
+  compare_at_price: null,
   image_url: "https://exemplo/foto.jpg",
   images: [],
   garment_type: "vestido",
   created_at: "2026-10-28T12:00:00Z",
   variants,
+  ...over,
 });
 
 const abrir = (p: StoreProduct) => {

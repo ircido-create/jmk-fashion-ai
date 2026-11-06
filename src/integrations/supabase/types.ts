@@ -811,6 +811,7 @@ export type Database = {
         Row: {
           active: boolean
           category: string | null
+          compare_at_price: number | null
           cost: number
           created_at: string
           description: string | null
@@ -830,6 +831,7 @@ export type Database = {
         Insert: {
           active?: boolean
           category?: string | null
+          compare_at_price?: number | null
           cost?: number
           created_at?: string
           description?: string | null
@@ -849,6 +851,7 @@ export type Database = {
         Update: {
           active?: boolean
           category?: string | null
+          compare_at_price?: number | null
           cost?: number
           created_at?: string
           description?: string | null
@@ -1746,6 +1749,7 @@ export type Database = {
       store_catalog: {
         Args: never
         Returns: {
+          compare_at_price: number | null
           created_at: string
           description: string
           garment_type: string

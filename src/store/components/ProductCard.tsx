@@ -2,12 +2,13 @@ import { Link } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { fmtBRL } from "@/lib/utils";
 import { GARMENT_PLURAL, regionOf } from "@/lib/garments";
-import { displayName, type StoreProduct } from "../types";
+import { displayName, offerOf, type StoreProduct } from "../types";
 
 export function ProductCard({ product, index = 0 }: { product: StoreProduct; index?: number }) {
   const canTryOn = !!regionOf(product.garment_type);
   const stock = product.variants.length ? product.variants.reduce((s, v) => s + v.quantity, 0) : null;
   const lowStock = stock !== null && stock <= 2;
+  const offer = offerOf(product);
 
   return (
     <Link
@@ -26,8 +27,9 @@ export function ProductCard({ product, index = 0 }: { product: StoreProduct; ind
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/55 to-transparent" />
         {/* Um contêiner só, com quebra de linha: em card estreito os dois selos
             lado a lado se sobrepunham. */}
-        {(canTryOn || lowStock) && (
+        {(canTryOn || lowStock || offer) && (
           <div className="absolute left-3 right-3 top-3 flex flex-wrap items-start gap-1.5">
+            {offer && <span className="s-badge s-badge-gold">-{offer.off}%</span>}
             {canTryOn && (
               <span className="s-badge s-badge-ai">
                 <Sparkles /> Provador IA
@@ -39,7 +41,12 @@ export function ProductCard({ product, index = 0 }: { product: StoreProduct; ind
       </div>
       <div className="mt-3 flex items-start justify-between gap-3">
         <h3 className="line-clamp-2 text-sm leading-snug">{displayName(product.name)}</h3>
-        <span className="whitespace-nowrap text-sm font-semibold tabular-nums s-gold">{fmtBRL(product.price)}</span>
+        <span className="whitespace-nowrap text-right text-sm font-semibold tabular-nums s-gold">
+          {offer && (
+            <span className="block text-[11px] font-normal line-through s-muted">{fmtBRL(offer.de)}</span>
+          )}
+          {fmtBRL(product.price)}
+        </span>
       </div>
       {product.garment_type && (
         <p className="s-eyebrow mt-1 !text-[10px]">{GARMENT_PLURAL[product.garment_type]}</p>

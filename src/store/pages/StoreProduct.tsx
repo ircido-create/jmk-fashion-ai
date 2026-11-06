@@ -6,7 +6,7 @@ import { fmtBRL } from "@/lib/utils";
 import { GARMENT_PLURAL, regionOf } from "@/lib/garments";
 import { useStore } from "../StoreContext";
 import { ProductCard } from "../components/ProductCard";
-import { MAX_QTY_PER_LINE, displayName } from "../types";
+import { MAX_QTY_PER_LINE, displayName, offerOf } from "../types";
 
 const uniq = <T,>(xs: T[]) => [...new Set(xs)];
 /** Variação sem cor/tamanho vira a opção "" — o picker some quando é a única. */
@@ -87,6 +87,7 @@ export default function StoreProduct() {
   const images = uniq([product.image_url, ...product.images, ...product.variants.map((v) => v.image_url)].filter(Boolean) as string[]);
   const shownImg = activeImg ?? product.image_url;
   const name = displayName(product.name);
+  const offer = offerOf(product);
 
   const handleAdd = () => {
     if (needsVariant && !variant) {
@@ -155,7 +156,22 @@ export default function StoreProduct() {
         <div className="lg:sticky lg:top-24 lg:self-start">
           {product.garment_type && <p className="s-eyebrow">{GARMENT_PLURAL[product.garment_type]}</p>}
           <h1 className="s-display mt-3 text-4xl sm:text-5xl">{name}</h1>
-          <p className="mt-5 text-3xl font-semibold tabular-nums s-gold">{fmtBRL(product.price)}</p>
+          {offer ? (
+            <div className="mt-5">
+              <p className="text-sm s-muted">
+                De <span className="tabular-nums line-through">{fmtBRL(offer.de)}</span> por
+              </p>
+              <p className="mt-1 flex flex-wrap items-baseline gap-3">
+                <span className="text-3xl font-semibold tabular-nums s-gold">{fmtBRL(product.price)}</span>
+                <span className="s-badge s-badge-gold">-{offer.off}%</span>
+              </p>
+              <p className="mt-1 text-xs s-muted">
+                Você economiza <span className="tabular-nums">{fmtBRL(offer.de - product.price)}</span>
+              </p>
+            </div>
+          ) : (
+            <p className="mt-5 text-3xl font-semibold tabular-nums s-gold">{fmtBRL(product.price)}</p>
+          )}
           {product.description && <p className="mt-6 leading-relaxed s-muted">{product.description}</p>}
 
           {hasColors && (
