@@ -67,6 +67,10 @@ beforeEach(() => {
   tabelas.product_variants = { data: [], error: null };
 });
 
+// As abas do Radix ativam no mousedown, não no click.
+const trocarAba = (nome: string) =>
+  fireEvent.mouseDown(screen.getByRole("tab", { name: nome }), { button: 0, ctrlKey: false });
+
 async function abrirPerguntaDaDivida(d: SaleDraft = rascunho()) {
   localStorage.setItem("pos_sale_draft_v1", JSON.stringify(d));
   render(<POS />);
@@ -117,6 +121,45 @@ describe("PDV — acordo com a dívida antiga", () => {
     const [nome, args] = rpc.mock.calls[0] as [string, { p_receivables: { amount: number }[] }];
     expect(nome).toBe("create_sale");
     expect(args.p_receivables.map((r) => r.amount)).toEqual([100, 100, 100]);
+  });
+
+  it("acordo aceito e depois PIX: a dívida antiga NÃO é encerrada", async () => {
+    // O furo de 06/11/2026: o operador somava a dívida ao acordo e em seguida
+    // trocava a forma de pagamento para PIX. A venda saía à vista, sem parcela
+    // nenhuma, mas a chamada continuava a do acordo — e a dívida velha era
+    // marcada como paga. A cliente deixava de dever R$ 450 de graça.
+    await abrirPerguntaDaDivida();
+    fireEvent.click(await screen.findByRole("button", { name: /Somar e refazer parcelas/ }));
+    await waitFor(() => expect(screen.queryByText("Cliente tem dívida em aberto")).toBeNull());
+
+    trocarAba("PIX");
+    fireEvent.click(await screen.findByRole("button", { name: /Finalizar venda/ }));
+    await waitFor(() => expect(rpc).toHaveBeenCalled());
+
+    const [nome, args] = rpc.mock.calls[0] as [string, {
+      p_total: number;
+      p_payment_method: string;
+      p_receivables: unknown[];
+      p_notes: string | null;
+    }];
+    expect(nome).toBe("create_sale");
+    expect(args.p_payment_method).toBe("pix");
+    expect(args.p_total).toBe(300);
+    expect(args.p_receivables).toEqual([]);
+    expect(args.p_notes ?? "").not.toContain("Acordo");
+  });
+
+  it("voltar para a carteira depois disso faz a pergunta de novo", async () => {
+    await abrirPerguntaDaDivida();
+    fireEvent.click(await screen.findByRole("button", { name: /Somar e refazer parcelas/ }));
+    await waitFor(() => expect(screen.queryByText("Cliente tem dívida em aberto")).toBeNull());
+
+    trocarAba("PIX");
+    trocarAba("Carteira");
+    fireEvent.click(await screen.findByRole("button", { name: /Finalizar venda/ }));
+
+    expect(await screen.findByText("Cliente tem dívida em aberto")).toBeInTheDocument();
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("vencimento que não existe no mês para a venda antes de tudo", async () => {

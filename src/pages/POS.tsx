@@ -297,8 +297,18 @@ export default function POS() {
     setDebtDialogOpen(false);
   }, [customerId]);
 
+  /**
+   * Esta venda gera parcelas? É o que decide se o acordo pode existir: sem
+   * parcela nova não há onde somar a dívida antiga — e encerrá-la de todo jeito
+   * apagaria o que a cliente deve sem nada em troca.
+   */
+  const geraParcelas = useMemo(
+    () => carteiraBase({ splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments }) !== null,
+    [splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments],
+  );
+
   // Dívida que entra no acordo — só vale enquanto a compra gerar parcelas.
-  const dividaSomada = mergeDebt ? Math.max(0, customerDebt ?? 0) : 0;
+  const dividaSomada = mergeDebt && geraParcelas ? Math.max(0, customerDebt ?? 0) : 0;
   /** O que será parcelado: a compra e, no acordo, a dívida antiga junto. */
   const valorCarteira = total + dividaSomada;
 
@@ -307,6 +317,17 @@ export default function POS() {
     () => carteiraBase({ splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments, dividaSomada }),
     [splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments, dividaSomada],
   );
+
+  // Acordo aceito e, depois, a forma de pagamento mudou para uma que não
+  // parcela (PIX, dinheiro, débito, crédito sem carteira): o acordo cai aqui e
+  // a pergunta volta a valer, senão a venda sairia à vista e a dívida antiga
+  // seria encerrada junto, de graça.
+  useEffect(() => {
+    if (!mergeDebt || geraParcelas) return;
+    setMergeDebt(false);
+    setDebtAsked(false);
+    toast.info("Acordo desfeito: esta forma de pagamento não gera parcelas. A dívida anterior continua em aberto.");
+  }, [mergeDebt, geraParcelas]);
   const generatedInstallments = useMemo(
     () => installmentAmounts(carteira, manualInstallments, isAdjustingInstallments).map((amount, index) => ({ index, amount })),
     [carteira, manualInstallments, isAdjustingInstallments],
@@ -395,6 +416,10 @@ export default function POS() {
       return;
     }
 
+    // Acordo só existe quando esta venda gera parcelas. Venda à vista com o
+    // acordo ligado encerraria a dívida antiga sem criar parcela nenhuma.
+    const comAcordo = mergeDebt && geraCarteira;
+
     setSaving(true);
     try {
       // Revalida o cliente no banco — evita FK violation se o cadastro foi removido/mesclado
@@ -434,7 +459,7 @@ export default function POS() {
               (generatedInstallments.length === 1
                 ? `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} — ${cart.length} item(ns)`
                 : `${PAYMENT_LABELS[splitMode ? "fiado" : paymentMethod]} (${i + 1}/${generatedInstallments.length}) — ${cart.length} item(ns)`)
-              + (mergeDebt ? " — acordo com dívida anterior" : ""),
+              + (comAcordo ? " — acordo com dívida anterior" : ""),
             status: "pendente",
           });
         }
@@ -444,7 +469,7 @@ export default function POS() {
       const splitNote = splitMode
         ? "Misto: " + splits.map((s) => `${PAYMENT_LABELS[s.method]} ${fmtBRL(s.amount)}`).join(" + ")
         : "";
-      const acordoNote = mergeDebt
+      const acordoNote = comAcordo
         ? `Acordo: dívida anterior de ${fmtBRL(dividaSomada)} somada a esta compra (total parcelado ${fmtBRL(valorCarteira)})`
         : "";
       const discountNote =
@@ -502,7 +527,7 @@ export default function POS() {
         })),
         p_receivables: records,
       };
-      const { data: saleId, error: saleErr } = mergeDebt
+      const { data: saleId, error: saleErr } = comAcordo
         ? await supabase.rpc("create_sale_renegociando", argsVenda)
         : await supabase.rpc("create_sale", argsVenda);
       if (saleErr) throw saleErr;
