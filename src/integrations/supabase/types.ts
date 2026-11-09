@@ -1731,6 +1731,7 @@ export type Database = {
         Args: { qty: number; variant_id: string }
         Returns: number
       }
+      is_staff: { Args: never; Returns: boolean }
       merge_customers: {
         Args: { p_drop: string; p_keep: string }
         Returns: Json
@@ -1749,7 +1750,7 @@ export type Database = {
       store_catalog: {
         Args: never
         Returns: {
-          compare_at_price: number | null
+          compare_at_price: number
           created_at: string
           description: string
           garment_type: string
