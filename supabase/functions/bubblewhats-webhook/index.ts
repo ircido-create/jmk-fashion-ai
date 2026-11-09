@@ -322,8 +322,9 @@ async function analyzeAndSavePaymentProof(opts: {
     {
       type: "text",
       text: `Analise este arquivo enviado por uma cliente no WhatsApp e diga se é um comprovante de pagamento (PIX, transferência, boleto). Responda APENAS com um JSON válido no formato:
-{"is_payment_proof": boolean, "amount": number|null, "payer_name": string|null, "bank": string|null, "transaction_id": string|null, "summary": string}
+{"is_payment_proof": boolean, "amount": number|null, "payer_name": string|null, "bank": string|null, "transaction_id": string|null, "paid_at": string|null, "summary": string}
 - amount em reais (número, sem R$).
+- paid_at: data e hora do pagamento IMPRESSAS no comprovante, em ISO 8601 com fuso -03:00 (ex.: 2026-11-09T15:43:52-03:00). Se o comprovante não mostrar data (por exemplo telas que só dizem 'Agora'), devolva null. Nunca invente nem use a data de hoje.
 - summary curto em português (1 frase).
 - Se não for comprovante, is_payment_proof=false e explique brevemente no summary.`
     },
@@ -368,6 +369,21 @@ async function analyzeAndSavePaymentProof(opts: {
     console.log("Ignorado (não é comprovante):", (parsed.summary ?? "").slice(0, 120));
     await registrarLeitura(opts, "nao_comprovante", { valor: parsed.amount ?? null, resumo: parsed.summary ?? null });
   } else {
+    // paid_at vem da IA: só é aceito se for data/hora válida e não futura.
+    // Data futura ou ilegível é tratada como ausente (o banco mantém o default).
+    const paidAtRaw = typeof parsed.paid_at === "string" ? parsed.paid_at.trim() : "";
+    let paidAt: string | undefined;
+    if (paidAtRaw) {
+      const dt = new Date(paidAtRaw);
+      if (Number.isNaN(dt.getTime())) {
+        console.warn("paid_at ilegível, tratando como ausente:", paidAtRaw.slice(0, 60));
+      } else if (dt.getTime() > Date.now() + 5 * 60 * 1000) {
+        console.warn("paid_at no futuro, tratando como ausente:", paidAtRaw.slice(0, 60));
+      } else {
+        paidAt = dt.toISOString();
+      }
+    }
+
     const { data: inserted, error } = await supabase.from("payment_proofs").insert({
       storage_path: opts.mediaPath,
       bucket: "whatsapp-media",
@@ -384,6 +400,7 @@ async function analyzeAndSavePaymentProof(opts: {
       ai_transaction_id: parsed.transaction_id ?? null,
       ai_summary: parsed.summary ?? null,
       description: parsed.summary ?? null,
+      payment_date: paidAt,
     }).select("id").single();
     if (error) {
       console.error("payment_proofs insert err:", error);
