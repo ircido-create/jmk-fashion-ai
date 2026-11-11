@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 type AppRole = "admin" | "vendedor";
 
@@ -47,12 +48,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles(data.map((r) => r.role as AppRole));
   };
 
+  /**
+   * Confere se o acesso continua liberado.
+   *
+   * A chave "ativo" da tela de Usuários bloqueia o login e derruba a sessão no
+   * banco, mas o token que já está no navegador vale até vencer (cerca de uma
+   * hora). Esta conferência fecha essa janela: quem foi desativado sai do
+   * sistema na primeira vez que o aplicativo carrega, com explicação.
+   *
+   * Erro de rede não expulsa ninguém — só o "false" vindo do banco expulsa.
+   */
+  const conferirAcesso = async (uid: string, tentativa = 1): Promise<void> => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("active")
+      .eq("id", uid)
+      .maybeSingle();
+
+    if (error) {
+      if (tentativa < 3) {
+        await new Promise((r) => setTimeout(r, tentativa * 500));
+        return conferirAcesso(uid, tentativa + 1);
+      }
+      console.error("[AuthContext] não foi possível conferir o acesso:", error.message);
+      return;
+    }
+
+    if (data && data.active === false) {
+      toast.error("Seu acesso foi desativado. Procure a administração da loja.");
+      await supabase.auth.signOut();
+    }
+  };
+
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
       setSession(sess);
       setUser(sess?.user ?? null);
       if (sess?.user) {
-        setTimeout(() => loadRoles(sess.user.id), 0);
+        setTimeout(() => {
+          loadRoles(sess.user.id);
+          conferirAcesso(sess.user.id);
+        }, 0);
       } else {
         setRoles([]);
       }
@@ -63,7 +99,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ data: { session: sess } }) => {
         setSession(sess);
         setUser(sess?.user ?? null);
-        if (sess?.user) loadRoles(sess.user.id);
+        if (sess?.user) {
+          loadRoles(sess.user.id);
+          conferirAcesso(sess.user.id);
+        }
       })
       .catch((e) => {
         // Sem este catch, uma rejeição aqui deixava `loading` em true para

@@ -56,7 +56,16 @@ export default function Auth() {
     const { error } = await supabase.auth.signInWithPassword(parsed.data);
     setLoading(false);
     if (error) {
-      toast.error(error.message === "Invalid login credentials" ? "E-mail ou senha incorretos" : error.message);
+      // Conta desativada na tela de Usuários: o Supabase recusa o login com
+      // "User is banned", que não diz nada a quem está na frente da tela.
+      const desativada = /banned/i.test(error.message) || (error as { code?: string }).code === "user_banned";
+      toast.error(
+        desativada
+          ? "Seu acesso foi desativado. Procure a administração da loja."
+          : error.message === "Invalid login credentials"
+            ? "E-mail ou senha incorretos"
+            : error.message,
+      );
       return;
     }
     toast.success("Bem-vinda de volta!");

@@ -42,9 +42,28 @@ export default function Users() {
 
   useEffect(() => { load(); }, []);
 
+  /**
+   * Liga e desliga o acesso da pessoa.
+   *
+   * A chave já grava profiles.active, mas quem corta o acesso é o banco: ao
+   * desligar, o login passa a ser recusado e a sessão aberta é derrubada; ao
+   * religar, volta tudo (migração 20261112010000). Antes disso, este botão não
+   * bloqueava nada — a pessoa "desativada" continuava entrando.
+   */
   const toggleActive = async (u: UserRow) => {
+    const desativando = u.active;
     const { error } = await supabase.from("profiles").update({ active: !u.active }).eq("id", u.id);
-    if (error) toast.error(error.message); else { toast.success("Atualizado"); load(); }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    const nome = u.full_name || u.email || "A conta";
+    toast.success(
+      desativando
+        ? `${nome} não entra mais no sistema, e a sessão aberta foi encerrada.`
+        : `${nome} voltou a ter acesso.`,
+    );
+    load();
   };
 
   const setRole = async (u: UserRow, role: "admin" | "vendedor") => {
@@ -154,7 +173,8 @@ export default function Users() {
           </div>
         )}
         <p className="text-xs text-muted-foreground mt-4">
-          Para criar novos usuários, peça que se cadastrem na tela de login. Você pode então definir o papel e ativar/desativar o acesso aqui.
+          Novos usuários são criados aqui, no botão “Novo usuário” — o cadastro pela tela de login está fechado.
+          Desligar a chave “Ativo” corta o acesso na hora: a pessoa não consegue mais entrar e a sessão aberta dela é encerrada. Religar devolve o acesso.
         </p>
       </GlassCard>
 
