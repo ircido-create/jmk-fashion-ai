@@ -138,6 +138,13 @@ Deno.serve(async (req) => {
           single_payment: true,
           valid_until: charge.link_expires_at,
           payment_methods_enabled: ["credit_card", "pix"],
+          // Quem paga a taxa do cartao: a loja assume ate esta parcela, o
+          // cliente paga da proxima em diante. Com 1, quem passa no credito
+          // a vista ve o valor cheio da compra, sem acrescimo — e a partir
+          // de 2x o juro aparece para ela. Sem este campo a InfinitePay
+          // repassa a taxa ja na 1x: no teste de 29/10 uma compra de
+          // R$ 10,00 foi cobrada da cliente por R$ 10,44.
+          assured_installments: 1,
         };
       }
 
