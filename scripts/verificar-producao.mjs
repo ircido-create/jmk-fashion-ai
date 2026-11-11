@@ -22,7 +22,18 @@ if (!projectId) {
 const base = `https://${projectId}.supabase.co/functions/v1`;
 
 // Públicas de propósito, ou protegidas por segredo próprio (não testar sem login).
-const PUBLICAS = new Set(["bubblewhats-webhook", "dunning-cron", "store-try-on"]);
+//
+// infinitepay-webhook responde 200 a quem chega sem a chave de propósito: é
+// aviso de provedor, não tem login, e responder 401 só diria ao curioso que ele
+// acertou a URL. Sem a chave certa em ?k= ela não processa nada, e mesmo com a
+// chave só dá o pedido por pago depois de confirmar em /payment_check com a
+// InfinitePay. O teste sem login acusava isso como falha desde 29/10.
+const PUBLICAS = new Set([
+  "bubblewhats-webhook",
+  "dunning-cron",
+  "store-try-on",
+  "infinitepay-webhook",
+]);
 
 const funcoes = readdirSync("supabase/functions", { withFileTypes: true })
   .filter((d) => d.isDirectory() && !d.name.startsWith("_"))
