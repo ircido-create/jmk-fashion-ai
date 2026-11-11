@@ -12,19 +12,24 @@
 -- qualquer pessoa que abra o site e leia o JavaScript. É o aviso "Anyone can
 -- read every record in store_settings" da varredura de segurança do Lovable.
 --
--- O QUE MUDA. Regra de linha continua a mesma (a loja lê a configuração); o que
--- se fecha é o acesso por COLUNA para quem não tem login. Quem está logado
+-- O QUE MUDA. A regra de linha continua a mesma (a loja lê a configuração); o
+-- que se fecha é o acesso por COLUNA para quem não tem login. Quem está logado
 -- (equipe) continua vendo tudo, inclusive a tela de Pedidos da loja.
 --
--- A loja já pede só as três colunas públicas (src/store/api.ts, fetchStoreSettings),
--- então nada na vitrine muda.
-REVOKE SELECT (order_alert_whatsapp, order_confirm_customer,
-               payment_link_enabled, payment_link_hours)
-  ON public.store_settings FROM anon;
+-- COMO. Privilégio de coluna não anula privilégio de tabela: enquanto o anon
+-- tiver SELECT na tabela inteira, revogar coluna a coluna não muda nada (a
+-- primeira tentativa desta migração falhou exatamente aí). O caminho é tirar o
+-- SELECT da tabela e devolver só o das três colunas públicas.
+--
+-- A loja já pede só essas três (src/store/api.ts, fetchStoreSettings), então
+-- nada na vitrine muda.
+REVOKE SELECT ON public.store_settings FROM anon;
+GRANT  SELECT (whatsapp, pickup_address, delivery_note)
+  ON public.store_settings TO anon;
 
--- Escrita sem login nunca foi permitida pela regra de linha; aqui fecha também
--- o privilégio, para não depender de uma regra só.
-REVOKE INSERT, UPDATE, DELETE ON public.store_settings FROM anon;
+-- Escrever sem login nunca foi permitido pela regra de linha, mas o privilégio
+-- estava lá. Some também, para não depender de uma camada só.
+REVOKE UPDATE, TRUNCATE, REFERENCES, TRIGGER ON public.store_settings FROM anon;
 
 DO $confere$
 BEGIN
@@ -37,7 +42,9 @@ BEGIN
 
   -- e não pode mais ler as internas
   IF has_column_privilege('anon', 'public.store_settings', 'order_alert_whatsapp', 'SELECT')
-     OR has_column_privilege('anon', 'public.store_settings', 'payment_link_enabled', 'SELECT') THEN
+     OR has_column_privilege('anon', 'public.store_settings', 'payment_link_enabled', 'SELECT')
+     OR has_column_privilege('anon', 'public.store_settings', 'payment_link_hours', 'SELECT')
+     OR has_column_privilege('anon', 'public.store_settings', 'order_confirm_customer', 'SELECT') THEN
     RAISE EXCEPTION 'As colunas internas continuam legíveis sem login.';
   END IF;
 
