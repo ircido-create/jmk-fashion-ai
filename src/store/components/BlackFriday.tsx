@@ -26,7 +26,7 @@ export function BlackFridayStrip() {
         <span className="font-bold uppercase tracking-[0.22em] s-gold">Esquenta Black Friday</span>
         <span className="s-muted">10% a 50% OFF em peças selecionadas</span>
         <span className="hidden s-muted sm:inline">·</span>
-        <span className="s-muted">PIX ou até 5x</span>
+        <span className="s-muted">PIX ou cartão de crédito</span>
       </div>
     </div>
   );
@@ -57,9 +57,13 @@ export function BlackFridayHero() {
 
           <div className="mt-8 rounded-2xl border border-[color:var(--s-line)] bg-black/30 px-5 py-4">
             <p className="text-base font-semibold sm:text-lg">
-              Pague com <span className="s-gold">PIX</span> ou parcele em até <span className="s-gold">5x</span>
+              Pague com <span className="s-gold">PIX</span> ou parcele no{" "}
+              <span className="s-gold">cartão de crédito</span>
             </p>
-            <p className="mt-1 text-xs s-muted">Parcelamento com juros para o cliente.</p>
+            <p className="mt-1 text-xs s-muted">
+              1x no crédito sem juros, por conta da loja. A partir de 2x, os juros do cartão
+              ficam por conta do cliente.
+            </p>
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
