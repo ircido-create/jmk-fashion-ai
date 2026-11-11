@@ -6,10 +6,14 @@
 -- 11/11, e Sandra Prima, para 12/11): se ninguém lembra, a cliente nunca mais
 -- é cobrada; se alguém lembra tarde, a loja perde dias de cobrança.
 --
--- O QUE MUDA. Nasce a coluna dunning_paused_until: a data em que a cobrança
--- volta sozinha. Uma rotina diária, meia hora antes da cobrança das 10h,
--- religa quem chegou no dia. Quem for pausado sem data continua pausado até
--- alguém religar na mão, como é hoje — nada muda para esses.
+-- O QUE MUDA AQUI. Nasce a coluna dunning_paused_until (a data em que a
+-- cobrança volta) e a função que religa quem chegou nela. Esta migração NÃO
+-- agenda nada: a função só roda se alguém a chamar. Quem liga o despertador
+-- diário é a migração seguinte, separada de propósito, porque criar rotina
+-- que roda todo dia sozinha é decisão da loja, não minha.
+--
+-- Enquanto o despertador não for ligado, a data fica registrada no cadastro
+-- e a volta é na mão, como já era.
 --
 -- A regra da cobrança NÃO é tocada: ela continua olhando só dunning_paused.
 -- Assim a mudança não tem como cobrar alguém por engano; o máximo que pode
@@ -54,13 +58,6 @@ $fn$;
 
 COMMENT ON FUNCTION public.dunning_resume_due() IS
   'Tira da pausa quem chegou na data de volta. Roda todo dia às 09:30 (BRT), antes da cobrança das 10h.';
-
--- 12:30 UTC = 09:30 em Brasília, meia hora antes do jmk-dunning-daily.
-SELECT cron.unschedule('jmk-dunning-resume')
- WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'jmk-dunning-resume');
-
-SELECT cron.schedule('jmk-dunning-resume', '30 12 * * *',
-                     $cron$SELECT public.dunning_resume_due();$cron$);
 
 -- A Carla volta a ser cobrada no dia 29.
 DO $carla$
