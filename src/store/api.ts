@@ -78,8 +78,51 @@ export async function fetchOrderPayment(code: string): Promise<OrderPayment | nu
   return (data as unknown as OrderPayment) ?? null;
 }
 
+/**
+ * Guarda as provas desta visita no próprio aparelho, em memória.
+ *
+ * A tela promete que a foto não fica guardada — então nada disto sai do
+ * navegador nem é escrito em disco: é um Map que morre quando a cliente fecha
+ * a aba. Serve para o caminho mais comum do provador: provar o vestido A,
+ * trocar para o B e voltar para o A. Na volta a imagem aparece na hora, sem os
+ * ~15 segundos da IA e sem gastar uma das 6 provas por hora.
+ */
+const MAX_PROVAS_GUARDADAS = 3;
+const provas = new Map<string, string>();
+
+async function chaveDaProva(photo: string, productIds: string[]): Promise<string> {
+  const base = `${[...productIds].sort().join(",")}|${photo}`;
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    const hash = await subtle.digest("SHA-256", new TextEncoder().encode(base));
+    return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // navegador sem crypto.subtle (fora de https): hash simples, só para a chave do Map
+  let h = 5381;
+  for (let i = 0; i < base.length; i++) h = ((h * 33) ^ base.charCodeAt(i)) >>> 0;
+  return `djb2-${h}-${base.length}`;
+}
+
+function guardarProva(chave: string, image: string) {
+  provas.set(chave, image);
+  while (provas.size > MAX_PROVAS_GUARDADAS) {
+    const maisAntiga: string | undefined = provas.keys().next().value;
+    if (maisAntiga === undefined) break;
+    provas.delete(maisAntiga);
+  }
+}
+
+/** Esta foto com estas peças já foi provada nesta visita? Então devolve na hora. */
+export async function peekTryOn(photo: string, productIds: string[]): Promise<string | null> {
+  return provas.get(await chaveDaProva(photo, productIds)) ?? null;
+}
+
 /** Chama o provador. Os erros da função já vêm escritos para a cliente. */
 export async function tryOn(photo: string, productIds: string[]): Promise<string> {
+  const chave = await chaveDaProva(photo, productIds);
+  const guardada = provas.get(chave);
+  if (guardada) return guardada;
+
   const { data, error } = await supabase.functions.invoke("store-try-on", {
     body: { photo, product_ids: productIds },
   });
@@ -97,13 +140,31 @@ export async function tryOn(photo: string, productIds: string[]): Promise<string
     throw new Error(message);
   }
   if (typeof data?.image !== "string") throw new Error("A IA não devolveu a imagem. Tente outra foto.");
+  guardarProva(chave, data.image);
   return data.image;
+}
+
+/**
+ * Devolve a foto no formato que ficar menor. Navegador que não grava WebP não
+ * dá erro em toDataURL: devolve PNG, que é muito maior — por isso a comparação
+ * em vez de confiar no formato pedido.
+ */
+function menorFormato(canvas: HTMLCanvasElement): string {
+  const jpeg = canvas.toDataURL("image/jpeg", 0.88);
+  const webp = canvas.toDataURL("image/webp", 0.82);
+  return webp.startsWith("data:image/webp") && webp.length < jpeg.length ? webp : jpeg;
 }
 
 /**
  * Reduz a foto no próprio aparelho antes de enviar. Foto de celular passa de
  * 4 MB; em 1536 px a IA enxerga o mesmo, o envio fica rápido no 4G e o limite
  * da função nunca é atingido.
+ *
+ * Medido em 11/11/2026, chamando a função direto: baixar de 1536 px para
+ * 1024 px NÃO deixa a IA mais rápida (14,9 s contra 15,2 s) — o tempo é o
+ * desenho da imagem de saída, não a leitura da foto. Então os 1536 px ficam,
+ * porque provam melhor, e o que se economiza é o envio: a mesma foto em WebP
+ * sai bem mais leve que em JPEG, e isso a cliente sente no 4G.
  */
 export function downscalePhoto(file: File, max = 1536): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -123,7 +184,7 @@ export function downscalePhoto(file: File, max = 1536): Promise<string> {
         return;
       }
       ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.88));
+      resolve(menorFormato(canvas));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);

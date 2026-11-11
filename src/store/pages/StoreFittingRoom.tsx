@@ -1,15 +1,17 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Camera, Download, ImagePlus, Loader2, RotateCcw, Search, ShieldCheck, Sparkles, X } from "lucide-react";
+import { Camera, Download, ImagePlus, Loader2, RotateCcw, Search, ShieldCheck, Sparkles, X, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { fmtBRL } from "@/lib/utils";
 import { REGION_LABEL, regionOf, type BodyRegion } from "@/lib/garments";
 import { useStore } from "../StoreContext";
-import { downscalePhoto, tryOn } from "../api";
+import { downscalePhoto, peekTryOn, tryOn } from "../api";
 import { displayName, type StoreProduct } from "../types";
 
 const REGIONS: BodyRegion[] = ["upper", "lower", "full"];
 const MAX_RAW_PHOTO = 20 * 1024 * 1024;
+/** Medido em 11/11/2026: 11,8 a 17,7 s por prova. É a expectativa que a tela mostra. */
+const SEGUNDOS_ESPERADOS = 15;
 
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
@@ -22,6 +24,9 @@ export default function StoreFittingRoom() {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<BodyRegion | null>(null);
+  const [decorrido, setDecorrido] = useState(0);
+  const [daVisita, setDaVisita] = useState(false);
+  const [jaProvado, setJaProvado] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +38,31 @@ export default function StoreFittingRoom() {
   const hasFull = !!look.full;
   const hasPart = !!look.upper || !!look.lower;
   const canRun = !!photo && consent && chosen.length > 0 && !busy;
+
+  // Cronômetro da espera: a cliente vê os segundos correrem em vez de um texto parado.
+  useEffect(() => {
+    if (!busy) return;
+    const inicio = Date.now();
+    setDecorrido(0);
+    const id = window.setInterval(() => setDecorrido((Date.now() - inicio) / 1000), 200);
+    return () => window.clearInterval(id);
+  }, [busy]);
+
+  // Este look já foi provado nesta visita? Então o botão promete o que cumpre.
+  useEffect(() => {
+    if (!photo || chosen.length === 0) {
+      setJaProvado(false);
+      return;
+    }
+    let vivo = true;
+    peekTryOn(photo, chosen.map((c) => c.product.id)).then((r) => {
+      if (vivo) setJaProvado(!!r);
+    });
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photo, look.upper, look.lower, look.full, result]);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -58,18 +88,41 @@ export default function StoreFittingRoom() {
 
   const run = async () => {
     if (!canRun || !photo) return;
-    setBusy(true);
+    const ids = chosen.map((c) => c.product.id);
     setError(null);
+    const rolar = () =>
+      requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+
+    // Mesma foto, mesmas peças, mesma visita: a imagem já está no aparelho.
+    const guardada = await peekTryOn(photo, ids);
+    if (guardada) {
+      setDaVisita(true);
+      setResult(guardada);
+      rolar();
+      return;
+    }
+
+    setDaVisita(false);
+    setBusy(true);
     setResult(null);
-    requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    rolar();
     try {
-      setResult(await tryOn(photo, chosen.map((c) => c.product.id)));
+      setResult(await tryOn(photo, ids));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   };
+
+  const segundos = Math.floor(decorrido);
+  const progresso = Math.min(95, (decorrido / SEGUNDOS_ESPERADOS) * 90);
+  const aviso =
+    decorrido < SEGUNDOS_ESPERADOS + 2
+      ? `Costuma levar uns ${SEGUNDOS_ESPERADOS} segundos.`
+      : decorrido < 35
+      ? "Quase lá — às vezes passa de 20 segundos."
+      : "Está demorando mais que o normal. Não feche a página.";
 
   return (
     <div className="mx-auto max-w-7xl px-4 pt-10 sm:px-6">
@@ -226,8 +279,8 @@ export default function StoreFittingRoom() {
           </div>
 
           <button type="button" className="s-btn s-btn-ai mt-8 w-full !h-14 !text-base" onClick={run} disabled={!canRun}>
-            {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {busy ? "Vestindo você…" : "Experimentar agora"}
+            {busy ? <Loader2 className="animate-spin" /> : jaProvado ? <Zap /> : <Sparkles />}
+            {busy ? `Vestindo você… ${segundos}s` : jaProvado ? "Ver sua prova (na hora)" : "Experimentar agora"}
           </button>
           {!canRun && !busy && (
             <p className="mt-3 text-center text-xs s-muted">
@@ -269,9 +322,23 @@ export default function StoreFittingRoom() {
                   {result ? (
                     <img src={result} alt="Você com o look escolhido" className="h-full w-full object-contain s-fade-up" />
                   ) : (
-                    <div className="px-6 text-center">
+                    <div className="w-full px-6 text-center">
                       <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#c4b5fd]" />
-                      <p className="mt-4 text-sm s-muted">Isso costuma levar de 20 a 40 segundos.</p>
+                      <p className="mt-4 text-4xl font-semibold tabular-nums">{segundos}s</p>
+                      <div
+                        className="mx-auto mt-4 h-1.5 w-full max-w-[220px] overflow-hidden rounded-full bg-white/10"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={SEGUNDOS_ESPERADOS}
+                        aria-valuenow={segundos}
+                        aria-label="Tempo da prova"
+                      >
+                        <div
+                          className="h-full rounded-full bg-[#c4b5fd] transition-[width] duration-200"
+                          style={{ width: `${progresso}%` }}
+                        />
+                      </div>
+                      <p className="mt-4 text-sm s-muted">{aviso}</p>
                     </div>
                   )}
                 </div>
@@ -283,6 +350,12 @@ export default function StoreFittingRoom() {
 
             {result && (
               <>
+                {daVisita && (
+                  <p className="mt-6 flex items-center gap-2 text-xs s-muted">
+                    <Zap className="h-4 w-4 shrink-0 s-gold" />
+                    Você já tinha provado este look nesta visita — por isso ele apareceu na hora.
+                  </p>
+                )}
                 <p className="mt-6 text-xs s-muted">
                   Imagem gerada por IA, para você ter uma ideia do caimento. Cores e medidas podem variar um pouco da peça real.
                 </p>
