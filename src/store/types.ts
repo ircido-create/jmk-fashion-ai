@@ -41,6 +41,8 @@ export interface StoreSettings {
   whatsapp: string | null;
   pickup_address: string | null;
   delivery_note: string | null;
+  /** Horas que a loja guarda a peça de um pedido ainda não pago. */
+  reserve_hours: number | null;
 }
 
 export type DeliveryMethod = "retirada" | "entrega";

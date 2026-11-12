@@ -29,10 +29,18 @@ export async function fetchCatalog(): Promise<StoreProduct[]> {
 export async function fetchStoreSettings(): Promise<StoreSettings> {
   const { data, error } = await supabase
     .from("store_settings")
-    .select("whatsapp, pickup_address, delivery_note")
+    .select("whatsapp, pickup_address, delivery_note, reserve_hours")
     .maybeSingle();
   if (error) throw error;
-  return data ?? { whatsapp: null, pickup_address: null, delivery_note: null };
+  return data ?? { whatsapp: null, pickup_address: null, delivery_note: null, reserve_hours: null };
+}
+
+/** O prazo que a loja guarda a peça, do jeito que a cliente lê. */
+export const HORAS_DE_RESERVA_PADRAO = 12;
+
+export function horasDeReserva(settings: StoreSettings | null): number {
+  const h = Number(settings?.reserve_hours);
+  return Number.isFinite(h) && h > 0 ? Math.round(h) : HORAS_DE_RESERVA_PADRAO;
 }
 
 /**

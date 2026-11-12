@@ -1297,6 +1297,7 @@ export type Database = {
           payment_link_enabled: boolean
           payment_link_hours: number
           pickup_address: string | null
+          reserve_hours: number
           updated_at: string
           whatsapp: string | null
         }
@@ -1308,6 +1309,7 @@ export type Database = {
           payment_link_enabled?: boolean
           payment_link_hours?: number
           pickup_address?: string | null
+          reserve_hours?: number
           updated_at?: string
           whatsapp?: string | null
         }
@@ -1319,6 +1321,7 @@ export type Database = {
           payment_link_enabled?: boolean
           payment_link_hours?: number
           pickup_address?: string | null
+          reserve_hours?: number
           updated_at?: string
           whatsapp?: string | null
         }

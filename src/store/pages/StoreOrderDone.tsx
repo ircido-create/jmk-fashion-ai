@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowRight, Check, CreditCard, MessageCircle } from "lucide-react";
 import { fmtBRL } from "@/lib/utils";
 import { useStore } from "../StoreContext";
-import { fetchOrderPayment, type OrderPayment } from "../api";
+import { horasDeReserva, fetchOrderPayment, type OrderPayment } from "../api";
 import { displayName, onlyDigits, variantLabel, type OrderSnapshot } from "../types";
 
 function readSnapshot(code?: string): OrderSnapshot | null {
@@ -24,6 +24,8 @@ function readSnapshot(code?: string): OrderSnapshot | null {
 export default function StoreOrderDone() {
   const { code } = useParams();
   const { settings } = useStore();
+  // mesmo prazo que a rotina do banco usa para devolver a peça à vitrine
+  const horasGuardadas = horasDeReserva(settings);
   const snap = useMemo(() => readSnapshot(code), [code]);
 
   // O link de pagamento é criado logo depois do pedido, fora desta tela: ela
@@ -72,8 +74,11 @@ export default function StoreOrderDone() {
         {firstName ? `Recebemos seu pedido, ${displayName(firstName)}!` : "Recebemos seu pedido!"}
       </h1>
       <p className="mx-auto mt-5 max-w-lg leading-relaxed s-muted">
-        Suas peças já estão reservadas. Nossa equipe vai chamar você no WhatsApp para combinar o pagamento
+        Guardamos suas peças por {horasGuardadas} horas. Nossa equipe vai chamar você no WhatsApp para combinar o pagamento
         {snap?.delivery_method === "entrega" ? " e o frete" : " e a retirada"}.
+      </p>
+      <p className="mx-auto mt-3 max-w-lg text-xs leading-relaxed s-muted">
+        Se o pagamento não entrar nesse prazo, as peças voltam para a loja — e aí é só pedir de novo.
       </p>
 
       {snap && (

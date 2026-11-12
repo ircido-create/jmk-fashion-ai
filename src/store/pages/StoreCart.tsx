@@ -4,7 +4,7 @@ import { ArrowRight, Loader2, Minus, Plus, ShoppingBag, Store, Trash2, Truck } f
 import { toast } from "sonner";
 import { fmtBRL } from "@/lib/utils";
 import { useStore } from "../StoreContext";
-import { placeOrder } from "../api";
+import { horasDeReserva, placeOrder } from "../api";
 import {
   displayName, lineKey, onlyDigits, variantLabel,
   type DeliveryMethod, type OrderInput, type OrderSnapshot,
@@ -42,6 +42,8 @@ function readSaved(): Partial<Form> {
 
 export default function StoreCart() {
   const { cart, cartTotal, setLineQty, removeLine, clearCart, reload, settings } = useStore();
+  // mesmo prazo que a rotina do banco usa para devolver a peça à vitrine
+  const horasGuardadas = horasDeReserva(settings);
   const navigate = useNavigate();
   const [form, setForm] = useState<Form>(() => ({ ...EMPTY, ...readSaved() }));
   const [sending, setSending] = useState(false);
@@ -290,7 +292,7 @@ export default function StoreCart() {
             {sending ? "Enviando pedido…" : "Enviar pedido"}
           </button>
           <p className="text-center text-xs leading-relaxed s-muted">
-            As peças ficam reservadas para você. Nossa equipe chama no WhatsApp para combinar o pagamento
+            Guardamos suas peças por {horasGuardadas} horas. Nossa equipe chama no WhatsApp para combinar o pagamento
             {form.delivery === "entrega" ? " e o frete" : " e a retirada"}.
           </p>
         </form>

@@ -31,6 +31,22 @@ const json = (body: unknown, status = 200) =>
 const brl = (centavos: number) =>
   (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+/**
+ * Por quantas horas a loja guarda a peca de um pedido nao pago. E o mesmo
+ * valor que a rotina store_expire_unpaid_orders() usa para devolver a peca a
+ * vitrine, por isso a mensagem e o sistema nunca dizem coisas diferentes.
+ * Mudou no painel? A mensagem muda junto, sem publicar a funcao de novo.
+ */
+async function prazoDaLoja(admin: ReturnType<typeof createClient>): Promise<number> {
+  try {
+    const { data } = await admin.from("store_settings").select("reserve_hours").maybeSingle();
+    const h = Number((data as { reserve_hours?: number } | null)?.reserve_hours);
+    return Number.isFinite(h) && h > 0 ? Math.round(h) : 12;
+  } catch {
+    return 12;
+  }
+}
+
 /** Nega por padrão: a função cria cobrança de verdade. */
 async function autorizado(req: Request): Promise<boolean> {
   const segredo = await getSecret("STORE_PAYMENT_SECRET", "store_payment_secret");
@@ -228,15 +244,21 @@ Deno.serve(async (req) => {
  */
 async function confirmarSemLink(
   admin: ReturnType<typeof createClient>,
-  order: { code: string; customer_name: string; customer_phone: string; delivery_method?: string },
+  order: {
+    code: string; customer_name: string; customer_phone: string;
+    delivery_method?: string; total?: number | string;
+  },
   orderId: string,
 ): Promise<boolean> {
+  // O total vem do pedido (em reais) e vira centavos para a mensagem. Antes
+  // ia zero aqui, e a cliente recebia "Total: R$ 0,00".
+  const reais = Number(order.total ?? 0);
   return await mandarWhatsApp(admin, {
     order_id: orderId,
     code: order.code,
     nome: String(order.customer_name ?? ""),
     telefone: String(order.customer_phone ?? ""),
-    valor: 0,
+    valor: Number.isFinite(reais) ? Math.round(reais * 100) : 0,
     link: null,
     entrega: order.delivery_method ?? "retirada",
   });
@@ -256,13 +278,32 @@ async function mandarWhatsApp(
 
   const primeiro = p.nome.split(" ")[0] ?? "";
   const nome = primeiro ? primeiro[0].toUpperCase() + primeiro.slice(1).toLowerCase() : "";
-  const msg =
-    `Olá, ${nome}! Recebemos seu pedido na *JMK Modas* 💛\n` +
-    `Pedido #${p.code}\n\n` +
-    `Total: ${brl(p.valor)}\n\n` +
-    `Você já pode pagar por Pix ou cartão por aqui:\n${p.link}\n\n` +
-    `Assim que o pagamento entrar, suas peças saem para você. ` +
-    `Se preferir combinar de outro jeito, é só me chamar.`;
+  const horas = await prazoDaLoja(admin);
+
+  // O prazo entra na mensagem porque a rotina de hora em hora devolve a peça
+  // à loja depois dele (migração 20261112120000) e avisa a cliente quando isso
+  // acontece (20261112140000). Sem o prazo aqui, o aviso de expiração chegava
+  // como surpresa para quem tinha lido "suas peças estão reservadas".
+  const prazo =
+    `Guardamos suas peças por ${horas} horas. ` +
+    `Se o pagamento não entrar nesse prazo, elas voltam para a loja — e aí é só pedir de novo 😊`;
+
+  const msg = p.link
+    ? `Olá, ${nome}! Recebemos seu pedido na *JMK Modas* 💛\n` +
+      `Pedido #${p.code}\n\n` +
+      `Total: ${brl(p.valor)}\n\n` +
+      `Você já pode pagar por Pix ou cartão por aqui:\n${p.link}\n\n` +
+      `Assim que o pagamento entrar, suas peças saem para você. ` +
+      `Se preferir combinar de outro jeito, é só me chamar.\n\n` +
+      prazo
+    // Sem link: a InfinitePay falhou ou está desligada. Antes a mensagem saia
+    // com "Total: R$ 0,00" e a palavra "null" no lugar do link.
+    : `Olá, ${nome}! Recebemos seu pedido na *JMK Modas* 💛\n` +
+      `Pedido #${p.code}\n\n` +
+      `Total: ${brl(p.valor)}\n\n` +
+      `Em breve falamos com você para combinar o pagamento e ` +
+      `${p.entrega === "entrega" ? "o frete" : "a retirada"}.\n\n` +
+      prazo;
 
   try {
     const res = await fetch(`https://${device}.bubblewhats.com/send-message`, {
