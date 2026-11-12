@@ -9,10 +9,17 @@
 -- A trava para não acontecer de novo está no código (src/lib/fotoEnviada.ts,
 -- commit f80badd). Aqui some o estrago que já estava feito.
 --
--- O QUE MUDA. A referência sai da peça e o arquivo vazio sai do bucket. A SAIA
--- VILMA deixa de aparecer na loja até o José subir a foto de novo — melhor um
--- card a menos do que um card preto. Nada mais é tocado: preço, estoque, a
--- chave "Mostrar na loja" e a peça no estoque ficam como estão.
+-- O QUE MUDA. A referência à foto vazia sai da capa e da galeria da peça.
+--
+-- E aí vem a boa notícia que só apareceu ao conferir: a variação GG · TERRACOTA
+-- tem uma foto própria, de 192 KB, essa sim inteira. Como store_catalog() lê
+-- COALESCE(image_url, images[1], foto da variação com estoque), tirar a capa
+-- vazia faz a vitrine cair na foto da variação — a SAIA VILMA **continua na
+-- loja**, agora com imagem de verdade. Se um dia a peça ficar sem nenhuma foto
+-- boa, ela simplesmente sai da vitrine, que também está certo.
+--
+-- Nada mais é tocado: preço, estoque e a chave "Mostrar na loja" ficam como
+-- estão.
 --
 -- Autorizado pelo José em 12/11/2026.
 DO $vazia$
@@ -23,6 +30,8 @@ DECLARE
   v_prod    uuid;
   v_nome    text;
   v_sobrou  int;
+  v_vitrine text;
+  v_bytes_vitrine bigint;
 BEGIN
   -- 1. é mesmo o arquivo vazio?
   SELECT coalesce((o.metadata->>'size')::bigint, -1) INTO v_bytes
@@ -70,9 +79,18 @@ BEGIN
          updated_at = now()
    WHERE id = v_prod;
 
-  -- 4. tira o arquivo vazio do bucket
-  DELETE FROM storage.objects
-   WHERE bucket_id = 'product-images' AND name = v_arquivo;
+  -- 4. o arquivo em si sai pela tela de Storage, não daqui
+  --
+  -- O banco recusa DELETE direto em storage.objects: o gatilho
+  -- storage.protect_delete() responde "Direct deletion from storage tables is
+  -- not allowed. Use the Storage API instead." — e com razão, porque apagar a
+  -- linha deixaria o arquivo órfão no bucket de verdade. A primeira versão
+  -- desta migração tentou e foi recusada; como todo o bloco é atômico, nada
+  -- chegou a ser aplicado. O arquivo vazio foi removido na mão, pelo painel
+  -- (Mais → Storage → product-images), em 12/11/2026.
+  --
+  -- Mesmo que ele fique no bucket, não faz mal: tem 0 byte e, depois do passo
+  -- 3, nenhuma peça aponta para ele.
 
   -- 5. conferências
   IF EXISTS (SELECT 1 FROM products p
@@ -82,22 +100,38 @@ BEGIN
     RAISE EXCEPTION 'A referência da foto vazia continua na peça.';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM storage.objects
-              WHERE bucket_id = 'product-images' AND name = v_arquivo) THEN
-    RAISE EXCEPTION 'O arquivo vazio continua no bucket.';
+  -- a foto que a vitrine vai mostrar não pode ser vazia
+  SELECT c.image_url INTO v_vitrine FROM store_catalog() c WHERE c.id = v_prod;
+
+  IF v_vitrine IS NOT NULL THEN
+    IF v_vitrine LIKE '%' || v_arquivo THEN
+      RAISE EXCEPTION 'A vitrine ainda está mostrando a foto vazia.';
+    END IF;
+
+    SELECT coalesce((o.metadata->>'size')::bigint, -1) INTO v_bytes_vitrine
+      FROM storage.objects o
+     WHERE o.bucket_id = 'product-images' AND v_vitrine LIKE '%' || o.name;
+
+    IF coalesce(v_bytes_vitrine, 0) <= 0 THEN
+      RAISE EXCEPTION 'A foto que a vitrine vai mostrar tem % bytes.', coalesce(v_bytes_vitrine, 0);
+    END IF;
+
+    RAISE NOTICE 'A peça segue na vitrine, agora com a foto de % bytes.', v_bytes_vitrine;
+  ELSE
+    RAISE NOTICE 'A peça saiu da vitrine: não sobrou nenhuma foto. Sobe a foto nova pelo Estoque.';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM store_catalog() c WHERE c.id = v_prod) THEN
-    RAISE EXCEPTION 'A peça continua na vitrine mesmo sem foto — confira store_catalog.';
-  END IF;
-
+  -- nenhuma outra peça pode estar usando foto vazia
   SELECT count(*) INTO v_sobrou
-    FROM storage.objects
-   WHERE bucket_id = 'product-images'
-     AND coalesce((metadata->>'size')::bigint, 0) = 0;
+    FROM products p
+    JOIN storage.objects o
+      ON o.bucket_id = 'product-images'
+     AND coalesce((o.metadata->>'size')::bigint, 0) = 0
+     AND (p.image_url LIKE '%' || o.name
+       OR EXISTS (SELECT 1 FROM unnest(p.images) img WHERE img LIKE '%' || o.name));
 
   IF v_sobrou > 0 THEN
-    RAISE EXCEPTION 'Ainda há % foto(s) vazia(s) no bucket.', v_sobrou;
+    RAISE EXCEPTION 'Ainda há % peça(s) apontando para foto vazia.', v_sobrou;
   END IF;
 
   RAISE NOTICE 'Foto vazia removida de "%". A peça sai da vitrine até a foto nova subir.', v_nome;
