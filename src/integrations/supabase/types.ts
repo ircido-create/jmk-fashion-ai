@@ -188,6 +188,7 @@ export type Database = {
           created_at: string
           dunning_pause_note: string | null
           dunning_paused: boolean
+          dunning_paused_until: string | null
           email: string | null
           id: string
           name: string
@@ -202,6 +203,7 @@ export type Database = {
           created_at?: string
           dunning_pause_note?: string | null
           dunning_paused?: boolean
+          dunning_paused_until?: string | null
           email?: string | null
           id?: string
           name: string
@@ -216,6 +218,7 @@ export type Database = {
           created_at?: string
           dunning_pause_note?: string | null
           dunning_paused?: boolean
+          dunning_paused_until?: string | null
           email?: string | null
           id?: string
           name?: string
@@ -1696,6 +1699,7 @@ export type Database = {
         Args: { qty: number; variant_id: string }
         Returns: number
       }
+      dunning_resume_due: { Args: never; Returns: number }
       get_due_today_receivables_to_dunning: {
         Args: { p_limit?: number; p_today?: string }
         Returns: {
@@ -1814,6 +1818,7 @@ export type Database = {
         }
         Returns: Json
       }
+      store_expire_unpaid_orders: { Args: never; Returns: number }
       store_order_payment: { Args: { p_code: string }; Returns: Json }
       store_place_order: {
         Args: { p_items: Json; p_order: Json }
