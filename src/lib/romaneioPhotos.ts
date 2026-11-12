@@ -104,7 +104,8 @@ export async function importRomaneioPhotos(file: File): Promise<{ imported: numb
       const product = bySku.get(normSku(assoc.sku));
       if (!product) continue;
       const blob = await cropToBlob(canvas, assoc.bbox);
-      if (!blob) continue;
+      // recorte vazio sobe como foto de 0 byte e deixa a peca com card preto
+      if (!blob || blob.size === 0) continue;
       const path = `romaneio/${String(assoc.sku).replace(/[^a-zA-Z0-9._-]/g, "_")}_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("product-images")

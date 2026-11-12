@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { problemaNaFoto } from "@/lib/fotoEnviada";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,8 +83,8 @@ export default function SupplierImageSearch({
    * e faz o mesmo vínculo que a busca faria.
    */
   const uploadLocal = async (file: File) => {
-    if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem"); return; }
-    if (file.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande (máx 5MB)"); return; }
+    const problema = problemaNaFoto(file);
+    if (problema) { toast.error(problema); return; }
     setUploading(true);
     try {
       const ext = file.name.split(".").pop() || "jpg";

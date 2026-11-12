@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { GARMENT_LABEL, GARMENT_TYPES, isGarmentType } from "@/lib/garments";
+import { problemaNaFoto } from "@/lib/fotoEnviada";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
@@ -305,8 +306,8 @@ export default function Inventory() {
     setUploadingPhotos(true);
     const novas: string[] = [];
     for (const file of files.slice(0, livres)) {
-      if (!file.type.startsWith("image/")) { toast.error(`${file.name}: não é imagem`); continue; }
-      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name}: maior que 5MB`); continue; }
+      const problema = problemaNaFoto(file);
+      if (problema) { toast.error(problema); continue; }
       const ext = file.name.split(".").pop() || "jpg";
       const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
       const { error: upErr } = await supabase.storage.from("product-images").upload(path, file, { upsert: false });
@@ -326,8 +327,8 @@ export default function Inventory() {
   const makeCover = (i: number) => setPhotos((prev) => [prev[i], ...prev.filter((_, j) => j !== i)]);
 
   const uploadVariantImage = async (i: number, file: File) => {
-    if (!file.type.startsWith("image/")) { toast.error("Selecione uma imagem"); return; }
-    if (file.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande (máx 5MB)"); return; }
+    const problema = problemaNaFoto(file);
+    if (problema) { toast.error(problema); return; }
     const ext = file.name.split(".").pop() || "jpg";
     const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error: upErr } = await supabase.storage.from("product-images").upload(path, file, { upsert: false });
