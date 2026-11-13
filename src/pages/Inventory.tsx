@@ -21,7 +21,7 @@ import { importRomaneioPhotos, reprocessRomaneioPhotos } from "@/lib/romaneioPho
 
 interface Variant { id?: string; size: string; color: string; quantity: number; image_url?: string | null; }
 interface Product {
-  id: string; name: string; description: string | null; category: string | null;
+  id: string; name: string; description: string | null;
   sku: string | null; supplier: string | null;
   price: number; cost: number; low_stock_threshold: number; active: boolean;
   /** Preço "de" da loja virtual: aparece riscado ao lado do preço de venda. */
@@ -571,7 +571,7 @@ export default function Inventory() {
     const matchesSearch =
       p.name.toLowerCase().includes(q) ||
       (p.sku ?? "").toLowerCase().includes(q) ||
-      (p.category ?? "").toLowerCase().includes(q) ||
+      (isGarmentType(p.garment_type) ? GARMENT_LABEL[p.garment_type].toLowerCase().includes(q) : false) ||
       (p.supplier ?? "").toLowerCase().includes(q);
     const matchesSupplier = supplierFilter === "all" || p.supplier === supplierFilter;
     const matchesLoja =
