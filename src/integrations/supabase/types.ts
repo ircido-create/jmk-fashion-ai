@@ -1832,6 +1832,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      whatsapp_pulso: {
+        Args: never
+        Returns: {
+          atraso_medio_min: number
+          enviadas_24h: number
+          falhas_24h: number
+          recebidas_24h: number
+          ultima_enviada: string
+          ultima_recebida: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "vendedor"

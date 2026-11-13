@@ -71,35 +71,31 @@ export default function WhatsApp() {
   const load = async () => {
     setLoading(true);
     const desde24h = new Date(Date.now() - 24 * 3_600_000).toISOString();
-    const [{ data: c }, { data: a }, { data: bl }, { data: lm }, { data: delays }, { data: run }, falhas, { data: envio }] =
+    // O pulso (última recebida, última enviada, contagens e atraso) vem de uma
+    // chamada só, whatsapp_pulso(). As leituras diretas em whatsapp_messages
+    // filtrando por direction passaram a voltar HTTP 500 pela API em 13/11/2026
+    // — e sem resposta a tela dizia "nunca" e acendia o alerta de desconexão com
+    // o WhatsApp funcionando. Ver a migração 20261113170000.
+    const [{ data: c }, { data: a }, { data: bl }, { data: pulso }, { data: run }, falhas] =
       await Promise.all([
         supabase.from("whatsapp_config").select("*").maybeSingle(),
         supabase.from("ai_settings").select("*").maybeSingle(),
         supabase.from("ai_blocked_contacts").select("id, phone, note").order("created_at", { ascending: false }),
-        supabase.from("whatsapp_messages").select("created_at").eq("direction", "inbound")
-          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("whatsapp_messages").select("created_at, sent_at").eq("direction", "inbound")
-          .not("sent_at", "is", null).order("created_at", { ascending: false }).limit(20),
+        supabase.rpc("whatsapp_pulso"),
         supabase.from("dunning_runs").select("*")
           .order("started_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("whatsapp_send_failures").select("created_at, endpoint, destino, http_status, detalhe", { count: "exact" })
           .gte("created_at", desde24h).order("created_at", { ascending: false }).limit(1),
-        supabase.from("whatsapp_messages").select("created_at").eq("direction", "outbound")
-          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
+    const p = (pulso ?? [])[0] ?? null;
     if (c) setCfg(c as any);
     if (a) setAI(a as any);
     setBlocked((bl ?? []) as BlockedContact[]);
-    setLastInboundAt((lm as any)?.created_at ?? null);
+    setLastInboundAt(p?.ultima_recebida ?? null);
     setUltimaCobranca(run ?? null);
     setFalhasEnvio({ total: falhas.count ?? 0, ultima: falhas.data?.[0] ?? null });
-    setUltimoEnvioAt((envio as any)?.created_at ?? null);
-    const rows = (delays ?? []) as { created_at: string; sent_at: string }[];
-    setAvgDelayMin(
-      rows.length
-        ? rows.reduce((s, r) => s + (new Date(r.created_at).getTime() - new Date(r.sent_at).getTime()) / 60000, 0) / rows.length
-        : null,
-    );
+    setUltimoEnvioAt(p?.ultima_enviada ?? null);
+    setAvgDelayMin(p?.atraso_medio_min != null ? Number(p.atraso_medio_min) : null);
     setLoading(false);
   };
 
@@ -123,7 +119,8 @@ export default function WhatsApp() {
       return;
     }
     setDiag(data);
-    if ((data as any)?.lastInboundAt) setLastInboundAt((data as any).lastInboundAt);
+    // A última mensagem recebida vem do pulso, em load(): a função de status
+    // lê a tabela pela mesma rota que está devolvendo 500.
     // A verificação grava ou limpa last_error_* no banco; sem recarregar, o registro
     // antigo continuaria na tela mesmo após a sessão voltar.
     load();

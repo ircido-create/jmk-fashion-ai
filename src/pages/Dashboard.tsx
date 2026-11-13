@@ -49,32 +49,17 @@ export default function Dashboard() {
   const [avgDelayMin, setAvgDelayMin] = useState<number | null>(null);
 
   useEffect(() => {
+    // Uma chamada só para o quadro do WhatsApp. As leituras diretas em
+    // whatsapp_messages filtrando por direction passaram a voltar HTTP 500 pela
+    // API em 13/11/2026, e o Painel acendia "Possível desconexão" com o
+    // WhatsApp perfeito. Ver a migração 20261113170000.
     supabase
-      .from("whatsapp_messages")
-      .select("created_at")
-      .eq("direction", "inbound")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .rpc("whatsapp_pulso")
       .then(({ data }) => {
-        setLastInboundAt((data as any)?.created_at ?? null);
+        const p = (data ?? [])[0] ?? null;
+        setLastInboundAt(p?.ultima_recebida ?? null);
         setInboundChecked(true);
-      });
-
-    supabase
-      .from("whatsapp_messages")
-      .select("created_at, sent_at")
-      .eq("direction", "inbound")
-      .not("sent_at", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(20)
-      .then(({ data }) => {
-        const rows = (data ?? []) as { created_at: string; sent_at: string }[];
-        setAvgDelayMin(
-          rows.length
-            ? rows.reduce((s, r) => s + (new Date(r.created_at).getTime() - new Date(r.sent_at).getTime()) / 60000, 0) / rows.length
-            : null,
-        );
+        setAvgDelayMin(p?.atraso_medio_min != null ? Number(p.atraso_medio_min) : null);
       });
   }, []);
 
