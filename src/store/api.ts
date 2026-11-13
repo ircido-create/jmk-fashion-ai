@@ -26,13 +26,23 @@ export async function fetchCatalog(): Promise<StoreProduct[]> {
   }));
 }
 
+/**
+ * As configurações que a vitrine mostra à cliente.
+ *
+ * Vem por função, e não por leitura da tabela: `store_settings` guarda também
+ * o WhatsApp interno que recebe o aviso de pedido e as chaves do link de
+ * pagamento, e a regra antiga (`USING (true)` para anônimo) deixava a tabela
+ * inteira ao alcance de qualquer visitante — era um dos dois avisos de
+ * segurança do painel, em 13/11/2026. A função devolve só estes quatro campos
+ * (migração 20261113190000).
+ */
 export async function fetchStoreSettings(): Promise<StoreSettings> {
-  const { data, error } = await supabase
-    .from("store_settings")
-    .select("whatsapp, pickup_address, delivery_note, reserve_hours")
-    .maybeSingle();
+  const vazio: StoreSettings = {
+    whatsapp: null, pickup_address: null, delivery_note: null, reserve_hours: null,
+  };
+  const { data, error } = await supabase.rpc("store_settings_publicas");
   if (error) throw error;
-  return data ?? { whatsapp: null, pickup_address: null, delivery_note: null, reserve_hours: null };
+  return (data as StoreSettings[] | null)?.[0] ?? vazio;
 }
 
 /** O prazo que a loja guarda a peça, do jeito que a cliente lê. */

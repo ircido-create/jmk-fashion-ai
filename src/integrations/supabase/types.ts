@@ -1832,6 +1832,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      store_settings_publicas: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          whatsapp: string | null
+          pickup_address: string | null
+          delivery_note: string | null
+          reserve_hours: number | null
+        }[]
+      }
       whatsapp_pulso: {
         Args: never
         Returns: {
