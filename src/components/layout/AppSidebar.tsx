@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 const mainItems = [
-  { title: "Painel", url: "/", icon: LayoutDashboard },
+  { title: "Painel", url: "/painel", icon: LayoutDashboard },
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Estoque", url: "/estoque", icon: Package },
   { title: "PDV / Caixa", url: "/pdv", icon: ScanLine },

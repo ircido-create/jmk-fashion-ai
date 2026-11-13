@@ -22,7 +22,8 @@ export default function Auth() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate("/", { replace: true });
+      // A raiz é a loja: quem já tem sessão vai direto para o painel.
+      if (session) navigate("/painel", { replace: true });
     });
   }, [navigate]);
 
@@ -69,7 +70,7 @@ export default function Auth() {
       return;
     }
     toast.success("Bem-vinda de volta!");
-    navigate("/", { replace: true });
+    navigate("/painel", { replace: true });
   };
 
   return (

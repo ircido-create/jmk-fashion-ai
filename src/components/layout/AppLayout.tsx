@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
@@ -13,6 +14,12 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const hideAssistant = location.pathname.startsWith("/conversas");
+
+  // O título da aba vem da loja (é a página inicial do domínio). Quem entra no
+  // administrativo — direto ou vindo da vitrine — vê o nome do sistema.
+  useEffect(() => {
+    document.title = "JMK Fashion — Gestão";
+  }, []);
 
   // Sair leva ao login explicitamente. Antes o redirecionamento vinha do
   // ProtectedRoute, mas agora "/" sem sessão abre a loja — quem sai do Painel

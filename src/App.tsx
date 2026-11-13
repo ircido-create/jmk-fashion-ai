@@ -41,8 +41,10 @@ const PaymentProofs = lazy(() => import("./pages/PaymentProofs"));
 const ReceivableReports = lazy(() => import("./pages/ReceivableReports"));
 const StoreOrders = lazy(() => import("./pages/StoreOrders"));
 
-// Loja virtual — módulo público, com layout e tema próprios. Fica em /loja para
-// não mexer em nenhum endereço do administrativo.
+// Loja virtual — módulo público, com layout e tema próprios. É a página inicial
+// do domínio: quem digita www.jmkmodas.com.br é cliente, não equipe. Os
+// endereços /loja/... continuam valendo — são os que já saíram nas mensagens de
+// WhatsApp e nos links que as clientes guardaram.
 const StoreLayout = lazy(() => import("./store/StoreLayout"));
 const StoreHome = lazy(() => import("./store/pages/StoreHome"));
 const StoreProduct = lazy(() => import("./store/pages/StoreProduct"));
@@ -65,6 +67,17 @@ const App = () => (
               <Routes>
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                {/* A raiz do domínio é a vitrine. O resto da loja segue em /loja/... */}
+                <Route
+                  path="/"
+                  element={
+                    <Suspense fallback={<StoreBootFallback />}>
+                      <StoreLayout />
+                    </Suspense>
+                  }
+                >
+                  <Route index element={<StoreHome />} />
+                </Route>
                 <Route
                   path="/loja"
                   element={
@@ -81,7 +94,8 @@ const App = () => (
                 </Route>
                 <Route element={<ProtectedRoute />}>
                   <Route element={<AppLayout />}>
-                    <Route path="/" element={<Dashboard />} />
+                    {/* O administrativo saiu da raiz para a loja poder ficar lá. */}
+                    <Route path="/painel" element={<Dashboard />} />
                     <Route path="/clientes" element={<Customers />} />
                     <Route path="/clientes/:id" element={<CustomerDetail />} />
                     <Route path="/estoque" element={<Inventory />} />

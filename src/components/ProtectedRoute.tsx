@@ -14,11 +14,10 @@ export function ProtectedRoute({ adminOnly = false }: { adminOnly?: boolean }) {
     );
   }
 
-  // Sem login, a página inicial do domínio é a loja virtual: o visitante que
-  // digita www.jmkmodas.com.br é cliente, não equipe. As demais telas internas
-  // (links e favoritos da equipe) continuam levando ao login.
-  if (!user) return <Navigate to={location.pathname === "/" ? "/loja" : "/auth"} replace />;
-  if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
+  // A raiz do domínio é a loja e nem passa por aqui. Toda tela interna sem
+  // login manda para o login, e a de administrador sem permissão, para o painel.
+  if (!user) return <Navigate to="/auth" replace />;
+  if (adminOnly && !isAdmin) return <Navigate to="/painel" replace />;
 
   return <Outlet />;
 }

@@ -101,7 +101,7 @@ function StoreShell() {
                 cliente e levava ao sistema interno. O acesso da equipe fica no rodapé;
                 aqui só aparece o atalho para quem já está logado. */}
             {user && (
-              <Link to="/" className="s-btn s-btn-ghost !h-9 !px-3 !text-xs" title="Ir para o sistema administrativo">
+              <Link to="/painel" className="s-btn s-btn-ghost !h-9 !px-3 !text-xs" title="Ir para o sistema administrativo">
                 <LayoutDashboard /> <span className="hidden sm:inline">Painel</span>
               </Link>
             )}

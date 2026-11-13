@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>JMK Fashion — Gestão</title>
-    <meta name="description" content="Sistema de gestão JMK Fashion: clientes, estoque, vendas e atendimento WhatsApp." />
+    <!-- A raiz do domínio é a loja virtual, então o título e a descrição que o
+         WhatsApp e o Google leem são os da loja. O administrativo troca o
+         título ao abrir (AppLayout), e fica atrás de login de qualquer forma. -->
+    <title>JMK Modas — Loja virtual</title>
+    <meta name="description" content="Moda feminina JMK Modas: vestidos, saias, blusas e conjuntos. Experimente as peças em você com o provador de inteligência artificial." />
     <meta name="author" content="JMK Fashion" />
 
     <!-- PWA -->
@@ -18,12 +21,11 @@
     <meta name="apple-mobile-web-app-title" content="Conversas" />
 
     <!-- Sem canonical nem og:url absolutos: apontavam para o domínio do Lovable e
-         ficariam errados após a migração. Sistema interno atrás de login, então
-         compartilhamento e indexação não têm papel aqui; o caminho relativo da
-         imagem basta. Se um domínio próprio for configurado, dá para voltar com
-         as URLs absolutas apontando para ele. -->
-    <meta property="og:title" content="JMK Fashion — Gestão de Moda" />
-    <meta property="og:description" content="Sistema de gestão JMK Fashion: clientes, estoque, vendas e atendimento WhatsApp." />
+         ficariam errados após a migração. O caminho relativo da imagem basta.
+         Se quiser, dá para voltar com as URLs absolutas apontando para
+         www.jmkmodas.com.br. -->
+    <meta property="og:title" content="JMK Modas — Loja virtual" />
+    <meta property="og:description" content="Moda feminina JMK Modas: vestidos, saias, blusas e conjuntos. Experimente as peças em você com o provador de inteligência artificial." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/icon-512.png" />
     <meta name="twitter:card" content="summary_large_image" />
