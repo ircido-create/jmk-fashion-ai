@@ -33,18 +33,64 @@ interface Product {
   product_variants?: Variant[];
 }
 
+/**
+ * Limite da descrição. Era 500 e barrava as descrições que a IA escreve a
+ * partir do romaneio (cores, tecido, caimento), que passam disso com facilidade.
+ * O banco não tem limite nenhum nessa coluna.
+ */
+const MAX_DESCRICAO = 2000;
+
+/**
+ * As mensagens são nossas, em português, e começam pelo nome do campo.
+ *
+ * Nada de `.or(z.literal(""))`: quando os dois lados de um `.or` falham, o zod 4
+ * devolve só **"Invalid input"**, sem dizer qual campo nem por quê — foi o erro
+ * que o José levou na tela em 13/11/2026, sem nenhuma pista do que corrigir.
+ * Reproduzi no zod 4.3: a união devolve "Invalid input" quando o valor é null
+ * (campo que não foi para o FormData) e quando o tipo de peça está fora da
+ * lista; o texto comprido, esse, já dizia "Too big". Campo de texto vazio passa
+ * por `max()` sem o `.or`, que nunca foi preciso.
+ */
 const schema = z.object({
-  name: z.string().trim().min(2).max(100),
-  sku: z.string().trim().max(60).optional().or(z.literal("")),
-  supplier: z.string().trim().max(120).optional().or(z.literal("")),
-  category: z.string().trim().max(60).optional().or(z.literal("")),
-  garment_type: z.enum(GARMENT_TYPES).optional().or(z.literal("")),
-  description: z.string().trim().max(500).optional().or(z.literal("")),
-  price: z.number().nonnegative(),
-  cost: z.number().nonnegative(),
-  compare_at_price: z.number().nonnegative().nullable(),
-  low_stock_threshold: z.number().int().nonnegative(),
+  name: z.string().trim().min(2, "Nome: escreva pelo menos 2 letras")
+                  .max(100, "Nome: no máximo 100 caracteres"),
+  sku: z.string().trim().max(60, "SKU: no máximo 60 caracteres").optional(),
+  supplier: z.string().trim().max(120, "Fornecedor: no máximo 120 caracteres").optional(),
+  category: z.string().trim().max(60, "Categoria: no máximo 60 caracteres").optional(),
+  garment_type: z.string().trim().refine(
+    (v) => v === "" || (GARMENT_TYPES as readonly string[]).includes(v),
+    "Tipo de peça: escolha um da lista",
+  ),
+  description: z.string().trim()
+                .max(MAX_DESCRICAO, `Descrição: no máximo ${MAX_DESCRICAO} caracteres`)
+                .optional(),
+  price: z.number().nonnegative("Preço: não pode ser negativo"),
+  cost: z.number().nonnegative("Custo: não pode ser negativo"),
+  compare_at_price: z.number().nonnegative('Preço "De": não pode ser negativo').nullable(),
+  low_stock_threshold: z.number().int("Estoque mínimo: use um número inteiro")
+                        .nonnegative("Estoque mínimo: não pode ser negativo"),
 });
+
+/**
+ * Campo de texto vindo do formulário. `f.get()` devolve null quando o campo
+ * não existe (ou está desabilitado) e null é justamente o que fazia o zod
+ * dizer "Invalid input" sem dizer mais nada. Vazio é a resposta certa aí.
+ */
+function textoDoCampo(v: FormDataEntryValue | null): string {
+  return typeof v === "string" ? v : "";
+}
+
+/**
+ * Campo de dinheiro vindo do formulário. Vazio vale zero; vírgula vale ponto
+ * (o teclado do celular manda vírgula); o que não for número volta como NaN
+ * para o chamador avisar com o nome do campo.
+ */
+function valorDoCampo(v: FormDataEntryValue | null): number {
+  const texto = String(v ?? "").trim().replace(",", ".");
+  if (texto === "") return 0;
+  const n = Number(texto);
+  return Number.isFinite(n) ? n : NaN;
+}
 
 export default function Inventory() {
   const [list, setList] = useState<Product[]>([]);
@@ -52,6 +98,8 @@ export default function Inventory() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
+  // controlado, para contar os caracteres enquanto se digita
+  const [descricao, setDescricao] = useState("");
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
@@ -272,7 +320,9 @@ export default function Inventory() {
   useEffect(() => { load(); }, []);
 
 
-  const openNew = () => { setEditing(null); setVariants([]); setPhotos([]); setOpen(true); };
+  const openNew = () => {
+    setEditing(null); setVariants([]); setPhotos([]); setDescricao(""); setOpen(true);
+  };
 
   const handleReprocessPhotos = async () => {
     if (reprocessing) return;
@@ -296,6 +346,7 @@ export default function Inventory() {
     setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity, image_url: v.image_url ?? null })) ?? []);
     // Produto antigo pode ter só a foto de capa: ela abre a galeria.
     setPhotos(p.images?.length ? [...p.images] : p.image_url ? [p.image_url] : []);
+    setDescricao(p.description ?? "");
     setOpen(true);
   };
 
@@ -338,23 +389,38 @@ export default function Inventory() {
     toast.success("Foto adicionada");
   };
 
+  const descricaoLonga = descricao.trim().length > MAX_DESCRICAO;
+
   const save = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+
+    // Dinheiro primeiro: assim "abc" vira um aviso com o nome do campo, e não
+    // o "Invalid input" que o zod devolve para NaN.
+    const preco = valorDoCampo(f.get("price"));
+    const custo = valorDoCampo(f.get("cost"));
+    const temDe = String(f.get("compare_at_price") ?? "").trim() !== "";
+    const de = temDe ? valorDoCampo(f.get("compare_at_price")) : null;
+    const minimo = valorDoCampo(f.get("low_stock_threshold"));
+
+    for (const [rotulo, valor] of [
+      ["Preço", preco], ["Custo", custo], ['Preço "De"', de ?? 0], ["Estoque mínimo", minimo],
+    ] as const) {
+      if (Number.isNaN(valor)) { toast.error(`${rotulo}: preencha com um número`); return; }
+    }
+
     const parsed = schema.safeParse({
-      name: f.get("name"),
-      sku: f.get("sku"),
-      supplier: f.get("supplier"),
-      category: f.get("category"),
-      garment_type: f.get("garment_type") ?? "",
-      description: f.get("description"),
-      price: Number(f.get("price")),
-      cost: Number(f.get("cost")),
+      name: textoDoCampo(f.get("name")),
+      sku: textoDoCampo(f.get("sku")),
+      supplier: textoDoCampo(f.get("supplier")),
+      category: textoDoCampo(f.get("category")),
+      garment_type: textoDoCampo(f.get("garment_type")),
+      description: textoDoCampo(f.get("description")),
+      price: preco,
+      cost: custo,
       // Campo vazio é "sem oferta", não zero.
-      compare_at_price: String(f.get("compare_at_price") ?? "").trim() === ""
-        ? null
-        : Number(f.get("compare_at_price")),
-      low_stock_threshold: Number(f.get("low_stock_threshold") || 5),
+      compare_at_price: de,
+      low_stock_threshold: minimo || 5,
     });
     if (!parsed.success) { toast.error(parsed.error.issues[0].message); return; }
     // Anunciar "de" menor que o "por" é propaganda enganosa: a loja não mostra
@@ -621,7 +687,27 @@ export default function Inventory() {
               O preço <strong>De</strong> é o valor antigo, que aparece riscado na loja virtual
               (&quot;De R$ 280,00 por R$ 196,00&quot;). Deixe em branco quando a peça não estiver em oferta.
             </p>
-            <div><Label>Descrição</Label><Textarea name="description" defaultValue={editing?.description ?? ""} className="glass-input" rows={2} /></div>
+            <div>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="description">Descrição</Label>
+                <span className={`text-xs ${descricaoLonga ? "text-destructive" : "text-muted-foreground"}`}>
+                  {descricao.length}/{MAX_DESCRICAO}
+                </span>
+              </div>
+              <Textarea
+                id="description"
+                name="description"
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                className="glass-input"
+                rows={2}
+              />
+              {descricaoLonga && (
+                <p className="mt-1 text-xs text-destructive">
+                  Passou do limite — tire {descricao.trim().length - MAX_DESCRICAO} caractere(s) para salvar.
+                </p>
+              )}
+            </div>
 
             {/* Galeria da peça: a primeira foto é a capa e vai para o PDV e a loja. */}
             <div className="border-t border-border pt-3">
