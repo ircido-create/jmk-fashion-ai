@@ -107,6 +107,7 @@ export default function Inventory() {
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
   // "todas" | "na-loja" | "fora" | "nao-aparece"
   const [lojaFilter, setLojaFilter] = useState<string>("todas");
+  const [fotoFilter, setFotoFilter] = useState<string>("todas");
   const [importOpen, setImportOpen] = useState(false);
   const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
@@ -536,8 +537,25 @@ export default function Inventory() {
 
   const suppliers = Array.from(new Set(list.map((p) => p.supplier).filter((s): s is string => !!s && s.trim() !== ""))).sort();
 
+  /**
+   * Foto da peça, para o filtro do acervo.
+   *
+   * "Capa" é o que aparece no card daqui, no PDV e no cupom: `image_url` ou a
+   * galeria. A foto que está só na variação é caso à parte de propósito — a
+   * peça aparece bonita na loja (a vitrine aceita foto de variação) e fica
+   * preta aqui dentro, que foi o que aconteceu com a SAIA VILMA em 13/11/2026.
+   * Separar os dois casos mostra essas peças antes de a cliente ver.
+   */
+  const temCapa = (p: Product) => !!p.image_url || (p.images?.length ?? 0) > 0;
+  const soNaVariacao = (p: Product) =>
+    !temCapa(p) && (p.product_variants ?? []).some((v) => !!v.image_url);
+  const semFotoNenhuma = (p: Product) => !temCapa(p) && !soNaVariacao(p);
+
   // contagens do acervo inteiro, não do que está filtrado: são elas que
   // aparecem no próprio seletor.
+  const comFoto = list.filter(temCapa).length;
+  const fotoSoNaVariacao = list.filter(soNaVariacao).length;
+  const semFoto = list.filter(semFotoNenhuma).length;
   const naLoja = list.filter(apareceNaLoja).length;
   const naoAparecem = list.filter((p) => p.store_visible === true && !apareceNaLoja(p)).length;
   const foraDaLoja = list.filter((p) => p.store_visible !== true).length;
@@ -556,7 +574,12 @@ export default function Inventory() {
       : lojaFilter === "na-loja" ? apareceNaLoja(p)
       : lojaFilter === "fora" ? p.store_visible !== true
       : /* nao-aparece */ p.store_visible === true && !apareceNaLoja(p);
-    return matchesSearch && matchesSupplier && matchesLoja;
+    const matchesFoto =
+      fotoFilter === "todas" ? true
+      : fotoFilter === "com-foto" ? temCapa(p)
+      : fotoFilter === "so-variacao" ? soNaVariacao(p)
+      : /* sem-foto */ semFotoNenhuma(p);
+    return matchesSearch && matchesSupplier && matchesLoja && matchesFoto;
   });
   const { paged, Controls } = usePagination(filtered, 20);
 
@@ -617,6 +640,17 @@ export default function Inventory() {
             <option value="na-loja">Na loja virtual ({naLoja})</option>
             <option value="nao-aparece">Marcadas, mas não aparecem ({naoAparecem})</option>
             <option value="fora">Fora da loja ({foraDaLoja})</option>
+          </select>
+          <select
+            value={fotoFilter}
+            onChange={(e) => setFotoFilter(e.target.value)}
+            className="glass-input h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-56"
+            aria-label="Filtrar pela foto da peça"
+          >
+            <option value="todas">Foto: todas</option>
+            <option value="com-foto">Com foto ({comFoto})</option>
+            <option value="so-variacao">Foto só na variação ({fotoSoNaVariacao})</option>
+            <option value="sem-foto">Sem foto nenhuma ({semFoto})</option>
           </select>
         </div>
 
