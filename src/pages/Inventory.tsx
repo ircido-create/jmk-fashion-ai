@@ -30,6 +30,8 @@ interface Product {
   garment_type?: string | null;
   /** Aparece na loja virtual (jmkmodas.com.br/loja). */
   store_visible?: boolean;
+  /** Rascunho do romaneio, ainda sem conferir: a vitrine ignora. */
+  is_draft?: boolean;
   product_variants?: Variant[];
 }
 
@@ -500,16 +502,37 @@ export default function Inventory() {
   const isLow = (p: Product) => totalQty(p) <= p.low_stock_threshold;
 
   /**
-   * Mesma regra da vitrine (store_catalog no banco): a peça precisa estar
-   * marcada, ter estoque e ter alguma foto — capa, galeria ou a foto de uma
-   * variação que ainda tenha peça. Marcar sem foto ou sem estoque não põe a
-   * peça na loja, e era aí que a gente se perdia.
+   * Mesma regra da vitrine, escrita igual à do banco (store_catalog, migração
+   * 20261028170000): a peça tem de estar ativa, não ser rascunho, estar
+   * marcada para a loja, ter preço, ter alguma foto — capa, galeria ou a foto
+   * de uma variação que ainda tenha peça — e ter estoque (peça sem nenhuma
+   * variação cadastrada também entra, como no banco).
+   *
+   * Marcar a chave não basta, e era aí que a gente se perdia: a peça ficava
+   * marcada no Estoque e não aparecia para a cliente, sem nada dizer por quê.
    */
   const temFoto = (p: Product) =>
     !!p.image_url ||
     (p.images?.length ?? 0) > 0 ||
     (p.product_variants ?? []).some((v) => !!v.image_url && v.quantity > 0);
-  const apareceNaLoja = (p: Product) => p.store_visible === true && totalQty(p) > 0 && temFoto(p);
+  const temEstoque = (p: Product) =>
+    (p.product_variants?.length ?? 0) === 0 || totalQty(p) > 0;
+  const apareceNaLoja = (p: Product) =>
+    p.store_visible === true &&
+    p.active !== false &&
+    p.is_draft !== true &&
+    Number(p.price) > 0 &&
+    temEstoque(p) &&
+    temFoto(p);
+
+  /** O que falta para a peça marcada aparecer — o primeiro motivo basta. */
+  const porQueNaoAparece = (p: Product) =>
+    p.active === false ? "peça inativa"
+    : p.is_draft === true ? "rascunho do romaneio"
+    : !(Number(p.price) > 0) ? "sem preço"
+    : !temEstoque(p) ? "sem estoque"
+    : !temFoto(p) ? "sem foto"
+    : "";
 
   const suppliers = Array.from(new Set(list.map((p) => p.supplier).filter((s): s is string => !!s && s.trim() !== ""))).sort();
 
@@ -638,11 +661,8 @@ export default function Inventory() {
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary">Na loja</span>
                     )}
                     {p.store_visible === true && !apareceNaLoja(p) && (
-                      <span
-                        className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground"
-                        title={totalQty(p) === 0 ? "Sem estoque" : "Sem foto"}
-                      >
-                        Marcada, mas não aparece — {totalQty(p) === 0 ? "sem estoque" : "sem foto"}
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground">
+                        Marcada, mas não aparece — {porQueNaoAparece(p)}
                       </span>
                     )}
                     {isLow(p) && (
