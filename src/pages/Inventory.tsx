@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { GARMENT_LABEL, GARMENT_TYPES, isGarmentType } from "@/lib/garments";
 import { problemaNaFoto } from "@/lib/fotoEnviada";
 import { galeriaDoEditor, MAX_FOTOS_DA_PECA } from "@/lib/galeriaProduto";
+import { categoriaDoCadastro, categoriaSugerida } from "@/lib/categoriaPorNome";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
@@ -59,10 +60,9 @@ const schema = z.object({
                   .max(100, "Nome: no máximo 100 caracteres"),
   sku: z.string().trim().max(60, "SKU: no máximo 60 caracteres").optional(),
   supplier: z.string().trim().max(120, "Fornecedor: no máximo 120 caracteres").optional(),
-  category: z.string().trim().max(60, "Categoria: no máximo 60 caracteres").optional(),
   garment_type: z.string().trim().refine(
     (v) => v === "" || (GARMENT_TYPES as readonly string[]).includes(v),
-    "Tipo de peça: escolha um da lista",
+    "Categoria: escolha uma da lista",
   ),
   description: z.string().trim()
                 .max(MAX_DESCRICAO, `Descrição: no máximo ${MAX_DESCRICAO} caracteres`)
@@ -103,6 +103,8 @@ export default function Inventory() {
   const [photos, setPhotos] = useState<string[]>([]);
   // controlado, para contar os caracteres enquanto se digita
   const [descricao, setDescricao] = useState("");
+  /** Categoria da peça no editor: vem do cadastro ou do palpite pelo nome. */
+  const [categoria, setCategoria] = useState<string>("");
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
@@ -327,7 +329,7 @@ export default function Inventory() {
 
 
   const openNew = () => {
-    setEditing(null); setVariants([]); setPhotos([]); setDescricao(""); setOpen(true);
+    setEditing(null); setVariants([]); setPhotos([]); setDescricao(""); setCategoria(""); setOpen(true);
   };
 
   const handleReprocessPhotos = async () => {
@@ -354,6 +356,9 @@ export default function Inventory() {
     // ela: galeriaDoEditor garante que salvar não desfaça a capa que está no ar.
     setPhotos(galeriaDoEditor(p));
     setDescricao(p.description ?? "");
+    // Peça antiga sem categoria entra já com o palpite pelo nome, para o
+    // operador só confirmar em vez de procurar na lista.
+    setCategoria(categoriaDoCadastro(p));
     setOpen(true);
   };
 
@@ -420,7 +425,6 @@ export default function Inventory() {
       name: textoDoCampo(f.get("name")),
       sku: textoDoCampo(f.get("sku")),
       supplier: textoDoCampo(f.get("supplier")),
-      category: textoDoCampo(f.get("category")),
       garment_type: textoDoCampo(f.get("garment_type")),
       description: textoDoCampo(f.get("description")),
       price: preco,
@@ -442,7 +446,6 @@ export default function Inventory() {
       sku: parsed.data.sku || null,
       supplier: parsed.data.supplier || null,
       description: parsed.data.description || null,
-      category: parsed.data.category || null,
       garment_type: parsed.data.garment_type || null,
       // Checkbox fora do schema: o navegador manda "on" marcado e nada desmarcado.
       store_visible: f.get("store_visible") === "on",
@@ -690,7 +693,6 @@ export default function Inventory() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{p.name}</span>
                     {p.sku && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-mono">SKU: {p.sku}</span>}
-                    {p.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{p.category}</span>}
                     {isGarmentType(p.garment_type) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground">{GARMENT_LABEL[p.garment_type].split(" (")[0]}</span>}
                     {p.supplier && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground">{p.supplier}</span>}
                     {apareceNaLoja(p) && (
@@ -744,28 +746,44 @@ export default function Inventory() {
           <DialogHeader><DialogTitle>{editing ? "Editar" : "Novo"} produto</DialogTitle></DialogHeader>
           <form onSubmit={save} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Nome</Label><Input name="name" defaultValue={editing?.name} required className="glass-input" /></div>
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  name="name"
+                  defaultValue={editing?.name}
+                  required
+                  className="glass-input"
+                  // O nome já diz o que a peça é ("SAIA SECR.MONT.TELMA"): a
+                  // categoria se preenche sozinha enquanto ela ainda está em
+                  // branco, e nunca por cima de uma escolha do operador.
+                  onChange={(e) => {
+                    if (categoria) return;
+                    const palpite = categoriaSugerida(e.target.value, descricao);
+                    if (palpite) setCategoria(palpite);
+                  }}
+                />
+              </div>
               <div><Label>SKU</Label><Input name="sku" defaultValue={editing?.sku ?? ""} placeholder="VST-001" className="glass-input" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Categoria</Label><Input name="category" defaultValue={editing?.category ?? ""} placeholder="Vestido, Blusa..." className="glass-input" /></div>
+              <div>
+                {/* Define a prateleira da loja virtual e a parte do corpo que a IA veste no provador. */}
+                <Label htmlFor="garment_type">Categoria</Label>
+                <select
+                  id="garment_type"
+                  name="garment_type"
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                  className="glass-input flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                  <option value="">Não definida</option>
+                  {GARMENT_TYPES.map((t) => <option key={t} value={t}>{GARMENT_LABEL[t]}</option>)}
+                </select>
+              </div>
               <div><Label>Fornecedor</Label><Input name="supplier" defaultValue={editing?.supplier ?? ""} placeholder="Nome do fornecedor" className="glass-input" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Estoque mínimo</Label><Input name="low_stock_threshold" type="number" defaultValue={editing?.low_stock_threshold ?? 5} min={0} className="glass-input" /></div>
-              <div>
-                {/* Define a seção da loja virtual e a parte do corpo que a IA veste no provador. */}
-                <Label htmlFor="garment_type">Tipo de peça</Label>
-                <select
-                  id="garment_type"
-                  name="garment_type"
-                  defaultValue={editing?.garment_type ?? ""}
-                  className="glass-input flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                >
-                  <option value="">Não definido</option>
-                  {GARMENT_TYPES.map((t) => <option key={t} value={t}>{GARMENT_LABEL[t]}</option>)}
-                </select>
-              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div><Label>Preço (R$)</Label><Input name="price" type="number" step="0.01" defaultValue={editing?.price ?? 0} required className="glass-input" /></div>
