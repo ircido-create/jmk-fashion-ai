@@ -9,10 +9,6 @@ import { displayName, type StoreProduct } from "../types";
 
 type Sort = "novidades" | "menor" | "maior";
 
-// Cada vista (Tudo ou uma categoria) mostra só as peças mais novas; o resto do
-// catálogo continua no banco (link direto do produto e provador seguem funcionando).
-const VITRINE_MAX = 10;
-
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 export default function StoreHome() {
@@ -32,9 +28,12 @@ export default function StoreHome() {
   const list = useMemo(() => {
     const term = normalize(q.trim());
     // o servidor já devolve das mais novas para as mais antigas
+    // Sem corte: a vitrine mostra todas as peças que o banco liberou para a loja.
+    // Havia um teto de 10 aqui, e as mais antigas sumiam sem que ninguém soubesse
+    // — em 13/11/2026 eram 13 peças marcadas e 10 à vista. As fotos dos cards
+    // são loading="lazy", então o catálogo inteiro não pesa na abertura.
     const filtered = catalog
-      .filter((p) => (!tipo || p.garment_type === tipo) && (!term || normalize(p.name).includes(term)))
-      .slice(0, VITRINE_MAX);
+      .filter((p) => (!tipo || p.garment_type === tipo) && (!term || normalize(p.name).includes(term)));
     if (sort === "menor") return [...filtered].sort((a, b) => a.price - b.price);
     if (sort === "maior") return [...filtered].sort((a, b) => b.price - a.price);
     return filtered;
@@ -76,7 +75,7 @@ export default function StoreHome() {
             </button>
             {GARMENT_TYPES.filter((t) => (counts.get(t) ?? 0) > 0).map((t) => (
               <button key={t} type="button" className="s-chip" data-active={tipo === t} onClick={() => setTipo(t)}>
-                {GARMENT_PLURAL[t]} <span className="s-chip-count">{Math.min(counts.get(t) ?? 0, VITRINE_MAX)}</span>
+                {GARMENT_PLURAL[t]} <span className="s-chip-count">{counts.get(t) ?? 0}</span>
               </button>
             ))}
           </div>
