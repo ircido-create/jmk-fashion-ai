@@ -59,8 +59,15 @@ export function BlackFridayStrip() {
   );
 }
 
-/** Bloco de campanha no topo da vitrine. */
-export function BlackFridayHero() {
+/**
+ * Bloco de campanha no topo da vitrine.
+ *
+ * `onVerOfertas` é o que a vitrine faz quando a cliente clica em "Ver as
+ * ofertas": liga o filtro da Black Friday e desce até a coleção. Sem ele o
+ * botão volta a ser uma âncora comum, para o banner continuar servindo em
+ * qualquer página.
+ */
+export function BlackFridayHero({ onVerOfertas }: { onVerOfertas?: () => void }) {
   if (!campanhaNoAr()) return null;
   return (
     <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
@@ -94,9 +101,15 @@ export function BlackFridayHero() {
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            <a href="#colecao" className="s-btn s-btn-gold">
-              Ver as ofertas
-            </a>
+            {onVerOfertas ? (
+              <button type="button" className="s-btn s-btn-gold" onClick={onVerOfertas}>
+                Ver as ofertas
+              </button>
+            ) : (
+              <a href="#colecao" className="s-btn s-btn-gold">
+                Ver as ofertas
+              </a>
+            )}
             <Link to="/loja/provador" className="s-btn s-btn-ai">
               <Sparkles /> Experimentar com IA
             </Link>

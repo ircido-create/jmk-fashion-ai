@@ -3,9 +3,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, RefreshCw, Search, Sparkles } from "lucide-react";
 import { GARMENT_PLURAL, GARMENT_TYPES, isGarmentType, regionOf, type GarmentType } from "@/lib/garments";
 import { useStore } from "../StoreContext";
-import { BlackFridayHero } from "../components/BlackFriday";
+import { BlackFridayHero, campanhaNoAr } from "../components/BlackFriday";
 import { ProductCard, ProductCardSkeleton } from "../components/ProductCard";
-import { displayName, type StoreProduct } from "../types";
+import { displayName, offerOf, type StoreProduct } from "../types";
 
 type Sort = "novidades" | "menor" | "maior";
 
@@ -19,11 +19,24 @@ export default function StoreHome() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("novidades");
 
+  /**
+   * Filtro da Black Friday (`?oferta=1`). Peça em oferta é a que tem preço "De"
+   * maior que o de hoje — a mesma conta que põe o selo no card, para a cliente
+   * nunca ver uma lista que não bate com o que ela vê nas fotos.
+   */
+  const soOfertas = params.get("oferta") === "1" && campanhaNoAr();
+  const base = useMemo(
+    () => (soOfertas ? catalog.filter((p) => offerOf(p)) : catalog),
+    [catalog, soOfertas],
+  );
+  const quantasOfertas = useMemo(() => catalog.filter((p) => offerOf(p)).length, [catalog]);
+
+  // as contagens das abas seguem o filtro de oferta: dizer "Saias 3" e abrir com 1 confunde
   const counts = useMemo(() => {
     const c = new Map<GarmentType, number>();
-    for (const p of catalog) if (p.garment_type) c.set(p.garment_type, (c.get(p.garment_type) ?? 0) + 1);
+    for (const p of base) if (p.garment_type) c.set(p.garment_type, (c.get(p.garment_type) ?? 0) + 1);
     return c;
-  }, [catalog]);
+  }, [base]);
 
   const list = useMemo(() => {
     const term = normalize(q.trim());
@@ -32,25 +45,34 @@ export default function StoreHome() {
     // Havia um teto de 10 aqui, e as mais antigas sumiam sem que ninguém soubesse
     // — em 13/11/2026 eram 13 peças marcadas e 10 à vista. As fotos dos cards
     // são loading="lazy", então o catálogo inteiro não pesa na abertura.
-    const filtered = catalog
+    const filtered = base
       .filter((p) => (!tipo || p.garment_type === tipo) && (!term || normalize(p.name).includes(term)));
     if (sort === "menor") return [...filtered].sort((a, b) => a.price - b.price);
     if (sort === "maior") return [...filtered].sort((a, b) => b.price - a.price);
     return filtered;
-  }, [catalog, tipo, q, sort]);
+  }, [base, tipo, q, sort]);
 
-  const setTipo = (t: GarmentType | null) => {
+  const setFiltros = (t: GarmentType | null, oferta: boolean) => {
     const next = new URLSearchParams(params);
     if (t) next.set("tipo", t);
     else next.delete("tipo");
+    if (oferta) next.set("oferta", "1");
+    else next.delete("oferta");
     setParams(next, { replace: true });
+  };
+  const setTipo = (t: GarmentType | null) => setFiltros(t, soOfertas);
+
+  /** O botão do banner: liga o filtro e desce até a coleção. */
+  const verOfertas = () => {
+    setFiltros(null, true);
+    document.getElementById("colecao")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const showHero = !tipo;
 
   return (
     <>
-      <BlackFridayHero />
+      <BlackFridayHero onVerOfertas={verOfertas} />
       {showHero && <Hero catalog={catalog} />}
 
       <section id="colecao" className="mx-auto max-w-7xl scroll-mt-24 px-4 pt-12 sm:px-6">
@@ -58,7 +80,9 @@ export default function StoreHome() {
           <div>
             <p className="s-eyebrow">Coleção</p>
             <h2 className="s-display mt-2 text-4xl sm:text-5xl">
-              {tipo ? GARMENT_PLURAL[tipo] : "Novidades"}
+              {soOfertas
+                ? tipo ? `${GARMENT_PLURAL[tipo]} em oferta` : "Ofertas Black Friday"
+                : tipo ? GARMENT_PLURAL[tipo] : "Novidades"}
             </h2>
           </div>
           {!loading && !error && (
@@ -70,9 +94,24 @@ export default function StoreHome() {
 
         <div className="mt-8 flex flex-col gap-4 lg:flex-row lg:items-center">
           <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 lg:mx-0 lg:px-0">
-            <button type="button" className="s-chip" data-active={!tipo} onClick={() => setTipo(null)}>
+            <button
+              type="button"
+              className="s-chip"
+              data-active={!tipo && !soOfertas}
+              onClick={() => setFiltros(null, false)}
+            >
               Tudo
             </button>
+            {campanhaNoAr() && quantasOfertas > 0 && (
+              <button
+                type="button"
+                className="s-chip"
+                data-active={soOfertas}
+                onClick={() => setFiltros(tipo, !soOfertas)}
+              >
+                Black Friday <span className="s-chip-count">{quantasOfertas}</span>
+              </button>
+            )}
             {GARMENT_TYPES.filter((t) => (counts.get(t) ?? 0) > 0).map((t) => (
               <button key={t} type="button" className="s-chip" data-active={tipo === t} onClick={() => setTipo(t)}>
                 {GARMENT_PLURAL[t]} <span className="s-chip-count">{counts.get(t) ?? 0}</span>
@@ -119,7 +158,7 @@ export default function StoreHome() {
             <div className="s-card px-6 py-16 text-center">
               <p className="s-display text-2xl">Nenhuma peça encontrada</p>
               <p className="mt-2 text-sm s-muted">Tente outra busca ou veja a coleção completa.</p>
-              <button type="button" className="s-btn s-btn-ghost mt-6" onClick={() => { setQ(""); setTipo(null); }}>
+              <button type="button" className="s-btn s-btn-ghost mt-6" onClick={() => { setQ(""); setFiltros(null, false); }}>
                 Ver tudo
               </button>
             </div>
