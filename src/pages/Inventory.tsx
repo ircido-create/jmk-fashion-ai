@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { GARMENT_LABEL, GARMENT_TYPES, isGarmentType } from "@/lib/garments";
 import { problemaNaFoto } from "@/lib/fotoEnviada";
+import { galeriaDoEditor, MAX_FOTOS_DA_PECA } from "@/lib/galeriaProduto";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
@@ -349,16 +350,17 @@ export default function Inventory() {
   const openEdit = (p: Product) => {
     setEditing(p);
     setVariants(p.product_variants?.map((v) => ({ id: v.id, size: v.size, color: v.color, quantity: v.quantity, image_url: v.image_url ?? null })) ?? []);
-    // Produto antigo pode ter só a foto de capa: ela abre a galeria.
-    setPhotos(p.images?.length ? [...p.images] : p.image_url ? [p.image_url] : []);
+    // Produto antigo pode ter só a foto de capa, e o buscador de foto grava só
+    // ela: galeriaDoEditor garante que salvar não desfaça a capa que está no ar.
+    setPhotos(galeriaDoEditor(p));
     setDescricao(p.description ?? "");
     setOpen(true);
   };
 
   /** Sobe as fotos escolhidas e acrescenta à galeria, na ordem da seleção. */
   const uploadProductPhotos = async (files: File[]) => {
-    const livres = Math.max(0, 8 - photos.length);
-    if (livres === 0) { toast.error("Máximo de 8 fotos por peça"); return; }
+    const livres = Math.max(0, MAX_FOTOS_DA_PECA - photos.length);
+    if (livres === 0) { toast.error(`Máximo de ${MAX_FOTOS_DA_PECA} fotos por peça`); return; }
     setUploadingPhotos(true);
     const novas: string[] = [];
     for (const file of files.slice(0, livres)) {
@@ -374,7 +376,7 @@ export default function Inventory() {
       setPhotos((prev) => [...prev, ...novas]);
       toast.success(novas.length === 1 ? "Foto adicionada" : `${novas.length} fotos adicionadas`);
     }
-    if (files.length > livres) toast.info(`Só couberam ${livres}: o limite é 8 fotos por peça.`);
+    if (files.length > livres) toast.info(`Só couberam ${livres}: o limite é ${MAX_FOTOS_DA_PECA} fotos por peça.`);
     setUploadingPhotos(false);
   };
 
