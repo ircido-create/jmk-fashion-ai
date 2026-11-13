@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react";
 import { fmtBRL } from "@/lib/utils";
 import { GARMENT_PLURAL, regionOf } from "@/lib/garments";
 import { displayName, offerOf, type StoreProduct } from "../types";
+import { SeloBlackFriday } from "./BlackFriday";
 
 export function ProductCard({ product, index = 0 }: { product: StoreProduct; index?: number }) {
   const canTryOn = !!regionOf(product.garment_type);
@@ -25,6 +26,8 @@ export function ProductCard({ product, index = 0 }: { product: StoreProduct; ind
           className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-[1.04]"
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/55 to-transparent" />
+        {/* Só quem tem preço "De" leva a marca d'água da campanha. */}
+        {offer && <SeloBlackFriday />}
         {/* Um contêiner só, com quebra de linha: em card estreito os dois selos
             lado a lado se sobrepunham. */}
         {(canTryOn || lowStock || offer) && (

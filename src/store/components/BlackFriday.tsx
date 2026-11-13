@@ -17,6 +17,33 @@ export function campanhaNoAr(): boolean {
   return CAMPANHA_ATIVA && Date.now() <= CAMPANHA_ATE.getTime();
 }
 
+/**
+ * Marca d'água das peças em promoção (opção B, escolhida pelo José em
+ * 13/11/2026): um selo redondo de 54 px no canto de baixo da foto, no dourado
+ * da loja, com o fundo desfocado. Pequeno de propósito — marca a oferta sem
+ * tirar o destaque da peça.
+ *
+ * Fica aqui, e não no ProductCard, porque é peça da campanha: quando a Black
+ * Friday acabar, `campanhaNoAr()` apaga o selo junto com a faixa e o banner,
+ * sem ninguém precisar lembrar de tirar.
+ */
+export function SeloBlackFriday() {
+  if (!campanhaNoAr()) return null;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute bottom-2.5 right-2.5 flex h-[54px] w-[54px]
+                 flex-col items-center justify-center rounded-full border
+                 border-[color:var(--s-gold)]/75 bg-black/55 text-center leading-[1.05]
+                 s-gold backdrop-blur-[6px]"
+    >
+      <span className="text-[8px] font-extrabold tracking-[0.1em]">BLACK</span>
+      <span className="text-[8px] font-extrabold tracking-[0.1em]">FRIDAY</span>
+      <span className="text-[7px] tracking-[0.1em] opacity-85">OFF</span>
+    </div>
+  );
+}
+
 /** Faixa fina, acima do cabeçalho, em todas as páginas da loja. */
 export function BlackFridayStrip() {
   if (!campanhaNoAr()) return null;
