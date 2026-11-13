@@ -103,6 +103,8 @@ export default function Inventory() {
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
+  // "todas" | "na-loja" | "fora" | "nao-aparece"
+  const [lojaFilter, setLojaFilter] = useState<string>("todas");
   const [importOpen, setImportOpen] = useState(false);
   const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importing, setImporting] = useState(false);
@@ -497,7 +499,25 @@ export default function Inventory() {
   const totalQty = (p: Product) => p.product_variants?.reduce((s, v) => s + v.quantity, 0) ?? 0;
   const isLow = (p: Product) => totalQty(p) <= p.low_stock_threshold;
 
+  /**
+   * Mesma regra da vitrine (store_catalog no banco): a peça precisa estar
+   * marcada, ter estoque e ter alguma foto — capa, galeria ou a foto de uma
+   * variação que ainda tenha peça. Marcar sem foto ou sem estoque não põe a
+   * peça na loja, e era aí que a gente se perdia.
+   */
+  const temFoto = (p: Product) =>
+    !!p.image_url ||
+    (p.images?.length ?? 0) > 0 ||
+    (p.product_variants ?? []).some((v) => !!v.image_url && v.quantity > 0);
+  const apareceNaLoja = (p: Product) => p.store_visible === true && totalQty(p) > 0 && temFoto(p);
+
   const suppliers = Array.from(new Set(list.map((p) => p.supplier).filter((s): s is string => !!s && s.trim() !== ""))).sort();
+
+  // contagens do acervo inteiro, não do que está filtrado: são elas que
+  // aparecem no próprio seletor.
+  const naLoja = list.filter(apareceNaLoja).length;
+  const naoAparecem = list.filter((p) => p.store_visible === true && !apareceNaLoja(p)).length;
+  const foraDaLoja = list.filter((p) => p.store_visible !== true).length;
 
   const debouncedSearch = useDebouncedValue(search, 300);
   const filtered = list.filter((p) => {
@@ -508,7 +528,12 @@ export default function Inventory() {
       (p.category ?? "").toLowerCase().includes(q) ||
       (p.supplier ?? "").toLowerCase().includes(q);
     const matchesSupplier = supplierFilter === "all" || p.supplier === supplierFilter;
-    return matchesSearch && matchesSupplier;
+    const matchesLoja =
+      lojaFilter === "todas" ? true
+      : lojaFilter === "na-loja" ? apareceNaLoja(p)
+      : lojaFilter === "fora" ? p.store_visible !== true
+      : /* nao-aparece */ p.store_visible === true && !apareceNaLoja(p);
+    return matchesSearch && matchesSupplier && matchesLoja;
   });
   const { paged, Controls } = usePagination(filtered, 20);
 
@@ -559,6 +584,17 @@ export default function Inventory() {
             <option value="all">Todos os fornecedores</option>
             {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          <select
+            value={lojaFilter}
+            onChange={(e) => setLojaFilter(e.target.value)}
+            className="glass-input h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-56"
+            aria-label="Filtrar pela loja virtual"
+          >
+            <option value="todas">Loja virtual: todas</option>
+            <option value="na-loja">Na loja virtual ({naLoja})</option>
+            <option value="nao-aparece">Marcadas, mas não aparecem ({naoAparecem})</option>
+            <option value="fora">Fora da loja ({foraDaLoja})</option>
+          </select>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -598,8 +634,16 @@ export default function Inventory() {
                     {p.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">{p.category}</span>}
                     {isGarmentType(p.garment_type) && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground">{GARMENT_LABEL[p.garment_type].split(" (")[0]}</span>}
                     {p.supplier && <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/30 text-accent-foreground">{p.supplier}</span>}
-                    {p.store_visible === true && (
+                    {apareceNaLoja(p) && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary">Na loja</span>
+                    )}
+                    {p.store_visible === true && !apareceNaLoja(p) && (
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground"
+                        title={totalQty(p) === 0 ? "Sem estoque" : "Sem foto"}
+                      >
+                        Marcada, mas não aparece — {totalQty(p) === 0 ? "sem estoque" : "sem foto"}
+                      </span>
                     )}
                     {isLow(p) && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-warning/20 text-warning-foreground inline-flex items-center gap-1">
