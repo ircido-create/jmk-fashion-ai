@@ -3,6 +3,7 @@ import { GARMENT_LABEL, GARMENT_TYPES, isGarmentType } from "@/lib/garments";
 import { problemaNaFoto } from "@/lib/fotoEnviada";
 import { galeriaDoEditor, MAX_FOTOS_DA_PECA } from "@/lib/galeriaProduto";
 import { categoriaDoCadastro, categoriaSugerida } from "@/lib/categoriaPorNome";
+import { fornecedorJaCadastrado } from "@/lib/fornecedores";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
@@ -105,6 +106,8 @@ export default function Inventory() {
   const [descricao, setDescricao] = useState("");
   /** Categoria da peça no editor: vem do cadastro ou do palpite pelo nome. */
   const [categoria, setCategoria] = useState<string>("");
+  /** Fornecedor digitado no editor — controlado para poder avisar sobre repetido. */
+  const [fornecedor, setFornecedor] = useState<string>("");
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [search, setSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState<string>("all");
@@ -329,7 +332,7 @@ export default function Inventory() {
 
 
   const openNew = () => {
-    setEditing(null); setVariants([]); setPhotos([]); setDescricao(""); setCategoria(""); setOpen(true);
+    setEditing(null); setVariants([]); setPhotos([]); setDescricao(""); setCategoria(""); setFornecedor(""); setOpen(true);
   };
 
   const handleReprocessPhotos = async () => {
@@ -359,6 +362,7 @@ export default function Inventory() {
     // Peça antiga sem categoria entra já com o palpite pelo nome, para o
     // operador só confirmar em vez de procurar na lista.
     setCategoria(categoriaDoCadastro(p));
+    setFornecedor(p.supplier ?? "");
     setOpen(true);
   };
 
@@ -541,6 +545,11 @@ export default function Inventory() {
     : "";
 
   const suppliers = Array.from(new Set(list.map((p) => p.supplier).filter((s): s is string => !!s && s.trim() !== ""))).sort();
+  /**
+   * O mesmo fornecedor com outra grafia já está no cadastro? Só avisa; o
+   * operador decide, porque pode ser mesmo um fornecedor novo de nome parecido.
+   */
+  const fornecedorRepetido = fornecedorJaCadastrado(fornecedor, suppliers);
 
   /**
    * Foto da peça, para o filtro do acervo.
@@ -780,7 +789,34 @@ export default function Inventory() {
                   {GARMENT_TYPES.map((t) => <option key={t} value={t}>{GARMENT_LABEL[t]}</option>)}
                 </select>
               </div>
-              <div><Label>Fornecedor</Label><Input name="supplier" defaultValue={editing?.supplier ?? ""} placeholder="Nome do fornecedor" className="glass-input" /></div>
+              <div>
+                <Label htmlFor="supplier">Fornecedor</Label>
+                <Input
+                  id="supplier"
+                  name="supplier"
+                  value={fornecedor}
+                  onChange={(e) => setFornecedor(e.target.value)}
+                  // A lista completa sozinha com quem já fornece, para o mesmo
+                  // fornecedor não entrar de três jeitos diferentes. Continua
+                  // aceitando nome novo: é sugestão, não trava.
+                  list="fornecedores-ja-usados"
+                  autoComplete="off"
+                  placeholder="Nome do fornecedor"
+                  className="glass-input"
+                />
+                <datalist id="fornecedores-ja-usados">
+                  {suppliers.map((s) => <option key={s} value={s} />)}
+                </datalist>
+                {fornecedorRepetido && (
+                  <button
+                    type="button"
+                    onClick={() => setFornecedor(fornecedorRepetido)}
+                    className="mt-1 text-left text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                  >
+                    Já existe como <strong>{fornecedorRepetido}</strong> — clique para usar essa grafia
+                  </button>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Estoque mínimo</Label><Input name="low_stock_threshold" type="number" defaultValue={editing?.low_stock_threshold ?? 5} min={0} className="glass-input" /></div>
