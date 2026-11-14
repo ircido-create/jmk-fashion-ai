@@ -95,7 +95,7 @@ export function BlackFridayHero({ onVerOfertas }: { onVerOfertas?: () => void })
               <span className="s-gold">cartão de crédito</span>
             </p>
             <p className="mt-1 text-xs s-muted">
-              1x no crédito sem juros, por conta da loja. A partir de 2x, os juros do cartão
+              Até 3x no crédito sem juros, por conta da loja. A partir de 4x, os juros do cartão
               ficam por conta do cliente.
             </p>
           </div>
