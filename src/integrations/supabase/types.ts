@@ -1830,6 +1830,17 @@ export type Database = {
         Args: { p_items: Json; p_order: Json }
         Returns: Json
       }
+      store_settings_publicas: {
+        Args: never
+        Returns: {
+          credito_parcelas_sem_juros: number
+          credito_valor_minimo: number
+          delivery_note: string
+          pickup_address: string
+          reserve_hours: number
+          whatsapp: string
+        }[]
+      }
       store_update_order: {
         Args: {
           p_order_id: string
@@ -1837,17 +1848,6 @@ export type Database = {
           p_status: string
         }
         Returns: undefined
-      }
-      store_settings_publicas: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          whatsapp: string | null
-          pickup_address: string | null
-          delivery_note: string | null
-          reserve_hours: number | null
-          credito_parcelas_sem_juros: number | null
-          credito_valor_minimo: number | null
-        }[]
       }
       whatsapp_pulso: {
         Args: never
