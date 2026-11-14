@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 
+import { useStore } from "../StoreContext";
+import { fraseDoParcelamento } from "../semJuros";
+
 /**
  * Campanha de Black Friday da loja.
  *
@@ -68,6 +71,9 @@ export function BlackFridayStrip() {
  * qualquer página.
  */
 export function BlackFridayHero({ onVerOfertas }: { onVerOfertas?: () => void }) {
+  // A frase do parcelamento sai da configuração da loja, a mesma que o link de
+  // pagamento lê: o que está anunciado é o que a cliente vê no checkout.
+  const { settings } = useStore();
   if (!campanhaNoAr()) return null;
   return (
     <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
@@ -94,10 +100,7 @@ export function BlackFridayHero({ onVerOfertas }: { onVerOfertas?: () => void })
               Pague com <span className="s-gold">PIX</span> ou parcele no{" "}
               <span className="s-gold">cartão de crédito</span>
             </p>
-            <p className="mt-1 text-xs s-muted">
-              Até 3x no crédito sem juros, por conta da loja. A partir de 4x, os juros do cartão
-              ficam por conta do cliente.
-            </p>
+            <p className="mt-1 text-xs s-muted">{fraseDoParcelamento(settings)}</p>
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">

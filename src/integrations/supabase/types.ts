@@ -1293,6 +1293,8 @@ export type Database = {
       }
       store_settings: {
         Row: {
+          credito_parcelas_sem_juros: number
+          credito_valor_minimo: number
           delivery_note: string | null
           id: boolean
           order_alert_whatsapp: string | null
@@ -1305,6 +1307,8 @@ export type Database = {
           whatsapp: string | null
         }
         Insert: {
+          credito_parcelas_sem_juros?: number
+          credito_valor_minimo?: number
           delivery_note?: string | null
           id?: boolean
           order_alert_whatsapp?: string | null
@@ -1317,6 +1321,8 @@ export type Database = {
           whatsapp?: string | null
         }
         Update: {
+          credito_parcelas_sem_juros?: number
+          credito_valor_minimo?: number
           delivery_note?: string | null
           id?: boolean
           order_alert_whatsapp?: string | null
@@ -1839,6 +1845,8 @@ export type Database = {
           pickup_address: string | null
           delivery_note: string | null
           reserve_hours: number | null
+          credito_parcelas_sem_juros: number | null
+          credito_valor_minimo: number | null
         }[]
       }
       whatsapp_pulso: {

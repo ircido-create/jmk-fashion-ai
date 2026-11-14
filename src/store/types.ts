@@ -43,6 +43,10 @@ export interface StoreSettings {
   delivery_note: string | null;
   /** Horas que a loja guarda a peça de um pedido ainda não pago. */
   reserve_hours: number | null;
+  /** Até quantas parcelas a loja assume a taxa do cartão. */
+  credito_parcelas_sem_juros: number | null;
+  /** Valor mínimo da compra para valer o parcelamento sem juros. */
+  credito_valor_minimo: number | null;
 }
 
 export type DeliveryMethod = "retirada" | "entrega";

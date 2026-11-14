@@ -33,12 +33,13 @@ export async function fetchCatalog(): Promise<StoreProduct[]> {
  * o WhatsApp interno que recebe o aviso de pedido e as chaves do link de
  * pagamento, e a regra antiga (`USING (true)` para anônimo) deixava a tabela
  * inteira ao alcance de qualquer visitante — era um dos dois avisos de
- * segurança do painel, em 13/11/2026. A função devolve só estes quatro campos
- * (migração 20261113190000).
+ * segurança do painel, em 13/11/2026. A função devolve só os campos que a vitrine mostra
+ * (migrações 20261113190000 e 20261115010000).
  */
 export async function fetchStoreSettings(): Promise<StoreSettings> {
   const vazio: StoreSettings = {
     whatsapp: null, pickup_address: null, delivery_note: null, reserve_hours: null,
+    credito_parcelas_sem_juros: null, credito_valor_minimo: null,
   };
   const { data, error } = await supabase.rpc("store_settings_publicas");
   if (error) throw error;

@@ -47,6 +47,39 @@ async function prazoDaLoja(admin: ReturnType<typeof createClient>): Promise<numb
   }
 }
 
+/**
+ * Ate quantas parcelas a LOJA assume a taxa do cartao nesta compra.
+ *
+ * O painel manda: `credito_parcelas_sem_juros` vale a partir de
+ * `credito_valor_minimo`; abaixo disso so a a vista sai sem acrescimo. Com
+ * isso o Jose muda a regra na tela, sem publicar esta funcao de novo.
+ *
+ * Sem este campo no payload a InfinitePay repassa a taxa ja na 1x: no teste
+ * de 29/10 uma compra de R$ 10,00 foi cobrada da cliente por R$ 10,44.
+ */
+async function parcelasSemJuros(
+  admin: ReturnType<typeof createClient>,
+  valorCentavos: number,
+): Promise<number> {
+  try {
+    const { data } = await admin
+      .from("store_settings")
+      .select("credito_parcelas_sem_juros, credito_valor_minimo")
+      .maybeSingle();
+    const conf = data as
+      | { credito_parcelas_sem_juros?: number; credito_valor_minimo?: number }
+      | null;
+    const parcelas = Number(conf?.credito_parcelas_sem_juros);
+    const minimo = Number(conf?.credito_valor_minimo);
+    if (!Number.isFinite(parcelas) || parcelas < 1) return 1;
+    const minimoCentavos = Number.isFinite(minimo) ? Math.round(minimo * 100) : 0;
+    if (valorCentavos < minimoCentavos) return 1;
+    return Math.min(12, Math.round(parcelas));
+  } catch {
+    return 1;
+  }
+}
+
 /** Nega por padrão: a função cria cobrança de verdade. */
 async function autorizado(req: Request): Promise<boolean> {
   const segredo = await getSecret("STORE_PAYMENT_SECRET", "store_payment_secret");
@@ -155,14 +188,9 @@ Deno.serve(async (req) => {
           valid_until: charge.link_expires_at,
           payment_methods_enabled: ["credit_card", "pix"],
           // Quem paga a taxa do cartao: a loja assume ate esta parcela, o
-          // cliente paga da proxima em diante. Com 3 (pedido do Jose em
-          // 14/11/2026), a cliente ve "ate 3x sem juros" — o valor cheio da
-          // compra dividido em 1x, 2x ou 3x — e so a partir de 4x o juro
-          // aparece para ela. A taxa de 2x e 3x passa a sair da loja.
-          // Sem este campo a InfinitePay repassa a taxa ja na 1x: no teste
-          // de 29/10 uma compra de R$ 10,00 foi cobrada da cliente por
-          // R$ 10,44.
-          assured_installments: 3,
+          // cliente paga da proxima em diante. Quem decide e o painel — ver
+          // parcelasSemJuros().
+          assured_installments: await parcelasSemJuros(admin, charge.amount_cents),
         };
       }
 

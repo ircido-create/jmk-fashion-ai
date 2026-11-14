@@ -456,6 +456,7 @@ function StoreSettingsCard() {
     whatsapp: "", pickup_address: "", delivery_note: "",
     order_alert_whatsapp: "", order_confirm_customer: true,
     payment_link_enabled: false, payment_link_hours: 72,
+    credito_parcelas_sem_juros: 3, credito_valor_minimo: 300,
   });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -463,7 +464,7 @@ function StoreSettingsCard() {
   useEffect(() => {
     supabase
       .from("store_settings")
-      .select("whatsapp, pickup_address, delivery_note, order_alert_whatsapp, order_confirm_customer, payment_link_enabled, payment_link_hours")
+      .select("whatsapp, pickup_address, delivery_note, order_alert_whatsapp, order_confirm_customer, payment_link_enabled, payment_link_hours, credito_parcelas_sem_juros, credito_valor_minimo")
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -475,6 +476,8 @@ function StoreSettingsCard() {
             order_confirm_customer: data.order_confirm_customer ?? true,
             payment_link_enabled: data.payment_link_enabled ?? false,
             payment_link_hours: data.payment_link_hours ?? 72,
+            credito_parcelas_sem_juros: data.credito_parcelas_sem_juros ?? 3,
+            credito_valor_minimo: Number(data.credito_valor_minimo ?? 300),
           });
         }
         setLoaded(true);
@@ -511,6 +514,8 @@ function StoreSettingsCard() {
         order_confirm_customer: form.order_confirm_customer,
         payment_link_enabled: form.payment_link_enabled,
         payment_link_hours: Math.min(720, Math.max(1, Number(form.payment_link_hours) || 72)),
+        credito_parcelas_sem_juros: Math.min(12, Math.max(1, Number(form.credito_parcelas_sem_juros) || 1)),
+        credito_valor_minimo: Math.max(0, Number(form.credito_valor_minimo) || 0),
         updated_at: new Date().toISOString(),
       })
       .eq("id", true);
@@ -620,6 +625,42 @@ function StoreSettingsCard() {
               onChange={(e) => setForm((f) => ({ ...f, payment_link_hours: Number(e.target.value) }))}
               className="glass-input mt-1"
             />
+          </div>
+
+          <div className="md:col-span-2 border-t pt-4">
+            <h4 className="font-medium text-sm">Crédito sem juros</h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Até quantas parcelas a <strong>loja</strong> paga a taxa do cartão. Dentro desse limite a cliente
+              divide a compra pelo valor cheio, sem acréscimo; acima dele, o juro do cartão aparece para ela.
+              Compras abaixo do valor mínimo só saem sem juros à vista.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="parcelas-sem-juros">Parcelas sem juros</Label>
+            <Input
+              id="parcelas-sem-juros"
+              type="number"
+              min={1}
+              max={12}
+              value={form.credito_parcelas_sem_juros}
+              onChange={(e) => setForm((f) => ({ ...f, credito_parcelas_sem_juros: Number(e.target.value) }))}
+              className="glass-input mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="valor-minimo-sem-juros">A partir de qual valor de compra (R$)</Label>
+            <Input
+              id="valor-minimo-sem-juros"
+              type="number"
+              min={0}
+              step="10"
+              value={form.credito_valor_minimo}
+              onChange={(e) => setForm((f) => ({ ...f, credito_valor_minimo: Number(e.target.value) }))}
+              className="glass-input mt-1"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Zero vale para qualquer compra.
+            </p>
           </div>
 
           <div className="md:col-span-2 flex justify-end">
