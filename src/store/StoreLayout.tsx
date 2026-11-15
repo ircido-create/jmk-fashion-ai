@@ -1,5 +1,4 @@
 import { Suspense, useEffect } from "react";
-import { Analytics } from "@vercel/analytics/react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { LayoutDashboard, Loader2, LogIn, MessageCircle, ShoppingBag, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,13 +19,6 @@ const NAV = [
 export default function StoreLayout() {
   return (
     <StoreProvider>
-      {/*
-        Contador de visitas da Vercel. Fica só aqui, na casca da loja: conta quem
-        entra na vitrine e some quando a equipe usa o administrativo, para o
-        relatório não misturar cliente com funcionário. Não usa cookie nem
-        guarda nada que identifique a visitante.
-      */}
-      <Analytics />
       <StoreShell />
     </StoreProvider>
   );
