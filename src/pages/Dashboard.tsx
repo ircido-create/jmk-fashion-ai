@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/fetchAll";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
+import { VisitasResumo } from "@/components/VisitasLoja";
 import {
   ShoppingCart, Calendar, Wallet, AlertTriangle, Eye, EyeOff, FileDown, FileSearch, Loader2, WifiOff,
 } from "lucide-react";
@@ -278,6 +279,8 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      <VisitasResumo />
 
       <GlassCard>
         <h3 className="font-display font-semibold text-lg mb-4">Movimentação dos últimos 6 meses</h3>

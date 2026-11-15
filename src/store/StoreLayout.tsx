@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { LayoutDashboard, Loader2, LogIn, MessageCircle, ShoppingBag, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { StoreProvider, useStore } from "./StoreContext";
+import { useContadorDeVisitas } from "./visitas";
 import { BlackFridayStrip } from "./components/BlackFriday";
 import { onlyDigits } from "./types";
 import "./store.css";
@@ -28,6 +29,10 @@ function StoreShell() {
   const { user } = useAuth();
   const { cartCount, settings } = useStore();
   const location = useLocation();
+
+  // Conta a visita. Só na casca da loja: o administrativo não entra na conta,
+  // para o relatório mostrar cliente e não equipe.
+  useContadorDeVisitas();
 
   useEffect(() => {
     document.title = "JMK Modas — Loja virtual";

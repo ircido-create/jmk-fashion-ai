@@ -1830,6 +1830,15 @@ export type Database = {
         Args: { p_items: Json; p_order: Json }
         Returns: Json
       }
+      store_registrar_visita: {
+        Args: {
+          p_is_mobile?: boolean
+          p_path: string
+          p_referrer_host?: string
+          p_visit_key: string
+        }
+        Returns: undefined
+      }
       store_settings_publicas: {
         Args: never
         Returns: {
@@ -1839,6 +1848,23 @@ export type Database = {
           pickup_address: string
           reserve_hours: number
           whatsapp: string
+        }[]
+      }
+      store_visitas_por_dia: {
+        Args: { p_dias?: number }
+        Returns: {
+          celular: number
+          dia: string
+          paginas: number
+          visitas: number
+        }[]
+      }
+      store_visitas_por_pagina: {
+        Args: { p_dias?: number }
+        Returns: {
+          paginas: number
+          path: string
+          visitas: number
         }[]
       }
       store_update_order: {

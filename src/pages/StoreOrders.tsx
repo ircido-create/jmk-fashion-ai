@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtBRL } from "@/lib/utils";
 import { PageHeader, GlassCard } from "@/components/layout/PageHeader";
+import { VisitasDetalhe } from "@/components/VisitasLoja";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -298,6 +299,8 @@ export default function StoreOrders() {
           })}
         </div>
       )}
+
+      <VisitasDetalhe />
 
       <StoreSettingsCard />
 
