@@ -1,7 +1,22 @@
-# JMK Fashion — Gestão
+# JMK Modas
 
-> Sistema interno de gestão da JMK Fashion: clientes, estoque, vendas, pré-vendas, contas a pagar e receber, e atendimento via WhatsApp. Acesso restrito a usuários autenticados.
+> Loja de moda feminina em Osasco (SP): vestidos, saias, blusas, calças e conjuntos, com quase todas as peças em unidade única. A loja virtual fica na raiz do domínio e tem um provador com inteligência artificial, que mostra a peça vestida na própria cliente a partir de uma foto.
 
-## Pages
+Endereço: Rua Manoel Cardoso, 20 — Osasco, SP.
+WhatsApp: (11) 96784-2865.
+Retirada na loja ou entrega combinada pelo WhatsApp. Pagamento em Pix, cartão e crédito parcelado sem juros acima de R$ 300.
 
-- [Entrar](/auth): Tela de login do sistema.
+## Páginas
+
+- [Coleção](https://www.jmkmodas.com.br/): a vitrine, com todas as peças disponíveis, busca e filtro por tipo.
+- [Provador com IA](https://www.jmkmodas.com.br/loja/provador): a cliente envia uma foto de corpo inteiro e vê a peça vestida nela. A foto é usada só para gerar a prova e não fica guardada.
+- [Vestidos](https://www.jmkmodas.com.br/loja?tipo=vestido)
+- [Saias](https://www.jmkmodas.com.br/loja?tipo=saia)
+- [Blusas e camisas](https://www.jmkmodas.com.br/loja?tipo=blusa)
+- [Conjuntos](https://www.jmkmodas.com.br/loja?tipo=conjunto)
+
+Cada peça tem endereço próprio em `/loja/produto/<id>`, listado em [sitemap.xml](https://www.jmkmodas.com.br/sitemap.xml).
+
+## Fora da loja
+
+O sistema de gestão da JMK (estoque, vendas, contas e atendimento) roda no mesmo domínio, mas exige login e não faz parte da loja.

@@ -1,13 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Rede de segurança. O sitemap que vai para o ar é gerado no build
+  (vite-plugin-seo.ts) e traz todas as peças, uma a uma. Este arquivo só é
+  servido se aquela busca falhar — por isso tem apenas as páginas fixas, que
+  nunca mudam de endereço.
+-->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://jmk-fashion-ai.lovable.app/</loc>
-    <changefreq>weekly</changefreq>
+    <loc>https://www.jmkmodas.com.br/</loc>
+    <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://jmk-fashion-ai.lovable.app/auth</loc>
+    <loc>https://www.jmkmodas.com.br/loja/provador</loc>
     <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://www.jmkmodas.com.br/loja?tipo=vestido</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.jmkmodas.com.br/loja?tipo=saia</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.jmkmodas.com.br/loja?tipo=blusa</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://www.jmkmodas.com.br/loja?tipo=conjunto</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
 </urlset>

@@ -4,7 +4,9 @@ import { ArrowLeft, Check, Loader2, Minus, Plus, ShoppingBag, Sparkles, Store, T
 import { toast } from "sonner";
 import { fmtBRL } from "@/lib/utils";
 import { GARMENT_PLURAL, regionOf } from "@/lib/garments";
+import { useSeo } from "@/lib/seo";
 import { useStore } from "../StoreContext";
+import { breadcrumbDaPeca, caminhoDaPeca, descricaoDaPeca, jsonLdDaPeca, tituloDaPeca } from "../seoDaPeca";
 import { ProductCard } from "../components/ProductCard";
 import { MAX_QTY_PER_LINE, displayName, offerOf } from "../types";
 
@@ -65,6 +67,21 @@ export default function StoreProduct() {
       .filter((p) => p.id !== product.id && want.includes(regionOf(p.garment_type) ?? ""))
       .slice(0, 4);
   }, [catalog, product, region]);
+
+  // Hook antes dos returns condicionais: enquanto o catálogo carrega não há
+  // peça, e aí não se mexe no <head> — o index.html já traz o da loja.
+  useSeo(
+    product
+      ? {
+          title: tituloDaPeca(product),
+          description: descricaoDaPeca(product),
+          path: caminhoDaPeca(product.id),
+          image: product.image_url,
+          type: "product",
+          jsonLd: [jsonLdDaPeca(product), breadcrumbDaPeca(product)],
+        }
+      : null,
+  );
 
   if (loading) {
     return (

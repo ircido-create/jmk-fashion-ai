@@ -34,9 +34,10 @@ function StoreShell() {
   // para o relatório mostrar cliente e não equipe.
   useContadorDeVisitas();
 
-  useEffect(() => {
-    document.title = "JMK Modas — Loja virtual";
-  }, []);
+  // O título é de cada página (useSeo), não da casca: o efeito do filho roda
+  // antes do efeito do pai, e um title aqui apagava o da peça assim que ela
+  // montava — a aba voltava para "JMK Modas — Loja virtual" em toda a loja.
+  // Sem nenhuma página escrever, vale o que está no index.html, que já é o da loja.
 
   // SPA não volta ao topo sozinha ao trocar de página.
   useEffect(() => {

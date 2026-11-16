@@ -4,9 +4,22 @@ import { Camera, Download, ImagePlus, Loader2, RotateCcw, Search, ShieldCheck, S
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { fmtBRL } from "@/lib/utils";
 import { REGION_LABEL, regionOf, type BodyRegion } from "@/lib/garments";
+import { useSeo } from "@/lib/seo";
 import { useStore } from "../StoreContext";
 import { downscalePhoto, peekTryOn, tryOn } from "../api";
 import { displayName, type StoreProduct } from "../types";
+
+/**
+ * O provador é o que a JMK tem e as lojas da região não têm — então é a página
+ * que responde a "provador virtual de roupas" na busca. A foto da cliente
+ * nunca sai daqui; o texto diz isso porque é a primeira dúvida de quem chega.
+ */
+const SEO_PROVADOR = {
+  title: "Provador virtual de roupas com IA | JMK Modas Osasco",
+  description:
+    "Escolha a peça, envie uma foto sua e veja como fica em você em menos de um minuto. A foto não fica guardada. JMK Modas, moda feminina em Osasco.",
+  path: "/loja/provador",
+};
 
 const REGIONS: BodyRegion[] = ["upper", "lower", "full"];
 const MAX_RAW_PHOTO = 20 * 1024 * 1024;
@@ -16,6 +29,8 @@ const SEGUNDOS_ESPERADOS = 15;
 const normalize = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 export default function StoreFittingRoom() {
+  useSeo(SEO_PROVADOR);
+
   const { catalog, productById, loading, look, setLookPiece, removeLookPiece } = useStore();
   const [photo, setPhoto] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);

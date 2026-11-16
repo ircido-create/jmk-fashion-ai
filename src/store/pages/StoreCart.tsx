@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Loader2, Minus, Plus, ShoppingBag, Store, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { fmtBRL } from "@/lib/utils";
+import { useSeo } from "@/lib/seo";
 import { useStore } from "../StoreContext";
 import { horasDeReserva, placeOrder } from "../api";
 import {
@@ -41,6 +42,10 @@ function readSaved(): Partial<Form> {
 }
 
 export default function StoreCart() {
+  // A sacola é de cada visitante: nada para indexar, e o Google gastaria
+  // rastreamento numa página que para ele está sempre vazia.
+  useSeo({ title: "Sua sacola", path: "/loja/carrinho", noindex: true });
+
   const { cart, cartTotal, setLineQty, removeLine, clearCart, reload, settings } = useStore();
   // mesmo prazo que a rotina do banco usa para devolver a peça à vitrine
   const horasGuardadas = horasDeReserva(settings);

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, RefreshCw, Search, Sparkles } from "lucide-react";
 import { GARMENT_PLURAL, GARMENT_TYPES, isGarmentType, regionOf, type GarmentType } from "@/lib/garments";
+import { useSeo } from "@/lib/seo";
 import { useStore } from "../StoreContext";
 import { BlackFridayHero, campanhaNoAr } from "../components/BlackFriday";
 import { ProductCard, ProductCardSkeleton } from "../components/ProductCard";
@@ -51,6 +52,8 @@ export default function StoreHome() {
     if (sort === "maior") return [...filtered].sort((a, b) => b.price - a.price);
     return filtered;
   }, [base, tipo, q, sort]);
+
+  useSeo(seoDaVitrine(tipo, list.length));
 
   const setFiltros = (t: GarmentType | null, oferta: boolean) => {
     const next = new URLSearchParams(params);
@@ -265,4 +268,46 @@ function FittingRoomBanner() {
       </div>
     </section>
   );
+}
+
+/**
+ * O que a vitrine mostra na busca.
+ *
+ * A raiz do domínio e /loja desenham a mesma página — então as duas apontam o
+ * canonical para a raiz, senão o Google trata como duas páginas iguais e
+ * divide entre elas o crédito de uma só. A aba de um tipo ("Saias") é outra
+ * coisa: é a página que responde a "saia feminina em Osasco", e fica com
+ * canonical próprio. Busca digitada e filtro de oferta não entram no canonical
+ * — é a mesma lista, filtrada.
+ *
+ * Os títulos não reaproveitam GARMENT_PLURAL: aquele é rótulo de aba
+ * ("Blusas & Camisas") e vira um título torto na busca.
+ */
+const TITULO_DO_TIPO: Record<GarmentType, string> = {
+  blusa: "Blusas e camisas femininas",
+  saia: "Saias femininas",
+  calca: "Calças femininas",
+  vestido: "Vestidos femininos",
+  conjunto: "Conjuntos femininos",
+  outro: "Peças femininas",
+};
+
+function seoDaVitrine(tipo: GarmentType | null, quantas: number) {
+  if (!tipo) {
+    return {
+      title: "JMK Modas — Moda feminina em Osasco com provador de IA",
+      description:
+        "Vestidos, saias, blusas e conjuntos em Osasco, quase tudo peça única. Prove a roupa em você pelo provador de inteligência artificial e retire na Rua Manoel Cardoso, 20.",
+      path: "/",
+    };
+  }
+  const nome = TITULO_DO_TIPO[tipo];
+  const quantidade = quantas ? `${quantas} ${quantas === 1 ? "peça disponível" : "peças disponíveis"} hoje. ` : "";
+  return {
+    title: `${nome} em Osasco`,
+    description:
+      `${nome} na JMK Modas, na Rua Manoel Cardoso, 20, em Osasco. ${quantidade}` +
+      "Prove em você pelo provador de inteligência artificial antes de ir à loja.",
+    path: `/loja?tipo=${tipo}`,
+  };
 }

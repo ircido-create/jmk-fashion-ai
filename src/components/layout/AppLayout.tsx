@@ -8,6 +8,7 @@ import { LogOut } from "lucide-react";
 import { AIAssistant } from "@/components/AIAssistant";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useSeo } from "@/lib/seo";
 
 export function AppLayout() {
   const { user, signOut, isAdmin } = useAuth();
@@ -17,9 +18,9 @@ export function AppLayout() {
 
   // O título da aba vem da loja (é a página inicial do domínio). Quem entra no
   // administrativo — direto ou vindo da vitrine — vê o nome do sistema.
-  useEffect(() => {
-    document.title = "JMK Fashion — Gestão";
-  }, []);
+  // O noindex é por garantia: o sistema exige login e já está no robots.txt,
+  // mas se um link escapar, o Google tem onde ler que isto não é da loja.
+  useSeo({ title: "JMK Fashion — Gestão", noindex: true });
 
   // Sair leva ao login explicitamente. Antes o redirecionamento vinha do
   // ProtectedRoute, mas agora "/" sem sessão abre a loja — quem sai do Painel

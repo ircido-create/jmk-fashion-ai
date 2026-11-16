@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Sparkles, Loader2 } from "lucide-react";
+import { useSeo } from "@/lib/seo";
 
 const loginSchema = z.object({
   email: z.string().trim().email("E-mail inválido").max(255),
@@ -15,6 +16,9 @@ const loginSchema = z.object({
 });
 
 export default function Auth() {
+  // Tela da equipe, não da cliente: fora da busca.
+  useSeo({ title: "Entrar — JMK Fashion", path: "/auth", noindex: true });
+
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);

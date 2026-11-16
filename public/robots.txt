@@ -1,16 +1,36 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
+# JMK Modas — www.jmkmodas.com.br
+# A raiz do domínio é a loja virtual. O que fica abaixo das rotas
+# administrativas é sistema interno: está atrás de login e não tem por que
+# aparecer na busca.
 
 User-agent: *
 Allow: /
 
-Sitemap: https://jmk-fashion-ai.lovable.app/sitemap.xml
+# Sistema interno (exige login).
+# /auth fica de fora desta lista de propósito: ele é linkado no rodapé da loja,
+# e uma URL bloqueada que recebe link acaba aparecendo na busca sem título. A
+# própria tela se marca como noindex, que é o que tira do índice de vez.
+Disallow: /reset-password
+Disallow: /painel
+Disallow: /clientes
+Disallow: /estoque
+Disallow: /vendas
+Disallow: /pdv
+Disallow: /contas-receber
+Disallow: /contas-pagar
+Disallow: /conversas
+Disallow: /status
+Disallow: /pre-vendas
+Disallow: /whatsapp
+Disallow: /relatorios
+Disallow: /comprovantes
+Disallow: /pedidos-loja
+Disallow: /usuarios
+Disallow: /configuracoes
+Disallow: /instalar
+
+# Páginas da cliente que não fazem sentido na busca
+Disallow: /loja/carrinho
+Disallow: /loja/pedido/
+
+Sitemap: https://www.jmkmodas.com.br/sitemap.xml

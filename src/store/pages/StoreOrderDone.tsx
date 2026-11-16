@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowRight, Check, CreditCard, MessageCircle } from "lucide-react";
 import { fmtBRL } from "@/lib/utils";
+import { useSeo } from "@/lib/seo";
 import { useStore } from "../StoreContext";
 import { horasDeReserva, fetchOrderPayment, type OrderPayment } from "../api";
 import { displayName, onlyDigits, variantLabel, type OrderSnapshot } from "../types";
@@ -22,6 +23,9 @@ function readSnapshot(code?: string): OrderSnapshot | null {
  * resumo vem do próprio aparelho que fez o pedido.
  */
 export default function StoreOrderDone() {
+  // Pedido pronto: a URL carrega o código do pedido da cliente e não entra na busca.
+  useSeo({ title: "Pedido enviado", path: "/loja/pedido", noindex: true });
+
   const { code } = useParams();
   const { settings } = useStore();
   // mesmo prazo que a rotina do banco usa para devolver a peça à vitrine
