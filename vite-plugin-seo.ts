@@ -32,6 +32,15 @@ import type { StoreProduct } from "./src/store/types";
  *
  * Se a busca falhar, o build **não** quebra: fica o sitemap que está em
  * public/ e o site sobe igual. SEO não é motivo para derrubar uma publicação.
+ *
+ * **Quando o conteúdo é congelado.** O catálogo é lido uma vez, no momento do
+ * build — e o Lovable faz o build quando o commit chega, não quando você clica
+ * em Publicar. Então mexer no banco (preço, descrição, peça nova) não muda o
+ * HTML já gerado: o que está escrito nele é o catálogo de quando o build
+ * rodou. Isso vale só para quem não executa JavaScript, ou seja, a prévia do
+ * WhatsApp e do Facebook; no site e para o Google o useSeo lê a peça ao vivo e
+ * mostra o dado atual. Para a prévia acompanhar, é preciso um build feito
+ * depois da mudança no banco — na prática, um commit novo.
  */
 
 interface Opcoes {
