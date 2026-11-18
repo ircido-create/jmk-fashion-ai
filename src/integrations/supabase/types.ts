@@ -1706,6 +1706,10 @@ export type Database = {
         Returns: number
       }
       dunning_resume_due: { Args: never; Returns: number }
+      excluir_venda: {
+        Args: { p_sale_id: string }
+        Returns: Json
+      }
       get_due_today_receivables_to_dunning: {
         Args: { p_limit?: number; p_today?: string }
         Returns: {

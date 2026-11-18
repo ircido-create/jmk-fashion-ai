@@ -192,37 +192,38 @@ export default function Sales() {
     }
   };
 
+  // Peças que não voltam ao estoque: item lançado avulso, sem variação amarrada à grade.
+  const semEstorno = (s: SaleRow) => s.sale_items.filter((it) => !it.variant_id);
+
   const confirmDeleteSale = async () => {
     if (!delSale || delPaidRecs.length > 0) return;
     setDeleting(true);
     try {
-      let restored = 0;
-      for (const it of delSale.sale_items) {
-        if (!it.variant_id) continue;
-        const { error } = await supabase.rpc("increment_variant_stock", {
-          variant_id: it.variant_id,
-          qty: it.quantity,
-        });
-        if (error) throw error;
-        restored += it.quantity;
+      // Regra no banco (excluir_venda): apaga venda, itens e parcelas em aberto,
+      // estorna o estoque e grava o retrato em sale_deletions — tudo de uma vez.
+      const { data, error } = await supabase.rpc("excluir_venda", { p_sale_id: delSale.id });
+      if (error) throw error;
+
+      const r = (data ?? {}) as {
+        venda?: string;
+        estornadas?: number;
+        nao_estornadas?: number;
+        parcelas_removidas?: number;
+      };
+      const partes = [
+        `Venda ${r.venda ?? delSale.id.slice(0, 8).toUpperCase()} excluída`,
+        `${r.estornadas ?? 0} peça(s) de volta ao estoque`,
+      ];
+      if (r.parcelas_removidas) partes.push(`${r.parcelas_removidas} parcela(s) removida(s)`);
+      toast.success(partes.join(" · "));
+
+      if (r.nao_estornadas) {
+        toast.warning(
+          `${r.nao_estornadas} peça(s) NÃO voltaram ao estoque — foram lançadas sem variação. Ajuste na mão pelo Estoque.`,
+          { duration: 10000 }
+        );
       }
 
-      if (delOpenRecs.length) {
-        const { error } = await supabase
-          .from("accounts_receivable")
-          .delete()
-          .in("id", delOpenRecs.map((r) => r.id));
-        if (error) throw error;
-      }
-
-      const { error: itErr } = await supabase.from("sale_items").delete().eq("sale_id", delSale.id);
-      if (itErr) throw itErr;
-      const { error: sErr } = await supabase.from("sales").delete().eq("id", delSale.id);
-      if (sErr) throw sErr;
-
-      toast.success(
-        `Venda excluída · ${restored} peça(s) estornada(s) ao estoque${delOpenRecs.length ? ` · ${delOpenRecs.length} parcela(s) removida(s)` : ""}`
-      );
       setDelSale(null);
       await load();
     } catch (e: any) {
@@ -924,9 +925,6 @@ export default function Sales() {
                     <li>
                       Estornar {delSale.sale_items.filter((it) => it.variant_id).reduce((a, b) => a + b.quantity, 0)} peça(s) ao estoque
                     </li>
-                    {delSale.sale_items.some((it) => !it.variant_id) && (
-                      <li>Itens avulsos (sem variação) não geram estorno de estoque</li>
-                    )}
                     {delOpenRecs.length > 0 && (
                       <li>
                         Remover {delOpenRecs.length} parcela(s) em aberto ({fmtBRL(delOpenRecs.reduce((a, b) => a + b.amount, 0))})
@@ -934,6 +932,23 @@ export default function Sales() {
                     )}
                     <li>Apagar a venda e seus itens (não pode ser desfeito)</li>
                   </ul>
+
+                  {semEstorno(delSale).length > 0 && (
+                    <div className="mt-2 p-3 rounded-xl border border-destructive/40 bg-destructive/10 text-destructive">
+                      <p className="font-semibold">
+                        Atenção: {semEstorno(delSale).reduce((a, b) => a + b.quantity, 0)} peça(s) NÃO voltam ao estoque
+                      </p>
+                      <p className="text-xs mt-0.5 opacity-90">
+                        Foram lançadas sem variação (sem tamanho/cor da grade), então o sistema não tem onde devolver. Ajuste na mão pelo Estoque depois de excluir:
+                      </p>
+                      <ul className="list-disc pl-5 mt-1 text-xs space-y-0.5">
+                        {semEstorno(delSale).map((it) => (
+                          <li key={it.id}>{it.quantity}× {it.product_name}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {delOpenRecs.length > 0 && (
                     <div className="mt-2 p-2 rounded-lg bg-white/40 dark:bg-white/5 space-y-0.5 max-h-40 overflow-auto">
                       {delOpenRecs.map((r) => (
