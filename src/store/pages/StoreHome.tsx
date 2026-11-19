@@ -6,6 +6,7 @@ import { useSeo } from "@/lib/seo";
 import { useStore } from "../StoreContext";
 import { BlackFridayHero, campanhaNoAr } from "../components/BlackFriday";
 import { ProductCard, ProductCardSkeleton } from "../components/ProductCard";
+import { chaveDoTamanho, gradeDaPeca, ordenarTamanhos, rotuloDoTamanho } from "../seoDaPeca";
 import { displayName, offerOf, type StoreProduct } from "../types";
 
 type Sort = "novidades" | "menor" | "maior";
@@ -32,12 +33,56 @@ export default function StoreHome() {
   );
   const quantasOfertas = useMemo(() => catalog.filter((p) => offerOf(p)).length, [catalog]);
 
-  // as contagens das abas seguem o filtro de oferta: dizer "Saias 3" e abrir com 1 confunde
+  /**
+   * Filtro de tamanho (`?tamanho=M,G`). Aceita mais de um de propósito: quem
+   * veste M ou G quer as duas grades na mesma tela, e aqui quase tudo é peça
+   * única — restringir a um tamanho só esvaziaria a vitrine.
+   *
+   * Vale o tamanho COM estoque, pela mesma conta que desenha a grade na página
+   * da peça. Mostrar a peça cujo M já acabou seria pior que não ter filtro.
+   */
+  const selecionados = useMemo(() => {
+    const bruto = params.get("tamanho") ?? "";
+    return [...new Set(bruto.split(",").map(chaveDoTamanho).filter(Boolean))];
+  }, [params]);
+
+  const gradeDe = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const p of catalog) m.set(p.id, gradeDaPeca(p).tamanhos.map(chaveDoTamanho));
+    return m;
+  }, [catalog]);
+
+  const serveNoTamanho = useMemo(() => {
+    if (selecionados.length === 0) return () => true;
+    return (p: StoreProduct) => (gradeDe.get(p.id) ?? []).some((t) => selecionados.includes(t));
+  }, [gradeDe, selecionados]);
+
+  // as contagens das abas seguem os outros filtros ligados: dizer "Saias 3" e abrir com 1 confunde
   const counts = useMemo(() => {
     const c = new Map<GarmentType, number>();
-    for (const p of base) if (p.garment_type) c.set(p.garment_type, (c.get(p.garment_type) ?? 0) + 1);
+    for (const p of base) {
+      if (p.garment_type && serveNoTamanho(p)) c.set(p.garment_type, (c.get(p.garment_type) ?? 0) + 1);
+    }
     return c;
-  }, [base]);
+  }, [base, serveNoTamanho]);
+
+  /**
+   * Os chips de tamanho: só os que existem hoje, na ordem da grade. A conta
+   * ignora o próprio filtro de tamanho (senão clicar em "M" zeraria os outros)
+   * mas respeita o tipo e a oferta — é o que a cliente veria ao clicar.
+   */
+  const tamanhos = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const p of base) {
+      if (tipo && p.garment_type !== tipo) continue;
+      for (const t of gradeDe.get(p.id) ?? []) c.set(t, (c.get(t) ?? 0) + 1);
+    }
+    return ordenarTamanhos([...c.keys()]).map((t) => ({
+      chave: t,
+      rotulo: rotuloDoTamanho(t),
+      pecas: c.get(t) ?? 0,
+    }));
+  }, [base, gradeDe, tipo]);
 
   const list = useMemo(() => {
     const term = normalize(q.trim());
@@ -46,28 +91,47 @@ export default function StoreHome() {
     // Havia um teto de 10 aqui, e as mais antigas sumiam sem que ninguém soubesse
     // — em 13/11/2026 eram 13 peças marcadas e 10 à vista. As fotos dos cards
     // são loading="lazy", então o catálogo inteiro não pesa na abertura.
-    const filtered = base
-      .filter((p) => (!tipo || p.garment_type === tipo) && (!term || normalize(p.name).includes(term)));
+    const filtered = base.filter(
+      (p) =>
+        (!tipo || p.garment_type === tipo) &&
+        (!term || normalize(p.name).includes(term)) &&
+        serveNoTamanho(p),
+    );
     if (sort === "menor") return [...filtered].sort((a, b) => a.price - b.price);
     if (sort === "maior") return [...filtered].sort((a, b) => b.price - a.price);
     return filtered;
-  }, [base, tipo, q, sort]);
+  }, [base, tipo, q, sort, serveNoTamanho]);
 
   useSeo(seoDaVitrine(tipo, list.length));
 
-  const setFiltros = (t: GarmentType | null, oferta: boolean) => {
+  const setFiltros = (mudanca: { tipo?: GarmentType | null; oferta?: boolean; tamanhos?: string[] }) => {
+    const t = mudanca.tipo !== undefined ? mudanca.tipo : tipo;
+    const oferta = mudanca.oferta !== undefined ? mudanca.oferta : soOfertas;
+    const ts = mudanca.tamanhos !== undefined ? mudanca.tamanhos : selecionados;
     const next = new URLSearchParams(params);
     if (t) next.set("tipo", t);
     else next.delete("tipo");
     if (oferta) next.set("oferta", "1");
     else next.delete("oferta");
+    // na URL vai o tamanho como a cliente lê ("M,GG+"), para o link que ela manda
+    // pela amiga fazer sentido; a comparação é sempre pela chave normalizada.
+    if (ts.length) next.set("tamanho", ordenarTamanhos(ts).map(rotuloDoTamanho).join(","));
+    else next.delete("tamanho");
     setParams(next, { replace: true });
   };
-  const setTipo = (t: GarmentType | null) => setFiltros(t, soOfertas);
+  const setTipo = (t: GarmentType | null) => setFiltros({ tipo: t });
+  const limparTudo = () => setFiltros({ tipo: null, oferta: false, tamanhos: [] });
+
+  const alternarTamanho = (chave: string) =>
+    setFiltros({
+      tamanhos: selecionados.includes(chave)
+        ? selecionados.filter((t) => t !== chave)
+        : [...selecionados, chave],
+    });
 
   /** O botão do banner: liga o filtro e desce até a coleção. */
   const verOfertas = () => {
-    setFiltros(null, true);
+    setFiltros({ tipo: null, oferta: true });
     document.getElementById("colecao")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -100,8 +164,8 @@ export default function StoreHome() {
             <button
               type="button"
               className="s-chip"
-              data-active={!tipo && !soOfertas}
-              onClick={() => setFiltros(null, false)}
+              data-active={!tipo && !soOfertas && selecionados.length === 0}
+              onClick={limparTudo}
             >
               Tudo
             </button>
@@ -110,7 +174,7 @@ export default function StoreHome() {
                 type="button"
                 className="s-chip"
                 data-active={soOfertas}
-                onClick={() => setFiltros(tipo, !soOfertas)}
+                onClick={() => setFiltros({ oferta: !soOfertas })}
               >
                 Black Friday <span className="s-chip-count">{quantasOfertas}</span>
               </button>
@@ -145,6 +209,38 @@ export default function StoreHome() {
           </div>
         </div>
 
+        {/*
+          A grade fica numa linha própria, com rótulo: os chips de cima são o
+          que a peça é, estes são o que serve na cliente. Misturar os dois na
+          mesma fila faria "Saias" e "M" parecerem a mesma escolha.
+        */}
+        {!loading && !error && tamanhos.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-wider s-muted">Tamanho</span>
+            {tamanhos.map((t) => (
+              <button
+                key={t.chave}
+                type="button"
+                className="s-chip"
+                data-active={selecionados.includes(t.chave)}
+                aria-pressed={selecionados.includes(t.chave)}
+                onClick={() => alternarTamanho(t.chave)}
+              >
+                {t.rotulo} <span className="s-chip-count">{t.pecas}</span>
+              </button>
+            ))}
+            {selecionados.length > 0 && (
+              <button
+                type="button"
+                className="ml-1 text-xs underline underline-offset-4 s-muted"
+                onClick={() => setFiltros({ tamanhos: [] })}
+              >
+                limpar tamanho
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="mt-10">
           {error ? (
             <div className="s-card flex flex-col items-center gap-4 px-6 py-16 text-center">
@@ -160,8 +256,12 @@ export default function StoreHome() {
           ) : list.length === 0 ? (
             <div className="s-card px-6 py-16 text-center">
               <p className="s-display text-2xl">Nenhuma peça encontrada</p>
-              <p className="mt-2 text-sm s-muted">Tente outra busca ou veja a coleção completa.</p>
-              <button type="button" className="s-btn s-btn-ghost mt-6" onClick={() => { setQ(""); setFiltros(null, false); }}>
+              <p className="mt-2 text-sm s-muted">
+                {selecionados.length > 0
+                  ? "Nenhuma peça nesse tamanho com os outros filtros ligados. Tente outro tamanho ou veja a coleção completa."
+                  : "Tente outra busca ou veja a coleção completa."}
+              </p>
+              <button type="button" className="s-btn s-btn-ghost mt-6" onClick={() => { setQ(""); limparTudo(); }}>
                 Ver tudo
               </button>
             </div>

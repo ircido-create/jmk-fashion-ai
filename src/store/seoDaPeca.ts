@@ -33,14 +33,28 @@ const FEMININO: Record<string, boolean> = { blusa: true, saia: true, calca: true
  * O banco devolve as variações na ordem em que foram cadastradas, e a lista
  * saía alfabética ("G, GG, M, P, PP"), que é como ninguém fala de tamanho.
  * Numeração (36, 38, 40) entra depois das letras, em ordem de número.
+ * "Único" vai para o fim: não é um degrau da grade, é a ausência dela.
  */
-const ORDEM_DOS_TAMANHOS = ["pp", "p", "m", "g", "gg", "xg", "xgg", "exg"];
+const ORDEM_DOS_TAMANHOS = ["pp", "p", "m", "g", "gg", "gg+", "xg", "xgg", "exg"];
 
-function ordenarTamanhos(ts: string[]): string[] {
+/**
+ * A mesma escrita para o mesmo tamanho. O cadastro vem dos romaneios, onde o
+ * mesmo tamanho aparece como "M", "m" e " M " — sem isto o filtro da vitrine
+ * mostraria o mesmo tamanho duas vezes em chips separados.
+ */
+export const chaveDoTamanho = (t: string) =>
+  t.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("pt-BR");
+
+/** Como o tamanho aparece para a cliente: "M", "42", "Único". */
+export const rotuloDoTamanho = (t: string) =>
+  chaveDoTamanho(t) === "unico" ? "Único" : t.trim().toLocaleUpperCase("pt-BR");
+
+export function ordenarTamanhos(ts: string[]): string[] {
   const peso = (t: string) => {
-    const chave = t.trim().toLocaleLowerCase("pt-BR");
+    const chave = chaveDoTamanho(t);
     const i = ORDEM_DOS_TAMANHOS.indexOf(chave);
     if (i >= 0) return i;
+    if (chave === "unico") return 2000;
     const n = Number(chave.replace(",", "."));
     return Number.isFinite(n) ? 100 + n : 1000;
   };
