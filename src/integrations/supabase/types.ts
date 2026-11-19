@@ -939,6 +939,66 @@ export type Database = {
           },
         ]
       }
+      sale_deletions: {
+        Row: {
+          customer_id: string | null
+          customer_name: string | null
+          deleted_at: string
+          deleted_by: string | null
+          id: string
+          installments: number | null
+          items: Json
+          notes: string | null
+          payment_method: string | null
+          receivables_amount: number
+          receivables_removed: number
+          restored_units: number
+          sale_date: string | null
+          sale_id: string
+          sale_short: string
+          skipped_units: number
+          total: number | null
+        }
+        Insert: {
+          customer_id?: string | null
+          customer_name?: string | null
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          installments?: number | null
+          items?: Json
+          notes?: string | null
+          payment_method?: string | null
+          receivables_amount?: number
+          receivables_removed?: number
+          restored_units?: number
+          sale_date?: string | null
+          sale_id: string
+          sale_short: string
+          skipped_units?: number
+          total?: number | null
+        }
+        Update: {
+          customer_id?: string | null
+          customer_name?: string | null
+          deleted_at?: string
+          deleted_by?: string | null
+          id?: string
+          installments?: number | null
+          items?: Json
+          notes?: string | null
+          payment_method?: string | null
+          receivables_amount?: number
+          receivables_removed?: number
+          restored_units?: number
+          sale_date?: string | null
+          sale_id?: string
+          sale_short?: string
+          skipped_units?: number
+          total?: number | null
+        }
+        Relationships: []
+      }
       sale_items: {
         Row: {
           created_at: string
@@ -1354,6 +1414,33 @@ export type Database = {
         }
         Relationships: []
       }
+      store_visits: {
+        Row: {
+          created_at: string
+          id: number
+          is_mobile: boolean
+          path: string
+          referrer_host: string | null
+          visit_key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          is_mobile?: boolean
+          path: string
+          referrer_host?: string | null
+          visit_key: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          is_mobile?: boolean
+          path?: string
+          referrer_host?: string | null
+          visit_key?: string
+        }
+        Relationships: []
+      }
       supplier_sites: {
         Row: {
           created_at: string
@@ -1706,10 +1793,7 @@ export type Database = {
         Returns: number
       }
       dunning_resume_due: { Args: never; Returns: number }
-      excluir_venda: {
-        Args: { p_sale_id: string }
-        Returns: Json
-      }
+      excluir_venda: { Args: { p_sale_id: string }; Returns: Json }
       get_due_today_receivables_to_dunning: {
         Args: { p_limit?: number; p_today?: string }
         Returns: {
@@ -1854,6 +1938,14 @@ export type Database = {
           whatsapp: string
         }[]
       }
+      store_update_order: {
+        Args: {
+          p_order_id: string
+          p_payment_method?: string
+          p_status: string
+        }
+        Returns: undefined
+      }
       store_visitas_por_dia: {
         Args: { p_dias?: number }
         Returns: {
@@ -1870,14 +1962,6 @@ export type Database = {
           path: string
           visitas: number
         }[]
-      }
-      store_update_order: {
-        Args: {
-          p_order_id: string
-          p_payment_method?: string
-          p_status: string
-        }
-        Returns: undefined
       }
       whatsapp_pulso: {
         Args: never
