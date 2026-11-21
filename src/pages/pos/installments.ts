@@ -28,15 +28,18 @@ export interface CarteiraInput {
  * - pagamento misto com parte na carteira: só essa parte, em `splitFiadoInstallments`;
  * - qualquer outro caso: nada (null).
  *
- * Quando há acordo com a dívida antiga, ela soma ao valor — e só nesses casos,
- * porque compra paga à vista não vira parcela e não teria onde somar.
+ * A dívida antiga só soma no fiado ou na parte fiado do pagamento misto;
+ * crédito parcela somente a compra atual.
  */
 export function carteiraBase(i: CarteiraInput): { amount: number; parts: number } | null {
   const divida = Math.max(0, i.dividaSomada ?? 0);
   const isFiado = !i.splitMode && i.paymentMethod === "fiado";
   const isCredit = !i.splitMode && i.paymentMethod === "credito";
-  if (isFiado || (isCredit && i.generateReceivables)) {
+  if (isFiado) {
     return { amount: round2(i.total + divida), parts: Math.max(1, i.installments) };
+  }
+  if (isCredit && i.generateReceivables) {
+    return { amount: round2(i.total), parts: Math.max(1, i.installments) };
   }
   const splitFiado = i.splitMode ? i.splits.filter((s) => s.method === "fiado").reduce((a, b) => a + b.amount, 0) : 0;
   if (splitFiado > 0) return { amount: round2(splitFiado + divida), parts: Math.max(1, i.splitFiadoInstallments) };

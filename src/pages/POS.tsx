@@ -297,18 +297,9 @@ export default function POS() {
     setDebtDialogOpen(false);
   }, [customerId]);
 
-  /**
-   * Esta venda gera parcelas? É o que decide se o acordo pode existir: sem
-   * parcela nova não há onde somar a dívida antiga — e encerrá-la de todo jeito
-   * apagaria o que a cliente deve sem nada em troca.
-   */
-  const geraParcelas = useMemo(
-    () => carteiraBase({ splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments }) !== null,
-    [splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments],
-  );
-
-  // Dívida que entra no acordo — só vale enquanto a compra gerar parcelas.
-  const dividaSomada = mergeDebt && geraParcelas ? Math.max(0, customerDebt ?? 0) : 0;
+  const permiteAcordo = splitMode ? fiadoAmount > 0 : paymentMethod === "fiado";
+  // Dívida antiga só entra no fiado, inclusive na parte fiado do misto.
+  const dividaSomada = mergeDebt && permiteAcordo ? Math.max(0, customerDebt ?? 0) : 0;
   /** O que será parcelado: a compra e, no acordo, a dívida antiga junto. */
   const valorCarteira = total + dividaSomada;
 
@@ -318,16 +309,13 @@ export default function POS() {
     [splitMode, paymentMethod, generateReceivables, total, installments, splits, splitFiadoInstallments, dividaSomada],
   );
 
-  // Acordo aceito e, depois, a forma de pagamento mudou para uma que não
-  // parcela (PIX, dinheiro, débito, crédito sem carteira): o acordo cai aqui e
-  // a pergunta volta a valer, senão a venda sairia à vista e a dívida antiga
-  // seria encerrada junto, de graça.
+  // Defesa também para mudanças no pagamento misto que removam o fiado.
   useEffect(() => {
-    if (!mergeDebt || geraParcelas) return;
+    if (!mergeDebt || permiteAcordo) return;
     setMergeDebt(false);
     setDebtAsked(false);
-    toast.info("Acordo desfeito: esta forma de pagamento não gera parcelas. A dívida anterior continua em aberto.");
-  }, [mergeDebt, geraParcelas]);
+    toast.info("Acordo desfeito: esta forma de pagamento não inclui fiado. A dívida anterior continua em aberto.");
+  }, [mergeDebt, permiteAcordo]);
   const generatedInstallments = useMemo(
     () => installmentAmounts(carteira, manualInstallments, isAdjustingInstallments).map((amount, index) => ({ index, amount })),
     [carteira, manualInstallments, isAdjustingInstallments],
@@ -411,14 +399,13 @@ export default function POS() {
     }
 
     // Cliente com dívida: pergunta uma vez se junta tudo num acordo novo.
-    if (geraCarteira && !debtAsked && (customerDebt ?? 0) > 0.009) {
+    if ((isFiado || splitFiadoAmount > 0) && !debtAsked && (customerDebt ?? 0) > 0.009) {
       setDebtDialogOpen(true);
       return;
     }
 
-    // Acordo só existe quando esta venda gera parcelas. Venda à vista com o
-    // acordo ligado encerraria a dívida antiga sem criar parcela nenhuma.
-    const comAcordo = mergeDebt && geraCarteira;
+    // Crédito nunca encerra a dívida antiga, mesmo gerando contas a receber.
+    const comAcordo = mergeDebt && (isFiado || splitFiadoAmount > 0);
 
     setSaving(true);
     try {
@@ -790,6 +777,10 @@ export default function POS() {
                 onValueChange={(v) => {
                   setPaymentMethod(v as PaymentMethod);
                   setInstallments(1);
+                  if (v !== "fiado") {
+                    setMergeDebt(false);
+                    setDebtAsked(false);
+                  }
                 }}
               >
                 <TabsList className="grid grid-cols-5 w-full">

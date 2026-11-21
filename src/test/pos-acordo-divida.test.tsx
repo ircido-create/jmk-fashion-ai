@@ -28,6 +28,39 @@ import { toast } from "sonner";
 import POS from "@/pages/POS";
 import type { SaleDraft } from "@/pages/pos/saleDraft";
 
+// Teste autenticado da trava real, quando a sessão de verificação está disponível.
+// Cliente nulo garante rejeição antes de qualquer leitura de dívida ou gravação.
+describe("Banco — métodos permitidos no acordo (sem gravar dados)", () => {
+  it.skipIf(!process.env.LOVABLE_BROWSER_SUPABASE_SESSION_JSON).each([
+    ["credito", "Acordo com dívida anterior só é permitido na Carteira (fiado) ou pagamento misto."],
+    ["pix", "Acordo com dívida anterior só é permitido na Carteira (fiado) ou pagamento misto."],
+    ["dinheiro", "Acordo com dívida anterior só é permitido na Carteira (fiado) ou pagamento misto."],
+    ["debito", "Acordo com dívida anterior só é permitido na Carteira (fiado) ou pagamento misto."],
+    [null, "Acordo com dívida anterior só é permitido na Carteira (fiado) ou pagamento misto."],
+    ["fiado", "Acordo exige cliente identificado"],
+    ["misto", "Acordo exige cliente identificado"],
+  ])("valida %s antes de qualquer gravação", async (method, message) => {
+    const sessionJson = process.env.LOVABLE_BROWSER_SUPABASE_SESSION_JSON;
+    if (!sessionJson) throw new Error("Sessão de verificação ausente");
+    const session = JSON.parse(sessionJson) as { access_token: string };
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/create_sale_renegociando`, {
+      method: "POST",
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        p_customer_id: null, p_total: 0, p_payment_method: method,
+        p_installments: 1, p_notes: null, p_items: [], p_receivables: [],
+      }),
+    });
+    expect(response.status).toBe(400);
+    const error = await response.json() as { message: string };
+    expect(error.message).toBe(message);
+  });
+});
+
 const maria = { id: "c1", name: "MARIA DA SILVA", nickname: null, phone: "5511900000000" };
 
 const rascunho = (over: Partial<SaleDraft> = {}): SaleDraft => ({
@@ -149,12 +182,34 @@ describe("PDV — acordo com a dívida antiga", () => {
     expect(args.p_notes ?? "").not.toContain("Acordo");
   });
 
-  it("voltar para a carteira depois disso faz a pergunta de novo", async () => {
+  it("acordo aceito e depois trocado para cartão de crédito desfaz o acordo e não soma a dívida", async () => {
     await abrirPerguntaDaDivida();
     fireEvent.click(await screen.findByRole("button", { name: /Somar e refazer parcelas/ }));
     await waitFor(() => expect(screen.queryByText("Cliente tem dívida em aberto")).toBeNull());
 
-    trocarAba("PIX");
+    trocarAba("Crédito");
+    fireEvent.click(await screen.findByRole("button", { name: /Finalizar venda/ }));
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+
+    const [nome, args] = rpc.mock.calls[0] as [string, {
+      p_total: number;
+      p_payment_method: string;
+      p_receivables: { amount: number }[];
+      p_notes: string | null;
+    }];
+    expect(nome).toBe("create_sale");
+    expect(args.p_payment_method).toBe("credito");
+    expect(args.p_total).toBe(300);
+    expect(args.p_receivables.map((r) => r.amount)).toEqual([300]);
+    expect(args.p_notes ?? "").not.toContain("Acordo");
+  });
+
+  it.each(["PIX", "Dinheiro", "Débito", "Crédito"])("voltar para a carteira depois de %s faz a pergunta de novo", async (aba) => {
+    await abrirPerguntaDaDivida();
+    fireEvent.click(await screen.findByRole("button", { name: /Somar e refazer parcelas/ }));
+    await waitFor(() => expect(screen.queryByText("Cliente tem dívida em aberto")).toBeNull());
+
+    trocarAba(aba);
     trocarAba("Carteira");
     fireEvent.click(await screen.findByRole("button", { name: /Finalizar venda/ }));
 

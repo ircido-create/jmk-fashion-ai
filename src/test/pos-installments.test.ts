@@ -123,6 +123,11 @@ describe("dueDates — vencimentos", () => {
 });
 
 describe("acordo com a dívida antiga", () => {
+  it("cartão de crédito nunca soma dívida anterior, mesmo gerando contas a receber", () => {
+    expect(carteiraBase({ ...base, paymentMethod: "credito", dividaSomada: 450 }))
+      .toEqual({ amount: 300, parts: 3 });
+  });
+
   it("soma a dívida ao valor parcelado na carteira", () => {
     expect(carteiraBase({ ...base, dividaSomada: 450 })).toEqual({ amount: 750, parts: 3 });
   });
