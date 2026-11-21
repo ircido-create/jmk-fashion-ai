@@ -7,4 +7,4 @@
 - [x] Sincronizar capa/galeria na busca e impedir restauração da capa antiga ao editar, sem publicar.
 - [x] Executar testes da troca e abertura das fotos sem gravar produtos reais (21 aprovados).
 - [x] Consultar e apresentar o antes/depois dos oito produtos, sem alterar dados.
-- [ ] Ajustar os oito produtos somente após aprovação do antes/depois (aguarda autorização do usuário).
+- [x] Ajustar somente capa/galeria dos oito produtos após aprovação do antes/depois, preservando fotos adicionais, sem publicar.
