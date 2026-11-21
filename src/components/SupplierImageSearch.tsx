@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { problemaNaFoto } from "@/lib/fotoEnviada";
+import { galeriaComNovaCapa } from "@/lib/galeriaProduto";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,7 +101,12 @@ export default function SupplierImageSearch({
         if (error) throw error;
       }
       if (productId) {
-        const { error } = await supabase.from("products").update({ image_url: url }).eq("id", productId);
+        const { data: produto, error: readError } = await supabase.from("products")
+          .select("image_url, images").eq("id", productId).single();
+        if (readError) throw readError;
+        if (!produto) throw new Error("Produto não encontrado");
+        const { error } = await supabase.from("products")
+          .update({ image_url: url, images: galeriaComNovaCapa(produto, url) }).eq("id", productId);
         if (error) throw error;
         if (applyToAllVariants) {
           await supabase.from("product_variants").update({ image_url: url })

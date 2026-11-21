@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { galeriaComNovaCapa } from "../_shared/product-gallery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -239,8 +240,15 @@ async function handleSave(req: SaveRequest, supabase: any) {
     if (error) throw new Error(error.message);
   }
   if (product_id) {
+    const { data: produto, error: readError } = await supabase.from("products")
+      .select("image_url, images").eq("id", product_id).single();
+    if (readError) throw new Error(readError.message);
+    if (!produto) throw new Error("Produto não encontrado");
     const updates: Promise<any>[] = [
-      supabase.from("products").update({ image_url: publicUrl }).eq("id", product_id),
+      supabase.from("products").update({
+        image_url: publicUrl,
+        images: galeriaComNovaCapa(produto, publicUrl),
+      }).eq("id", product_id),
     ];
     if (apply_to_all_variants) {
       updates.push(
