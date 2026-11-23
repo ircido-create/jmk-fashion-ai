@@ -22,7 +22,7 @@ async function bwGet(path: string) {
   try {
     const res = await fetch(`https://${DEVICE_ID}.bubblewhats.com${path}`, {
       method: "GET",
-      headers: { Authorization: BW_TOKEN, Authentication: BW_TOKEN },
+      headers: { Authorization: BW_TOKEN },
       signal: AbortSignal.timeout(12000),
     });
     const raw = await res.text();
