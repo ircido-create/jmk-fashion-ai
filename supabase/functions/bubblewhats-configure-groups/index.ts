@@ -55,6 +55,10 @@ Deno.serve(async (req) => {
     const webhookBase = `${SUPABASE_URL}/functions/v1/bubblewhats-webhook`;
     const webhookUrl = `${webhookBase}?k=${encodeURIComponent(webhookSecret)}`;
 
+    // Só devolve a URL completa (com ?k=) para o botão "Copiar webhook" de um admin.
+    const body = await req.json().catch(() => ({}));
+    if (body?.action === "webhook_url") return json({ ok: true, webhookUrl });
+
     let res: Response | null = null;
     let raw = "";
     let lastErr = "";
@@ -64,7 +68,6 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: {
             Authorization: BW_TOKEN,
-            Authentication: BW_TOKEN,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({

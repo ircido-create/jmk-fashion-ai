@@ -256,8 +256,15 @@ export default function WhatsApp() {
     }
   };
 
-  const copyWebhook = () => {
-    navigator.clipboard.writeText(webhookUrl);
+  const copyWebhook = async () => {
+    const { data, error } = await supabase.functions.invoke("bubblewhats-configure-groups", {
+      body: { action: "webhook_url" },
+    });
+    if (error || !data?.webhookUrl) {
+      toast({ title: "Não foi possível obter a URL completa do webhook.", variant: "destructive" });
+      return;
+    }
+    await navigator.clipboard.writeText(data.webhookUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
